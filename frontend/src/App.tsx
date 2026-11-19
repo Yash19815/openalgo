@@ -34,6 +34,7 @@ const SamcoAuth = lazy(() => import('@/pages/SamcoAuth'))
 
 // Main pages
 const Dashboard = lazy(() => import('@/pages/Dashboard'))
+const NiftyAlgo = lazy(() => import('@/features/nifty-algo/Workspace'))
 const Positions = lazy(() => import('@/pages/Positions'))
 const OrderBook = lazy(() => import('@/pages/OrderBook'))
 const TradeBook = lazy(() => import('@/pages/TradeBook'))
@@ -194,6 +195,7 @@ function App() {
               {/* Protected routes - requires broker auth */}
               <Route element={<Layout />}>
                 <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/nifty-algo" element={<NiftyAlgo />} />
                 <Route path="/positions" element={<Positions />} />
                 <Route path="/orderbook" element={<OrderBook />} />
                 <Route path="/tradebook" element={<TradeBook />} />

@@ -11,6 +11,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/broker': 'Select Broker',
   '/broker/config': 'Broker Configuration',
   '/dashboard': 'Dashboard',
+  '/nifty-algo': 'NIFTY ALGO',
   '/positions': 'Positions',
   '/orderbook': 'Order Book',
   '/tradebook': 'Trade Book',

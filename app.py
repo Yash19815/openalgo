@@ -83,6 +83,7 @@ from blueprints.master_contract_status import (
 )
 from blueprints.oiprofile import oiprofile_bp  # Import the OI Profile blueprint
 from blueprints.oitracker import oitracker_bp  # Import the OI tracker blueprint
+from blueprints.nifty_algo import initialize_nifty, nifty_algo_bp
 from blueprints.openscript import openscript_bp  # Trader authored OpenScript sources
 from blueprints.openscript_runner import openscript_runner_bp  # Runs one saved strategy
 from blueprints.orders import orders_bp
@@ -332,6 +333,10 @@ def create_app():
     app.register_blueprint(whatsapp_bp)  # Register WhatsApp blueprint
     app.register_blueprint(security_bp)  # Register Security blueprint
     app.register_blueprint(sandbox_bp)  # Register Sandbox blueprint
+    app.register_blueprint(nifty_algo_bp)
+    from database.auth_db import engine as main_database_engine
+
+    initialize_nifty(app, main_database_engine)
     app.register_blueprint(playground_bp)  # Register API playground blueprint
     app.register_blueprint(logging_bp)  # Register Logging blueprint
     app.register_blueprint(admin_bp)  # Register Admin blueprint

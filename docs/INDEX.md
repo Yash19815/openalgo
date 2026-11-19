@@ -46,6 +46,7 @@ need → drill into the specific file. Don't load everything at once.
 
 | Feature | Entry point |
 |---|---|
+| NIFTY ALGO paper-only extension in this fork, implementation status and setup | [nifty-algo/IMPLEMENTATION_PLAN.md](nifty-algo/IMPLEMENTATION_PLAN.md) · [nifty-algo/SETUP.md](nifty-algo/SETUP.md) |
 | Agent (`/agent`) and voice | [design/55-agent/README.md](design/55-agent/README.md) · [design/56-voice-agent/README.md](design/56-voice-agent/README.md) |
 | The 20 options and portfolio tools, including Strike Profile and Sector Rotation | [userguide/31-tools/README.md](userguide/31-tools/README.md) |
 | Portfolio, SIP and sector-rotation REST APIs | [api/README.md](api/README.md#portfolio-sip-and-sector-analysis) |

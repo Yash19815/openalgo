@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta content="web_dashboard" name="shell-type"/>
+<title>Paper Trading Terminal - NIFTYALGO</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "background": "#0b1117",
+            "surface": "#0b1117",
+            "surface-panel": "#121a22",
+            "surface-subtle": "#17222c",
+            "surface-elevated": "#1c2a37",
+            "border-subtle": "#22303e",
+            "border-medium": "#2d3f52",
+            "primary": "#3adfab",
+            "primary-container": "#00c896",
+            "on-primary": "#003828",
+            "secondary": "#83b1ff",
+            "tertiary": "#fbc265",
+            "error": "#ff6b6b",
+            "error-container": "#93000a",
+            "on-error": "#ffffff",
+            "on-surface": "#dbe3ef",
+            "on-surface-variant": "#8e9ea9",
+            "outline": "#5a6e82",
+            "outline-variant": "#22303e"
+          },
+          fontFamily: {
+            sans: ["Inter", "sans-serif"],
+            mono: ["JetBrains Mono", "monospace"]
+          }
+        }
+      }
+    };
+  </script>
+<style>
+    @layer base {
+      html, body {
+        margin: 0;
+        padding: 0;
+        background-color: #0b1117;
+        color: #dbe3ef;
+        font-family: 'Inter', sans-serif;
+      }
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #0b1117;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #22303e;
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #2d3f52;
+      }
+    }
+  </style>
+</head>
+<body class="bg-background text-on-surface antialiased flex min-h-screen">
+<!-- Fixed Left Sidebar -->
+<aside class="fixed left-0 top-0 h-full w-56 bg-surface-panel border-r border-border-subtle z-50 flex flex-col justify-between select-none">
+<div class="flex flex-col">
+<!-- Logo Header -->
+<div class="h-14 px-4 border-b border-border-subtle flex items-center justify-between bg-background">
+<div class="flex items-center gap-2.5">
+<div class="w-7 h-7 rounded bg-surface-subtle border border-border-subtle flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[17px]">polyline</span>
+</div>
+<div class="flex flex-col">
+<span class="font-mono text-xs tracking-tight font-bold text-on-surface">NIFTY<span class="text-primary">ALGO</span></span>
+<span class="font-mono text-[9px] text-outline uppercase tracking-wider">v2.4 Terminal</span>
+</div>
+</div>
+<div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+</div>
+<!-- Navigation Links -->
+<div class="overflow-y-auto max-h-[calc(100vh-190px)] py-3 px-2 space-y-4 font-mono text-[11px]">
+<div>
+<div class="px-2 py-1 text-[10px] font-semibold text-outline uppercase tracking-wider">Overview</div>
+<nav class="flex flex-col gap-0.5 mt-1">
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">team_dashboard</span>Dashboard
+            </a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">candlestick_chart</span>Live Charts
+            </a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">sensors</span>Signal Monitor
+            </a>
+</nav>
+</div>
+<div>
+<div class="px-2 py-1 text-[10px] font-semibold text-outline uppercase tracking-wider">Trading</div>
+<nav class="flex flex-col gap-0.5 mt-1">
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">play_circle</span>Paper Trading
+            </a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">receipt_long</span>Positions &amp; Orders
+            </a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">menu_book</span>Trade Journal
+            </a>
+</nav>
+</div>
+<div>
+<div class="px-2 py-1 text-[10px] font-semibold text-outline uppercase tracking-wider">Analytics</div>
+<nav class="flex flex-col gap-0.5 mt-1">
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">query_stats</span>Performance
+            </a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">history_edu</span>Backtesting
+            </a>
+</nav>
+</div>
+<div>
+<div class="px-2 py-1 text-[10px] font-semibold text-outline uppercase tracking-wider">Configuration</div>
+<nav class="flex flex-col gap-0.5 mt-1">
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">tune</span>Strategy Settings
+            </a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">shield_lock</span>Risk Management
+            </a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">cable</span>Broker Integration
+            </a>
+</nav>
+</div>
+</div>
+</div>
+<!-- Engine & Kill Switch Footer -->
+<div class="p-3 bg-background border-t border-border-subtle flex flex-col gap-2 font-mono text-[10px]">
+<div class="flex items-center justify-between px-2 py-1 bg-surface-panel border border-border-subtle rounded">
+<span class="text-outline uppercase">Engine</span>
+<span class="text-primary font-medium flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-primary inline-block"></span>ACTIVE
+        </span>
+</div>
+<button class="w-full py-1.5 px-2 rounded bg-surface-panel border border-error/50 text-error text-[10px] font-bold uppercase hover:bg-error hover:text-white transition-all flex items-center justify-center gap-1.5" onclick="confirmKillSwitch()" type="button">
+<span class="material-symbols-outlined text-[13px]">power_settings_new</span>KILL SWITCH [ARMED]
+      </button>
+</div>
+</aside>
+<!-- Main View Area (Offset by sidebar width: 14rem / 56) -->
+<div class="pl-56 flex-1 flex flex-col min-w-0 bg-background">
+<!-- Top Global Header -->
+<header class="h-14 bg-surface-panel border-b border-border-subtle px-6 flex items-center justify-between sticky top-0 z-40">
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-1.5 text-on-surface-variant font-mono text-xs">
+<span>NIFTY-50</span>
+<span class="text-outline">/</span>
+<span class="text-on-surface font-semibold">PAPER-TERMINAL</span>
+</div>
+<div class="h-4 w-px bg-border-subtle"></div>
+<div class="flex items-center gap-2 bg-background border border-border-subtle px-3 py-1 rounded">
+<span class="w-2 h-2 rounded-full bg-primary animate-ping"></span>
+<span class="font-mono text-[11px] text-outline font-semibold">SPOT</span>
+<span class="font-mono text-xs font-bold text-on-surface">26,250.00</span>
+<span class="font-mono text-[11px] text-primary font-medium">+142.30 (+0.54%)</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<div class="flex items-center gap-1.5 px-2.5 py-1 bg-primary/10 border border-primary/30 text-primary rounded font-mono text-xs">
+<span class="material-symbols-outlined text-[14px]">science</span>
+<span class="font-semibold tracking-wide">PAPER TRADING SIMULATION</span>
+</div>
+<div class="hidden lg:flex items-center gap-1.5 px-2.5 py-1 bg-background border border-border-subtle rounded font-mono text-[11px]">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+<span class="text-outline">FEED:</span>
+<span class="text-on-surface">SmartAPI 14ms</span>
+</div>
+<div class="h-4 w-px bg-border-subtle"></div>
+<div class="flex items-center gap-2">
+<div class="flex flex-col text-right font-mono">
+<span class="text-xs font-semibold text-on-surface">ALGO-TRADER-09</span>
+<span class="text-[10px] text-outline">11:42:18 IST</span>
+</div>
+<div class="w-8 h-8 rounded bg-primary/20 border border-primary/40 text-primary flex items-center justify-center font-bold">
+<span class="material-symbols-outlined text-[18px]">person</span>
+</div>
+</div>
+</div>
+</header>
+<!-- Main Content Container with Balanced Padding -->
+<main class="p-6 space-y-6 flex-1 max-w-[1680px] w-full mx-auto"><div class="flex flex-col w-full">
+<!-- Top Section: Lab Header & Mode Selector -->
+<section class="flex flex-col gap-4 mb-6">
+<div class="flex flex-wrap items-center justify-between gap-4">
+<div class="flex flex-col gap-1">
+<div class="flex items-center gap-2">
+<span class="px-2 py-0.5 rounded bg-surface-container-highest text-primary font-label-caps text-label-caps tracking-wider uppercase">
+            QUANTITATIVE STRATEGY LAB
+          </span>
+<span class="text-outline font-data-tabular-sm text-data-tabular-sm">/</span>
+<span class="text-on-surface-variant font-data-tabular-sm text-data-tabular-sm">ENGINE VER: 2.4.8-RELEASE</span>
+</div>
+<h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight">
+          Backtesting &amp; Historical Replay Lab
+        </h1>
+</div>
+<!-- Mode Toggles & Global Trigger -->
+<div class="flex items-center gap-3">
+<div class="flex p-1 bg-surface-container-low rounded">
+<button class="px-4 py-1.5 rounded font-label-ui text-label-ui font-medium bg-surface-container-highest text-primary shadow-sm transition-all" id="modeBatchBtn" type="button">
+            Batch Backtest (Historical)
+          </button>
+<button class="px-4 py-1.5 rounded font-label-ui text-label-ui font-medium text-on-surface-variant hover:text-on-surface transition-all" id="modeReplayBtn" type="button">
+            Tick-by-Tick Market Replay
+          </button>
+</div>
+<button class="flex items-center gap-2 px-3 py-1.5 rounded bg-surface-container-high text-on-surface hover:bg-surface-container-highest font-label-ui text-label-ui transition" type="button">
+<span class="material-symbols-outlined text-[16px] text-tertiary">history</span>
+<span>Snapshot Presets</span>
+</button>
+</div>
+</div>
+<!-- Prominent Data Coverage Banner -->
+<div class="flex flex-wrap items-center justify-between gap-4 p-4 rounded bg-surface-container-low">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded bg-surface-container-high flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[18px]">database</span>
+</div>
+<div class="flex flex-col">
+<div class="flex items-center gap-2">
+<span class="font-label-caps text-label-caps uppercase text-outline">Data Source</span>
+<span class="w-1.5 h-1.5 rounded-full bg-primary inline-block"></span>
+<span class="font-data-tabular text-data-tabular text-on-surface">NSE 5-Minute Historical Options Feed (Synthesized Black-Scholes Greeks)</span>
+</div>
+<span class="font-data-tabular-sm text-data-tabular-sm text-on-surface-variant mt-0.5">
+            Coverage: 01 Jan 2023 – 28 Mar 2024 (15 Months, 74,200 Candles)
+          </span>
+</div>
+</div>
+<div class="flex items-center gap-6 font-data-tabular-sm text-data-tabular-sm">
+<div class="flex flex-col text-right">
+<span class="text-outline uppercase font-label-caps text-label-caps">Coverage Integrity</span>
+<span class="text-primary font-semibold">99.8% Complete</span>
+</div>
+<div class="flex flex-col text-right">
+<span class="text-outline uppercase font-label-caps text-label-caps">Vol Surface Model</span>
+<span class="text-on-surface">SVI Spline Calibration</span>
+</div>
+<div class="flex flex-col text-right">
+<span class="text-outline uppercase font-label-caps text-label-caps">Tick Precision</span>
+<span class="text-tertiary">Real Greeks Recomputed</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Two-Column Workspace Layout -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+<!-- Left Column (Strategy Configuration) -->
+<aside class="lg:col-span-4 xl:col-span-3 flex flex-col gap-5 p-5 rounded bg-surface-container-low shadow-sm">
+<div class="flex items-center justify-between pb-3">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[18px]">tune</span>
+<h2 class="font-label-caps text-label-caps uppercase text-on-surface tracking-wider">Strategy Assumptions</h2>
+</div>
+<span class="font-data-tabular-sm text-data-tabular-sm text-outline">v2.4.8</span>
+</div>
+<!-- Strategy Preset -->
+<div class="flex flex-col gap-1.5">
+<label class="font-label-caps text-label-caps text-outline uppercase">Strategy Preset</label>
+<div class="relative">
+<select class="w-full bg-surface-container-lowest text-on-surface font-data-tabular text-data-tabular rounded p-2.5 appearance-none focus:outline-none focus:ring-1 focus:ring-primary">
+<option selected="">NIFTY-5IND-v2.4 (Prod Standard)</option>
+<option>NIFTY-ORBIT-MEANREV-v1.8</option>
+<option>NIFTY-GAMMA-EXP-MOMENTUM</option>
+<option>CUSTOM-USER-DEF-Q1</option>
+</select>
+<span class="material-symbols-outlined absolute right-2.5 top-2.5 pointer-events-none text-outline text-[18px]">unfold_more</span>
+</div>
+</div>
+<!-- Date Range Selector -->
+<div class="flex flex-col gap-2">
+<div class="flex items-center justify-between">
+<label class="font-label-caps text-label-caps text-outline uppercase">Test Interval</label>
+<span class="font-data-tabular-sm text-data-tabular-sm text-tertiary">Q1 2024</span>
+</div>
+<div class="grid grid-cols-2 gap-2">
+<div class="p-2 rounded bg-surface-container-lowest flex flex-col">
+<span class="font-label-caps text-label-caps text-outline uppercase">From</span>
+<span class="font-data-tabular text-data-tabular text-on-surface mt-0.5">2024-01-01</span>
+</div>
+<div class="p-2 rounded bg-surface-container-lowest flex flex-col">
+<span class="font-label-caps text-label-caps text-outline uppercase">To</span>
+<span class="font-data-tabular text-data-tabular text-on-surface mt-0.5">2024-03-28</span>
+</div>
+</div>
+</div>
+<!-- Capital & Position Sizing -->
+<div class="flex flex-col gap-3 p-3.5 rounded bg-surface-container">
+<span class="font-label-caps text-label-caps text-primary tracking-wider uppercase">Capital &amp; Sizing</span>
+<div class="flex items-center justify-between">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Starting Virtual Capital</span>
+<span class="font-data-tabular text-data-tabular text-on-surface font-semibold">₹1,00,000</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Position Size</span>
+<span class="font-data-tabular text-data-tabular text-on-surface">1 Lot (50 Qty)</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Max Portfolio Risk/Trade</span>
+<span class="font-data-tabular text-data-tabular text-primary font-semibold">1.5%</span>
+</div>
+</div>
+<!-- Execution & Cost Model -->
+<div class="flex flex-col gap-3 p-3.5 rounded bg-surface-container">
+<span class="font-label-caps text-label-caps text-secondary-fixed tracking-wider uppercase">Execution Friction Model</span>
+<div class="flex items-center justify-between">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Slippage Tolerance</span>
+<span class="font-data-tabular text-data-tabular text-on-surface">0.15 pts (Optimistic)</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Brokerage</span>
+<span class="font-data-tabular text-data-tabular text-on-surface">₹20.00 / Order</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Spread Buffer</span>
+<span class="font-data-tabular text-data-tabular text-on-surface">₹0.20</span>
+</div>
+</div>
+<!-- Core Indicator Thresholds -->
+<div class="flex flex-col gap-2.5">
+<span class="font-label-caps text-label-caps text-outline uppercase tracking-wider">Indicator Logic Rules</span>
+<div class="space-y-1.5 font-data-tabular-sm text-data-tabular-sm">
+<div class="flex items-center justify-between p-2 rounded bg-surface-container-lowest">
+<span class="text-on-surface-variant">SuperTrend</span>
+<span class="text-primary font-medium">(10, 3.0) Period</span>
+</div>
+<div class="flex items-center justify-between p-2 rounded bg-surface-container-lowest">
+<span class="text-on-surface-variant">MACD Fast/Slow/Sig</span>
+<span class="text-on-surface font-medium">(12, 26, 9)</span>
+</div>
+<div class="flex items-center justify-between p-2 rounded bg-surface-container-lowest">
+<span class="text-on-surface-variant">ADX Momentum Floor</span>
+<span class="text-on-surface font-medium">&gt; 25.0 Strong</span>
+</div>
+<div class="flex items-center justify-between p-2 rounded bg-surface-container-lowest">
+<span class="text-on-surface-variant">Put-Call Ratio (PCR)</span>
+<span class="text-primary font-medium">≥ 1.15 Bullish</span>
+</div>
+</div>
+</div>
+<!-- Action Buttons -->
+<div class="flex flex-col gap-2 pt-2">
+<button class="w-full py-2.5 px-4 rounded bg-primary text-on-primary font-label-caps text-label-caps uppercase tracking-wider font-bold hover:brightness-110 active:scale-[0.99] transition shadow-md flex items-center justify-center gap-2" id="runBacktestBtn" type="button">
+<span class="material-symbols-outlined text-[16px]">play_arrow</span>
+<span>Run Backtest (Fast)</span>
+</button>
+<div class="grid grid-cols-2 gap-2">
+<button class="py-2 px-3 rounded bg-surface-container hover:bg-surface-container-highest text-on-surface font-label-caps text-label-caps uppercase transition text-center" type="button">
+            Reset Defaults
+          </button>
+<button class="py-2 px-3 rounded bg-surface-container hover:bg-surface-container-highest text-on-surface font-label-caps text-label-caps uppercase transition text-center" type="button">
+            Save Variant
+          </button>
+</div>
+</div>
+</aside>
+<!-- Right Column (Analytics & Visualizations) -->
+<main class="lg:col-span-8 xl:col-span-9 flex flex-col gap-6">
+<!-- Summary Metric Banner -->
+<section class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+<!-- Net PnL -->
+<div class="p-4 rounded bg-surface-container-low flex flex-col justify-between">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps uppercase text-outline">Net P&amp;L</span>
+<span class="px-1.5 py-0.5 rounded bg-primary/10 text-primary font-data-tabular-sm text-data-tabular-sm font-semibold">+114.8%</span>
+</div>
+<div class="mt-2">
+<span class="font-data-metric-md text-data-metric-md text-primary font-bold tracking-tight">+₹1,14,840.00</span>
+<p class="font-data-tabular-sm text-data-tabular-sm text-outline mt-0.5">Initial: ₹1,00,000</p>
+</div>
+</div>
+<!-- Total Trades -->
+<div class="p-4 rounded bg-surface-container-low flex flex-col justify-between">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps uppercase text-outline">Total Trades</span>
+<span class="material-symbols-outlined text-[16px] text-outline">bar_chart</span>
+</div>
+<div class="mt-2">
+<span class="font-data-metric-md text-data-metric-md text-on-surface font-bold">142</span>
+<p class="font-data-tabular-sm text-data-tabular-sm text-on-surface-variant mt-0.5">Avg: 2.3 Trades/Day</p>
+</div>
+</div>
+<!-- Win Rate -->
+<div class="p-4 rounded bg-surface-container-low flex flex-col justify-between">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps uppercase text-outline">Win Rate</span>
+<span class="font-data-tabular-sm text-data-tabular-sm text-primary">91W / 51L</span>
+</div>
+<div class="mt-2">
+<span class="font-data-metric-md text-data-metric-md text-primary font-bold">64.1%</span>
+<p class="font-data-tabular-sm text-data-tabular-sm text-outline mt-0.5">Payoff: 1.82</p>
+</div>
+</div>
+<!-- Profit Factor -->
+<div class="p-4 rounded bg-surface-container-low flex flex-col justify-between">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps uppercase text-outline">Profit Factor</span>
+<span class="material-symbols-outlined text-[16px] text-tertiary">query_stats</span>
+</div>
+<div class="mt-2">
+<span class="font-data-metric-md text-data-metric-md text-tertiary font-bold">1.98</span>
+<p class="font-data-tabular-sm text-data-tabular-sm text-outline mt-0.5">Gross: ₹2.32L / ₹1.17L</p>
+</div>
+</div>
+<!-- Max Drawdown -->
+<div class="p-4 rounded bg-surface-container-low flex flex-col justify-between">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps uppercase text-outline">Max Drawdown</span>
+<span class="px-1.5 py-0.5 rounded bg-secondary-container/20 text-secondary font-data-tabular-sm text-data-tabular-sm">LOW RISK</span>
+</div>
+<div class="mt-2">
+<span class="font-data-metric-md text-data-metric-md text-secondary font-bold">8.4%</span>
+<p class="font-data-tabular-sm text-data-tabular-sm text-on-surface-variant mt-0.5">-₹11,200 (Peak DD)</p>
+</div>
+</div>
+<!-- Sharpe Ratio -->
+<div class="p-4 rounded bg-surface-container-low flex flex-col justify-between">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps uppercase text-outline">Sharpe Ratio</span>
+<span class="material-symbols-outlined text-[16px] text-primary">verified</span>
+</div>
+<div class="mt-2">
+<span class="font-data-metric-md text-data-metric-md text-on-surface font-bold">2.31</span>
+<p class="font-data-tabular-sm text-data-tabular-sm text-outline mt-0.5">Sortino: 3.12</p>
+</div>
+</div>
+</section>
+<!-- Main Equity & Drawdown Chart Section -->
+<section class="p-5 rounded bg-surface-container-low shadow-sm flex flex-col gap-4">
+<div class="flex flex-wrap items-center justify-between gap-3">
+<div class="flex items-center gap-3">
+<h3 class="font-headline-md text-headline-md text-on-surface">Portfolio Cumulative Equity &amp; Under-Water Drawdown</h3>
+<span class="px-2 py-0.5 rounded bg-surface-container text-on-surface-variant font-data-tabular-sm text-data-tabular-sm">
+              Jan 2024 – Mar 2024
+            </span>
+</div>
+<div class="flex items-center gap-4 font-data-tabular-sm text-data-tabular-sm">
+<div class="flex items-center gap-1.5">
+<span class="w-3 h-0.5 bg-primary"></span>
+<span class="text-on-surface-variant">Net Equity Curve</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="w-2.5 h-2.5 rounded-full bg-primary/40"></span>
+<span class="text-on-surface-variant">Winning Trigger</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="w-2.5 h-2.5 rounded-full bg-secondary"></span>
+<span class="text-on-surface-variant">SL Trigger</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="w-3 h-2 bg-secondary/30"></span>
+<span class="text-on-surface-variant">Drawdown %</span>
+</div>
+</div>
+</div>
+<!-- Main High-Resolution SVG Chart -->
+<div class="relative w-full h-[270px] bg-surface-container-lowest rounded p-3 select-none flex flex-col justify-between">
+<svg class="w-full h-full" fill="none" preserveaspectratio="none" viewbox="0 0 960 250">
+<defs>
+<lineargradient id="equityGrad" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="#42e5b0" stop-opacity="0.28"></stop>
+<stop offset="100%" stop-color="#42e5b0" stop-opacity="0.0"></stop>
+</lineargradient>
+<lineargradient id="ddGrad" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="#ffb3b2" stop-opacity="0.45"></stop>
+<stop offset="100%" stop-color="#ffb3b2" stop-opacity="0.05"></stop>
+</lineargradient>
+</defs>
+<!-- Horizontal Gridlines -->
+<line stroke="#1c2630" stroke-dasharray="3 3" stroke-width="1" x1="30" x2="930" y1="30" y2="30"></line>
+<line stroke="#1c2630" stroke-dasharray="3 3" stroke-width="1" x1="30" x2="930" y1="80" y2="80"></line>
+<line stroke="#1c2630" stroke-dasharray="3 3" stroke-width="1" x1="30" x2="930" y1="130" y2="130"></line>
+<line stroke="#232e3a" stroke-width="1" x1="30" x2="930" y1="180" y2="180"></line>
+<!-- Y-Axis Value Labels -->
+<text fill="#85948c" font-family="JetBrains Mono" font-size="10" x="935" y="34">₹2,20,000</text>
+<text fill="#85948c" font-family="JetBrains Mono" font-size="10" x="935" y="84">₹1,80,000</text>
+<text fill="#85948c" font-family="JetBrains Mono" font-size="10" x="935" y="134">₹1,40,000</text>
+<text fill="#85948c" font-family="JetBrains Mono" font-size="10" x="935" y="184">₹1,00,000 (Base)</text>
+<text fill="#ffb3b2" font-family="JetBrains Mono" font-size="10" x="935" y="235">-8.4% DD</text>
+<!-- Drawdown Underwater Area (Lower Segment) -->
+<path d="M 30 180 
+                     L 60 180 L 80 184 L 110 181 L 140 192 L 170 188 L 190 180 
+                     L 240 180 L 260 183 L 300 180 
+                     L 340 196 L 360 215 L 390 205 L 430 180 
+                     L 520 180 L 550 186 L 580 182 L 620 180 
+                     L 710 180 L 740 190 L 770 184 L 810 180 
+                     L 920 180 L 920 180 Z" fill="url(#ddGrad)"></path>
+<path d="M 30 180 
+                     L 60 180 L 80 184 L 110 181 L 140 192 L 170 188 L 190 180 
+                     L 240 180 L 260 183 L 300 180 
+                     L 340 196 L 360 215 L 390 205 L 430 180 
+                     L 520 180 L 550 186 L 580 182 L 620 180 
+                     L 710 180 L 740 190 L 770 184 L 810 180 
+                     L 920 180" fill="none" stroke="#ffb3b2" stroke-width="1.2"></path>
+<!-- Cumulative Equity Area Fill -->
+<path d="M 30 180 
+                     Q 80 170, 120 162
+                     T 200 152
+                     T 280 138
+                     T 360 148
+                     T 440 120
+                     T 520 95
+                     T 600 88
+                     T 680 72
+                     T 760 60
+                     T 840 45
+                     T 920 32
+                     L 920 180 L 30 180 Z" fill="url(#equityGrad)"></path>
+<!-- Main Equity Curve Line -->
+<path d="M 30 180 
+                     Q 80 170, 120 162
+                     T 200 152
+                     T 280 138
+                     T 360 148
+                     T 440 120
+                     T 520 95
+                     T 600 88
+                     T 680 72
+                     T 760 60
+                     T 840 45
+                     T 920 32" fill="none" stroke="#42e5b0" stroke-linecap="round" stroke-width="2.5"></path>
+<!-- Key Trade Markers (Sample Wins/Losses) -->
+<circle cx="120" cy="162" fill="#42e5b0" r="3.5"></circle>
+<circle cx="280" cy="138" fill="#42e5b0" r="3.5"></circle>
+<circle cx="360" cy="148" fill="#ffb3b2" r="4"></circle>
+<circle cx="440" cy="120" fill="#42e5b0" r="3.5"></circle>
+<circle cx="600" cy="88" fill="#42e5b0" r="3.5"></circle>
+<circle cx="760" cy="60" fill="#42e5b0" r="3.5"></circle>
+<circle cx="920" cy="32" fill="#42e5b0" r="4.5"></circle>
+<!-- Scrubber Hover Vertical Guide Marker -->
+<line stroke="#83b1ff" stroke-dasharray="2 2" stroke-width="1" x1="600" x2="600" y1="20" y2="230"></line>
+<circle cx="600" cy="88" fill="#83b1ff" fill-opacity="0.3" r="6"></circle>
+<circle cx="600" cy="88" fill="#83b1ff" r="3"></circle>
+</svg>
+<!-- Timeline X-Axis Grid Labels -->
+<div class="flex justify-between px-6 pt-1 text-outline font-data-tabular-sm text-data-tabular-sm">
+<span>01 Jan</span>
+<span>15 Jan</span>
+<span>01 Feb</span>
+<span>15 Feb</span>
+<span>01 Mar</span>
+<span>15 Mar (Active Scrubber)</span>
+<span>28 Mar</span>
+</div>
+</div>
+</section>
+<!-- Replay Simulation Controller & Candlestick Viewer -->
+<section class="p-5 rounded bg-surface-container-low shadow-sm flex flex-col gap-4">
+<div class="flex flex-wrap items-center justify-between gap-3">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[20px]">view_in_ar_new</span>
+<h3 class="font-headline-md text-headline-md text-on-surface">Interactive Candle Replay Engine</h3>
+</div>
+<div class="flex items-center gap-3">
+<span class="font-label-caps text-label-caps text-outline uppercase">Active Frame:</span>
+<span class="px-2.5 py-1 rounded bg-surface-container-highest font-data-tabular text-data-tabular text-primary font-semibold">
+              2024-03-15 11:15 IST
+            </span>
+</div>
+</div>
+<!-- Controls Toolbar -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-center p-3 rounded bg-surface-container-lowest">
+<!-- Play / Pause Buttons -->
+<div class="md:col-span-3 flex items-center gap-2">
+<button class="w-8 h-8 rounded bg-surface-container flex items-center justify-center text-on-surface hover:bg-surface-container-high transition" id="replayStepBackBtn" type="button">
+<span class="material-symbols-outlined text-[18px]">skip_previous</span>
+</button>
+<button class="w-10 h-8 rounded bg-primary text-on-primary flex items-center justify-center font-bold hover:brightness-110 transition shadow" id="replayTogglePlayBtn" type="button">
+<span class="material-symbols-outlined text-[20px]" id="playIconSpan">play_arrow</span>
+</button>
+<button class="w-8 h-8 rounded bg-surface-container flex items-center justify-center text-on-surface hover:bg-surface-container-high transition" id="replayStepFwdBtn" type="button">
+<span class="material-symbols-outlined text-[18px]">skip_next</span>
+</button>
+<span class="text-on-surface-variant font-data-tabular-sm text-data-tabular-sm ml-1">FRAME 58,120</span>
+</div>
+<!-- Timeline Scrubber Range -->
+<div class="md:col-span-6 flex flex-col gap-1">
+<div class="flex justify-between font-label-caps text-label-caps text-outline uppercase">
+<span>09:15 Open</span>
+<span>11:15 [Replaying Signal Trigger]</span>
+<span>15:30 Close</span>
+</div>
+<input class="w-full accent-primary h-1.5 bg-surface-container rounded-lg appearance-none cursor-pointer" id="replayScrubber" max="75" min="0" type="range" value="24"/>
+</div>
+<!-- Speed Selector Chips -->
+<div class="md:col-span-3 flex items-center justify-end gap-1 font-data-tabular-sm text-data-tabular-sm">
+<button class="px-2 py-1 rounded bg-surface-container text-outline hover:text-on-surface transition">1x</button>
+<button class="px-2 py-1 rounded bg-surface-container-high text-primary font-bold">5x</button>
+<button class="px-2 py-1 rounded bg-surface-container text-outline hover:text-on-surface transition">10x</button>
+<button class="px-2 py-1 rounded bg-surface-container text-outline hover:text-on-surface transition">50x</button>
+</div>
+</div>
+<!-- Candlestick Mini-Chart + Trigger Telemetry Split -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+<!-- Candlestick Simulation Box -->
+<div class="md:col-span-8 p-3 rounded bg-surface-container-lowest flex flex-col justify-between h-[210px] relative overflow-hidden">
+<div class="flex items-center justify-between text-outline font-data-tabular-sm text-data-tabular-sm">
+<span>NIFTY 5-MIN SPOT REPLAY [2024-03-15]</span>
+<span class="text-primary font-bold">LTP: 26,192.40</span>
+</div>
+<!-- Candlestick SVG Simulation -->
+<svg class="w-full h-36" fill="none" viewbox="0 0 540 140">
+<!-- Grid background -->
+<line stroke="#182029" stroke-width="1" x1="0" x2="540" y1="35" y2="35"></line>
+<line stroke="#182029" stroke-width="1" x1="0" x2="540" y1="70" y2="70"></line>
+<line stroke="#182029" stroke-width="1" x1="0" x2="540" y1="105" y2="105"></line>
+<!-- Candles Jan/Mar Snapshot -->
+<!-- Candle 1: Red -->
+<line stroke="#ffb3b2" stroke-width="1.5" x1="30" x2="30" y1="40" y2="95"></line>
+<rect fill="#ffb3b2" height="30" width="12" x="24" y="55"></rect>
+<!-- Candle 2: Red -->
+<line stroke="#ffb3b2" stroke-width="1.5" x1="75" x2="75" y1="65" y2="115"></line>
+<rect fill="#ffb3b2" height="25" width="12" x="69" y="80"></rect>
+<!-- Candle 3: Green Hammer -->
+<line stroke="#42e5b0" stroke-width="1.5" x1="120" x2="120" y1="70" y2="125"></line>
+<rect fill="#42e5b0" height="15" width="12" x="114" y="75"></rect>
+<!-- Candle 4: Strong Green -->
+<line stroke="#42e5b0" stroke-width="1.5" x1="165" x2="165" y1="50" y2="100"></line>
+<rect fill="#42e5b0" height="32" width="12" x="159" y="60"></rect>
+<!-- Candle 5: Consolidating -->
+<line stroke="#ffb3b2" stroke-width="1.5" x1="210" x2="210" y1="55" y2="85"></line>
+<rect fill="#ffb3b2" height="14" width="12" x="204" y="62"></rect>
+<!-- Candle 6: Signal Trigger Candle (11:15 IST) -->
+<line stroke="#42e5b0" stroke-width="2" x1="255" x2="255" y1="20" y2="80"></line>
+<rect fill="#42e5b0" height="42" width="14" x="248" y="28"></rect>
+<!-- Indicator Trigger Arrow & Banner -->
+<polygon fill="#42e5b0" points="255,100 248,114 262,114"></polygon>
+<text fill="#42e5b0" font-family="JetBrains Mono" font-size="11" font-weight="bold" x="225" y="130">BUY CE 26200</text>
+<line stroke="#42e5b0" stroke-dasharray="2 2" stroke-opacity="0.5" stroke-width="1" x1="255" x2="540" y1="28" y2="28"></line>
+<!-- Candle 7: Follow through Green -->
+<line stroke="#42e5b0" stroke-width="1.5" x1="300" x2="300" y1="15" y2="60"></line>
+<rect fill="#42e5b0" height="28" width="12" x="294" y="20"></rect>
+<!-- Candle 8: Higher High -->
+<line stroke="#42e5b0" stroke-width="1.5" x1="345" x2="345" y1="10" y2="45"></line>
+<rect fill="#42e5b0" height="22" width="12" x="339" y="14"></rect>
+<!-- Replay Future Ghost Shadows -->
+<rect fill="#232b33" height="24" stroke="#3c4a43" stroke-dasharray="2 2" stroke-width="1" width="12" x="384" y="18"></rect>
+<rect fill="#232b33" height="30" stroke="#3c4a43" stroke-dasharray="2 2" stroke-width="1" width="12" x="429" y="10"></rect>
+</svg>
+<div class="flex justify-between text-outline font-data-tabular-sm text-data-tabular-sm">
+<span>10:30</span>
+<span>10:45</span>
+<span>11:00</span>
+<span class="text-primary font-semibold">11:15 [SIGNAL 5/5]</span>
+<span>11:30</span>
+<span>11:45</span>
+<span>12:00</span>
+</div>
+</div>
+<!-- Indicator Snapshot at Timestamp -->
+<div class="md:col-span-4 p-3 rounded bg-surface-container-lowest flex flex-col justify-between">
+<span class="font-label-caps text-label-caps text-outline uppercase tracking-wider">Greeks &amp; Trigger Telemetry</span>
+<div class="space-y-2 font-data-tabular text-data-tabular">
+<div class="flex items-center justify-between">
+<span class="text-on-surface-variant font-body-sm text-body-sm">SuperTrend Signal</span>
+<span class="text-primary font-semibold">BULLISH [GREEN]</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-on-surface-variant font-body-sm text-body-sm">MACD Hist / Signal</span>
+<span class="text-primary font-semibold">+18.40 (Cross Over)</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-on-surface-variant font-body-sm text-body-sm">ADX Momentum</span>
+<span class="text-on-surface font-semibold">32.60 (Strong)</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-on-surface-variant font-body-sm text-body-sm">Real-time PCR</span>
+<span class="text-primary font-semibold">1.28 (Strong Put Base)</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-on-surface-variant font-body-sm text-body-sm">ATM Implied Vol (IV)</span>
+<span class="text-tertiary font-semibold">13.2% (-0.4%)</span>
+</div>
+</div>
+<div class="pt-2">
+<div class="flex items-center justify-between p-1.5 rounded bg-surface-container font-data-tabular-sm text-data-tabular-sm">
+<span class="text-outline">SYNTH DELTA</span>
+<span class="text-on-surface font-semibold">+0.54</span>
+<span class="text-outline">THETA</span>
+<span class="text-secondary">-₹11.2/d</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+</div>
+<!-- Detailed Historical Indicator Trigger Matrix & Trade Audit -->
+<section class="mt-8 p-5 rounded bg-surface-container-low shadow-sm flex flex-col gap-4">
+<!-- Header with Filters & Actions -->
+<div class="flex flex-wrap items-center justify-between gap-4 pb-2">
+<div class="flex items-center gap-3">
+<h3 class="font-headline-md text-headline-md text-on-surface">Execution Audit &amp; Indicator Trigger Matrix</h3>
+<span class="px-2 py-0.5 rounded bg-surface-container font-data-tabular-sm text-data-tabular-sm text-outline">
+          142 Executed Paper Orders
+        </span>
+</div>
+<!-- Filters & CTAs -->
+<div class="flex flex-wrap items-center gap-3">
+<!-- Filter Tabs -->
+<div class="flex p-0.5 bg-surface-container rounded text-label-ui font-label-ui">
+<button class="px-3 py-1 rounded bg-surface-container-highest text-primary font-medium" id="filterAllBtn">All (142)</button>
+<button class="px-3 py-1 rounded text-on-surface-variant hover:text-on-surface" id="filterWinnersBtn">Winners (91)</button>
+<button class="px-3 py-1 rounded text-on-surface-variant hover:text-on-surface" id="filterLosersBtn">Losers (51)</button>
+<button class="px-3 py-1 rounded text-on-surface-variant hover:text-on-surface" id="filterDDBtn">Drawdown Focus</button>
+</div>
+<!-- Export & Terminal Transfer -->
+<div class="flex items-center gap-2">
+<button class="flex items-center gap-1.5 px-3 py-1.5 rounded bg-surface-container hover:bg-surface-container-highest text-on-surface font-label-caps text-label-caps uppercase transition" onclick="exportQuantReport()" type="button">
+<span class="material-symbols-outlined text-[15px]">file_download</span>
+<span>Export Quant (JSON/CSV)</span>
+</button>
+<button class="flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-on-primary font-label-caps text-label-caps uppercase font-bold hover:brightness-110 transition shadow-sm" onclick="deployToTerminal()" type="button">
+<span class="material-symbols-outlined text-[15px]">send_and_archive</span>
+<span>Deploy to Paper Terminal</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Tabular Audit Ledger -->
+<div class="overflow-x-auto w-full">
+<table class="w-full text-left font-data-tabular text-data-tabular border-collapse">
+<thead>
+<tr class="bg-surface-container-highest text-outline font-label-caps text-label-caps uppercase tracking-wider">
+<th class="py-2.5 px-3">#</th>
+<th class="py-2.5 px-3">Trigger Timestamp</th>
+<th class="py-2.5 px-3 text-right">NIFTY Spot</th>
+<th class="py-2.5 px-3">Signal Type</th>
+<th class="py-2.5 px-3 text-center">Score</th>
+<th class="py-2.5 px-3">Selected Strike</th>
+<th class="py-2.5 px-3 text-right">Entry (₹)</th>
+<th class="py-2.5 px-3 text-right">Exit (₹)</th>
+<th class="py-2.5 px-3 text-right">Duration</th>
+<th class="py-2.5 px-3 text-right">Net P&amp;L</th>
+<th class="py-2.5 px-3">Exit Reason</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-surface-container-low font-data-tabular text-data-tabular">
+<!-- Row 1 (Recent Win) -->
+<tr class="hover:bg-surface-container/60 transition-colors">
+<td class="py-3 px-3 text-outline">142</td>
+<td class="py-3 px-3 text-on-surface">2024-03-28 13:45</td>
+<td class="py-3 px-3 text-right text-on-surface">26,248.50</td>
+<td class="py-3 px-3">
+<span class="px-2 py-0.5 rounded bg-primary/10 text-primary font-semibold text-data-tabular-sm">BUY CE</span>
+</td>
+<td class="py-3 px-3 text-center">
+<span class="px-1.5 py-0.5 rounded bg-surface-container-highest text-primary font-bold">5/5</span>
+</td>
+<td class="py-3 px-3 font-semibold text-on-surface">26250 CE</td>
+<td class="py-3 px-3 text-right text-on-surface">138.40</td>
+<td class="py-3 px-3 text-right text-on-surface">174.10</td>
+<td class="py-3 px-3 text-right text-on-surface-variant">35m</td>
+<td class="py-3 px-3 text-right text-primary font-bold">+₹1,785.00</td>
+<td class="py-3 px-3">
+<span class="text-outline font-data-tabular-sm">Target-2 Attained</span>
+</td>
+</tr>
+<!-- Row 2 (Scrubber Active Trade) -->
+<tr class="bg-surface-container/40 hover:bg-surface-container/80 transition-colors">
+<td class="py-3 px-3 text-outline">141</td>
+<td class="py-3 px-3 text-on-surface">2024-03-15 11:15</td>
+<td class="py-3 px-3 text-right text-on-surface">26,190.00</td>
+<td class="py-3 px-3">
+<span class="px-2 py-0.5 rounded bg-primary/10 text-primary font-semibold text-data-tabular-sm">BUY CE</span>
+</td>
+<td class="py-3 px-3 text-center">
+<span class="px-1.5 py-0.5 rounded bg-surface-container-highest text-primary font-bold">5/5</span>
+</td>
+<td class="py-3 px-3 font-semibold text-tertiary">26200 CE</td>
+<td class="py-3 px-3 text-right text-on-surface">142.00</td>
+<td class="py-3 px-3 text-right text-on-surface">186.20</td>
+<td class="py-3 px-3 text-right text-on-surface-variant">50m</td>
+<td class="py-3 px-3 text-right text-primary font-bold">+₹2,210.00</td>
+<td class="py-3 px-3">
+<span class="text-primary font-data-tabular-sm">Trailing Stop Hit (+31%)</span>
+</td>
+</tr>
+<!-- Row 3 (Stop Loss Trade) -->
+<tr class="hover:bg-surface-container/60 transition-colors">
+<td class="py-3 px-3 text-outline">140</td>
+<td class="py-3 px-3 text-on-surface">2024-03-14 10:20</td>
+<td class="py-3 px-3 text-right text-on-surface">26,055.20</td>
+<td class="py-3 px-3">
+<span class="px-2 py-0.5 rounded bg-secondary-container/20 text-secondary font-semibold text-data-tabular-sm">BUY PE</span>
+</td>
+<td class="py-3 px-3 text-center">
+<span class="px-1.5 py-0.5 rounded bg-surface-container-highest text-on-surface font-medium">4/5</span>
+</td>
+<td class="py-3 px-3 font-semibold text-on-surface">26050 PE</td>
+<td class="py-3 px-3 text-right text-on-surface">165.00</td>
+<td class="py-3 px-3 text-right text-on-surface">148.50</td>
+<td class="py-3 px-3 text-right text-on-surface-variant">15m</td>
+<td class="py-3 px-3 text-right text-secondary font-bold">-₹825.00</td>
+<td class="py-3 px-3">
+<span class="text-secondary font-data-tabular-sm">Hard SL Hit (10%)</span>
+</td>
+</tr>
+<!-- Row 4 (Big Trend Trade) -->
+<tr class="hover:bg-surface-container/60 transition-colors">
+<td class="py-3 px-3 text-outline">139</td>
+<td class="py-3 px-3 text-on-surface">2024-03-11 09:45</td>
+<td class="py-3 px-3 text-right text-on-surface">25,980.10</td>
+<td class="py-3 px-3">
+<span class="px-2 py-0.5 rounded bg-primary/10 text-primary font-semibold text-data-tabular-sm">BUY CE</span>
+</td>
+<td class="py-3 px-3 text-center">
+<span class="px-1.5 py-0.5 rounded bg-surface-container-highest text-primary font-bold">5/5</span>
+</td>
+<td class="py-3 px-3 font-semibold text-on-surface">26000 CE</td>
+<td class="py-3 px-3 text-right text-on-surface">180.50</td>
+<td class="py-3 px-3 text-right text-on-surface">264.00</td>
+<td class="py-3 px-3 text-right text-on-surface-variant">1h 45m</td>
+<td class="py-3 px-3 text-right text-primary font-bold">+₹4,175.00</td>
+<td class="py-3 px-3">
+<span class="text-outline font-data-tabular-sm">SuperTrend Flip Exit</span>
+</td>
+</tr>
+<!-- Row 5 (Drawdown Period Loss) -->
+<tr class="hover:bg-surface-container/60 transition-colors">
+<td class="py-3 px-3 text-outline">138</td>
+<td class="py-3 px-3 text-on-surface">2024-03-06 14:10</td>
+<td class="py-3 px-3 text-right text-on-surface">25,820.00</td>
+<td class="py-3 px-3">
+<span class="px-2 py-0.5 rounded bg-secondary-container/20 text-secondary font-semibold text-data-tabular-sm">BUY PE</span>
+</td>
+<td class="py-3 px-3 text-center">
+<span class="px-1.5 py-0.5 rounded bg-surface-container-highest text-on-surface font-medium">4/5</span>
+</td>
+<td class="py-3 px-3 font-semibold text-on-surface">25800 PE</td>
+<td class="py-3 px-3 text-right text-on-surface">112.00</td>
+<td class="py-3 px-3 text-right text-on-surface">96.00</td>
+<td class="py-3 px-3 text-right text-on-surface-variant">25m</td>
+<td class="py-3 px-3 text-right text-secondary font-bold">-₹800.00</td>
+<td class="py-3 px-3">
+<span class="text-secondary font-data-tabular-sm">ADX Exhaustion Exit</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Ledger Footer Pagination & Statistics Note -->
+<div class="flex flex-wrap items-center justify-between gap-4 pt-3 font-data-tabular-sm text-data-tabular-sm text-outline">
+<div class="flex items-center gap-2">
+<span>Displaying trades 138 to 142 of 142 records</span>
+<span>•</span>
+<span class="text-primary font-medium">Net Realized Expectancy: ₹808.73 / Trade</span>
+</div>
+<div class="flex items-center gap-2">
+<button class="px-2.5 py-1 rounded bg-surface-container text-on-surface hover:bg-surface-container-high transition">Prev 50</button>
+<button class="px-2.5 py-1 rounded bg-surface-container text-on-surface hover:bg-surface-container-high transition">Next 50</button>
+</div>
+</div>
+</section>
+</div>
+<script>
+  // Replay Controller Simulation
+  const playBtn = document.getElementById('replayTogglePlayBtn');
+  const playIcon = document.getElementById('playIconSpan');
+  const scrubber = document.getElementById('replayScrubber');
+  let isPlaying = false;
+  let timer = null;
+
+  if (playBtn) {
+    playBtn.addEventListener('click', () => {
+      isPlaying = !isPlaying;
+      if (isPlaying) {
+        playIcon.textContent = 'pause';
+        timer = setInterval(() => {
+          let curr = parseInt(scrubber.value, 10);
+          if (curr >= 75) {
+            curr = 0;
+          } else {
+            curr += 1;
+          }
+          scrubber.value = curr;
+        }, 300);
+      } else {
+        playIcon.textContent = 'play_arrow';
+        clearInterval(timer);
+      }
+    });
+  }
+
+  // Backtest Trigger Simulation
+  const runBtn = document.getElementById('runBacktestBtn');
+  if (runBtn) {
+    runBtn.addEventListener('click', () => {
+      runBtn.innerHTML = '<span class="material-symbols-outlined text-[16px] animate-spin">refresh</span><span>CALCULATING 74.2K CANDLES...</span>';
+      runBtn.disabled = true;
+      setTimeout(() => {
+        runBtn.innerHTML = '<span class="material-symbols-outlined text-[16px]">check_circle</span><span>OPTIMAL SIMULATION COMPLETE</span>';
+        setTimeout(() => {
+          runBtn.innerHTML = '<span class="material-symbols-outlined text-[16px]">play_arrow</span><span>Run Backtest (Fast)</span>';
+          runBtn.disabled = false;
+        }, 2000);
+      }, 900);
+    });
+  }
+
+  function exportQuantReport() {
+    alert("QUANT AUDIT DATA: Compiling 142 Trade Executions, Sharpe (2.31), Max DD (8.4%), and Slippage Deltas to 'NIFTY_Q1_2024_BACKTEST.json'");
+  }
+
+  function deployToTerminal() {
+    if (confirm("Deploy validated parameters [SuperTrend 10/3.0, ADX > 25, PCR >= 1.15] to Active Paper Trading Terminal?")) {
+      alert("PARAMETERS SYNCHRONIZED: Strategy NIFTY-5IND-v2.4 updated in live paper engine.");
+    }
+  }
+
+  // Filter Buttons Interaction
+  const filterBtns = [
+    document.getElementById('filterAllBtn'),
+    document.getElementById('filterWinnersBtn'),
+    document.getElementById('filterLosersBtn'),
+    document.getElementById('filterDDBtn')
+  ];
+
+  filterBtns.forEach(btn => {
+    if (btn) {
+      btn.addEventListener('click', () => {
+        filterBtns.forEach(b => {
+          if (b) {
+            b.className = 'px-3 py-1 rounded text-on-surface-variant hover:text-on-surface';
+          }
+        });
+        btn.className = 'px-3 py-1 rounded bg-surface-container-highest text-primary font-medium';
+      });
+    }
+  });
+
+  // Mode Buttons
+  const modeBatchBtn = document.getElementById('modeBatchBtn');
+  const modeReplayBtn = document.getElementById('modeReplayBtn');
+  if (modeBatchBtn && modeReplayBtn) {
+    modeBatchBtn.addEventListener('click', () => {
+      modeBatchBtn.className = 'px-4 py-1.5 rounded font-label-ui text-label-ui font-medium bg-surface-container-highest text-primary shadow-sm transition-all';
+      modeReplayBtn.className = 'px-4 py-1.5 rounded font-label-ui text-label-ui font-medium text-on-surface-variant hover:text-on-surface transition-all';
+    });
+    modeReplayBtn.addEventListener('click', () => {
+      modeReplayBtn.className = 'px-4 py-1.5 rounded font-label-ui text-label-ui font-medium bg-surface-container-highest text-primary shadow-sm transition-all';
+      modeBatchBtn.className = 'px-4 py-1.5 rounded font-label-ui text-label-ui font-medium text-on-surface-variant hover:text-on-surface transition-all';
+    });
+  }
+</script></main>
+</div>
+<!-- Emergency Kill Switch Confirmation Modal -->
+<div class="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4" id="killSwitchModal">
+<div class="bg-surface-panel border border-error max-w-md w-full p-6 rounded shadow-2xl">
+<div class="flex items-center gap-3 text-error">
+<span class="material-symbols-outlined text-[32px]">warning</span>
+<div>
+<h3 class="text-base font-bold text-on-surface">EMERGENCY KILL SWITCH</h3>
+<p class="font-mono text-xs text-error">HALT ALL PAPER ENGINES &amp; FLATTEN POSITIONS</p>
+</div>
+</div>
+<p class="text-on-surface-variant text-xs mt-3 leading-relaxed">
+        This action will immediately execute virtual market orders to square off the 1 open paper position and set strategy NIFTY-DELTA-ORBIT-V2 to <strong class="text-on-surface">HALTED</strong>.
+      </p>
+<div class="mt-4 p-2.5 bg-background rounded border border-border-subtle font-mono text-xs text-outline">
+        CONFIRMATION CODE: <span class="text-on-surface font-semibold">KILL_PAPER_NSE_2024</span>
+</div>
+<div class="mt-5 flex items-center justify-end gap-3 font-mono text-xs">
+<button class="px-4 py-1.5 rounded bg-surface-subtle text-on-surface hover:bg-surface-elevated transition" onclick="closeKillModal()" type="button">
+          CANCEL
+        </button>
+<button class="px-4 py-1.5 rounded bg-error text-white font-bold hover:brightness-110 transition" onclick="executeKillSwitch()" type="button">
+          EXECUTE KILL &amp; FLATTEN
+        </button>
+</div>
+</div>
+</div>
+<!-- Interactive Logic -->
+<script>
+    function togglePause() {
+      const btn = document.getElementById('pauseBtn');
+      if (!btn) return;
+      const span = btn.querySelector('span:last-child');
+      if (span.textContent === 'PAUSE ENTRIES') {
+        span.textContent = 'RESUME ENTRIES';
+        btn.classList.remove('text-tertiary', 'border-tertiary/40');
+        btn.classList.add('bg-tertiary', 'text-background', 'border-tertiary');
+      } else {
+        span.textContent = 'PAUSE ENTRIES';
+        btn.classList.remove('bg-tertiary', 'text-background', 'border-tertiary');
+        btn.classList.add('text-tertiary', 'border-tertiary/40');
+      }
+    }
+
+    function stopStrategy() {
+      if (confirm("Stop autonomous paper strategy NIFTY-DELTA-ORBIT-V2?")) {
+        alert("Strategy stopped. No new orders will be calculated.");
+      }
+    }
+
+    function triggerManualExit() {
+      if (confirm("Execute instantaneous paper market exit for 1 Lot NIFTY 26200 CE at CMP ₹146.00?")) {
+        alert("PAPER POSITION EXITED: Realized P&L +₹430.00 booked to virtual ledger.");
+      }
+    }
+
+    function closeSimulatedPosition() {
+      triggerManualExit();
+    }
+
+    function confirmKillSwitch() {
+      const modal = document.getElementById('killSwitchModal');
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeKillModal() {
+      const modal = document.getElementById('killSwitchModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function executeKillSwitch() {
+      alert("SIMULATION KILL SWITCH ENGAGED: Open position flattened @ simulated best bid (₹145.80). Strategy engine halted.");
+      closeKillModal();
+    }
+
+    function resetPortfolio() {
+      if (confirm("Reset paper trading simulation ledger back to ₹1,00,000 initial equity?")) {
+        alert("Virtual Portfolio reset to default ₹1,00,000 seed capital.");
+      }
+    }
+  </script>
+</body></html>

@@ -1,4 +1,5 @@
 import {
+  Activity,
   BarChart3,
   Bell,
   BellRing,
@@ -49,6 +50,7 @@ export const navItems: NavItem[] = [
   { href: '/trading', label: 'Trading', icon: CandlestickChart, collapseBelow: 'lg' },
   { href: '/platforms', label: 'Platforms', icon: Layers, collapseBelow: 'xl' },
   { href: '/strategy', label: 'Strategies', icon: Boxes, collapseBelow: 'xl' },
+  { href: '/nifty-algo', label: 'NIFTY ALGO', icon: Activity, collapseBelow: 'xl' },
   { href: '/logs', label: 'Logs', icon: FileBarChart, collapseBelow: 'xl' },
   { href: '/tools', label: 'Tools', icon: Wrench, collapseBelow: 'xl' },
 ]

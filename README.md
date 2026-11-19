@@ -478,6 +478,12 @@ The AI Agent at `/agent` is deliberately LLM-agnostic. The agent loop and the pr
 - **[react-resizable-panels](https://github.com/bvaughn/react-resizable-panels)** - MIT License - Resizable panel layouts
 - **[html2canvas-pro](https://html2canvas.hertzen.com)** - MIT License - Screenshot generation
 
+## NIFTY ALGO extension
+
+The authenticated `/nifty-algo` workspace and `/api/nifty-algo/` feature API are under development in this fork. Configuration revisions, persistent controls, deterministic research rules and read-only native data views are available. Automation start returns a readiness refusal until strict native Sandbox fills, isolated capital and recovery are implemented and verified. See the [implementation tracker](docs/nifty-algo/IMPLEMENTATION_PLAN.md) and [local setup and readiness guide](docs/nifty-algo/SETUP.md).
+
+The feature uses OpenAlgo's existing environment and authentication. It adds no broker credentials or deployment service. The initial milestone is paper-only.
+
 ## Repo Activity
 
 ![Alt](https://repobeats.axiom.co/api/embed/0b6b18194a3089cb47ab8ae588caabb14aa9972b.svg "Repobeats analytics image")

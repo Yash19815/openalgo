@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta content="web_dashboard" name="shell-type"/>
+<title>Paper Trading Terminal - NIFTYALGO</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "background": "#0b1117",
+            "surface": "#0b1117",
+            "surface-panel": "#121a22",
+            "surface-subtle": "#17222c",
+            "surface-elevated": "#1c2a37",
+            "border-subtle": "#22303e",
+            "border-medium": "#2d3f52",
+            "primary": "#3adfab",
+            "primary-container": "#00c896",
+            "on-primary": "#003828",
+            "secondary": "#83b1ff",
+            "tertiary": "#fbc265",
+            "error": "#ff6b6b",
+            "error-container": "#93000a",
+            "on-error": "#ffffff",
+            "on-surface": "#dbe3ef",
+            "on-surface-variant": "#8e9ea9",
+            "outline": "#5a6e82",
+            "outline-variant": "#22303e"
+          },
+          fontFamily: {
+            sans: ["Inter", "sans-serif"],
+            mono: ["JetBrains Mono", "monospace"]
+          }
+        }
+      }
+    };
+  </script>
+<style>
+    @layer base {
+      html, body {
+        margin: 0;
+        padding: 0;
+        background-color: #0b1117;
+        color: #dbe3ef;
+        font-family: 'Inter', sans-serif;
+      }
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #0b1117;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #22303e;
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #2d3f52;
+      }
+    }
+  </style>
+</head>
+<body class="bg-background text-on-surface antialiased flex min-h-screen">
+<!-- Fixed Left Sidebar -->
+<aside class="fixed left-0 top-0 h-full w-56 bg-surface-panel border-r border-border-subtle z-50 flex flex-col justify-between select-none">
+<div class="flex flex-col">
+<!-- Logo Header -->
+<div class="h-14 px-4 border-b border-border-subtle flex items-center justify-between bg-background">
+<div class="flex items-center gap-2.5">
+<div class="w-7 h-7 rounded bg-surface-subtle border border-border-subtle flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[17px]">polyline</span>
+</div>
+<div class="flex flex-col">
+<span class="font-mono text-xs tracking-tight font-bold text-on-surface">NIFTY<span class="text-primary">ALGO</span></span>
+<span class="font-mono text-[9px] text-outline uppercase tracking-wider">v2.4 Terminal</span>
+</div>
+</div>
+<div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+</div>
+<!-- Navigation Links -->
+<div class="overflow-y-auto max-h-[calc(100vh-190px)] py-3 px-2 space-y-4 font-mono text-[11px]">
+<div>
+<div class="px-2 py-1 text-[10px] font-semibold text-outline uppercase tracking-wider">Overview</div>
+<nav class="flex flex-col gap-0.5 mt-1">
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">team_dashboard</span>Dashboard
+            </a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">candlestick_chart</span>Live Charts
+            </a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">sensors</span>Signal Monitor
+            </a>
+</nav>
+</div>
+<div>
+<div class="px-2 py-1 text-[10px] font-semibold text-outline uppercase tracking-wider">Trading</div>
+<nav class="flex flex-col gap-0.5 mt-1">
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">play_circle</span>Paper Trading
+            </a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">receipt_long</span>Positions &amp; Orders
+            </a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">menu_book</span>Trade Journal
+            </a>
+</nav>
+</div>
+<div>
+<div class="px-2 py-1 text-[10px] font-semibold text-outline uppercase tracking-wider">Analytics</div>
+<nav class="flex flex-col gap-0.5 mt-1">
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">query_stats</span>Performance
+            </a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">history_edu</span>Backtesting
+            </a>
+</nav>
+</div>
+<div>
+<div class="px-2 py-1 text-[10px] font-semibold text-outline uppercase tracking-wider">Configuration</div>
+<nav class="flex flex-col gap-0.5 mt-1">
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">tune</span>Strategy Settings
+            </a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">shield_lock</span>Risk Management
+            </a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[15px]">cable</span>Broker Integration
+            </a>
+</nav>
+</div>
+</div>
+</div>
+<!-- Engine & Kill Switch Footer -->
+<div class="p-3 bg-background border-t border-border-subtle flex flex-col gap-2 font-mono text-[10px]">
+<div class="flex items-center justify-between px-2 py-1 bg-surface-panel border border-border-subtle rounded">
+<span class="text-outline uppercase">Engine</span>
+<span class="text-primary font-medium flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-primary inline-block"></span>ACTIVE
+        </span>
+</div>
+<button class="w-full py-1.5 px-2 rounded bg-surface-panel border border-error/50 text-error text-[10px] font-bold uppercase hover:bg-error hover:text-white transition-all flex items-center justify-center gap-1.5" onclick="confirmKillSwitch()" type="button">
+<span class="material-symbols-outlined text-[13px]">power_settings_new</span>KILL SWITCH [ARMED]
+      </button>
+</div>
+</aside>
+<!-- Main View Area (Offset by sidebar width: 14rem / 56) -->
+<div class="pl-56 flex-1 flex flex-col min-w-0 bg-background">
+<!-- Top Global Header -->
+<header class="h-14 bg-surface-panel border-b border-border-subtle px-6 flex items-center justify-between sticky top-0 z-40">
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-1.5 text-on-surface-variant font-mono text-xs">
+<span>NIFTY-50</span>
+<span class="text-outline">/</span>
+<span class="text-on-surface font-semibold">PAPER-TERMINAL</span>
+</div>
+<div class="h-4 w-px bg-border-subtle"></div>
+<div class="flex items-center gap-2 bg-background border border-border-subtle px-3 py-1 rounded">
+<span class="w-2 h-2 rounded-full bg-primary animate-ping"></span>
+<span class="font-mono text-[11px] text-outline font-semibold">SPOT</span>
+<span class="font-mono text-xs font-bold text-on-surface">26,250.00</span>
+<span class="font-mono text-[11px] text-primary font-medium">+142.30 (+0.54%)</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<div class="flex items-center gap-1.5 px-2.5 py-1 bg-primary/10 border border-primary/30 text-primary rounded font-mono text-xs">
+<span class="material-symbols-outlined text-[14px]">science</span>
+<span class="font-semibold tracking-wide">PAPER TRADING SIMULATION</span>
+</div>
+<div class="hidden lg:flex items-center gap-1.5 px-2.5 py-1 bg-background border border-border-subtle rounded font-mono text-[11px]">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+<span class="text-outline">FEED:</span>
+<span class="text-on-surface">SmartAPI 14ms</span>
+</div>
+<div class="h-4 w-px bg-border-subtle"></div>
+<div class="flex items-center gap-2">
+<div class="flex flex-col text-right font-mono">
+<span class="text-xs font-semibold text-on-surface">ALGO-TRADER-09</span>
+<span class="text-[10px] text-outline">11:42:18 IST</span>
+</div>
+<div class="w-8 h-8 rounded bg-primary/20 border border-primary/40 text-primary flex items-center justify-center font-bold">
+<span class="material-symbols-outlined text-[18px]">person</span>
+</div>
+</div>
+</div>
+</header>
+<!-- Main Content Container with Balanced Padding -->
+<main class="p-6 space-y-6 flex-1 max-w-[1680px] w-full mx-auto"><div class="flex flex-col w-full space-y-8">
+<!-- Section 1: Header, Subtitle & Global Filter Controls -->
+<section class="flex flex-col gap-5">
+<div class="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+<div class="flex flex-col space-y-1.5">
+<div class="flex items-center gap-3">
+<h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight">Performance Analytics</h1>
+<span class="px-2.5 py-0.5 rounded bg-surface-container-high text-primary font-label-caps text-label-caps tracking-widest font-semibold uppercase">
+            PAPER PORTFOLIO AUDIT
+          </span>
+<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-primary/10 text-primary font-data-tabular-sm text-data-tabular-sm">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+            LIVE AUDIT TRAIL
+          </span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-4xl">
+          Performance metrics computed from forward paper trading session logs. Simulated fills include ₹20/order brokerage and estimated slippage modeling calibrated against NSE tick latency.
+        </p>
+</div>
+<!-- Controls Toolbar -->
+<div class="flex flex-wrap items-center gap-2.5">
+<!-- Date Selector Pills -->
+<div class="bg-surface-container-low p-1 rounded flex items-center gap-1">
+<button class="px-3 py-1.5 rounded bg-surface-container-high text-primary font-label-ui text-label-ui transition-colors" type="button">
+            Last 30 Days
+          </button>
+<button class="px-3 py-1.5 rounded text-on-surface-variant hover:text-on-surface font-label-ui text-label-ui transition-colors" type="button">
+            This Month
+          </button>
+<button class="px-3 py-1.5 rounded text-on-surface-variant hover:text-on-surface font-label-ui text-label-ui transition-colors" type="button">
+            Last 90 Days
+          </button>
+<button class="px-3 py-1.5 rounded text-on-surface-variant hover:text-on-surface font-label-ui text-label-ui transition-colors flex items-center gap-1" type="button">
+<span class="material-symbols-outlined text-[14px]">calendar_today</span>
+            Custom
+          </button>
+</div>
+<!-- Strategy Version Tag Selector -->
+<div class="bg-surface-container-low px-3 py-1.5 rounded flex items-center gap-2">
+<span class="material-symbols-outlined text-outline text-[16px]">account_tree</span>
+<span class="font-data-tabular-sm text-data-tabular-sm text-on-surface font-medium">NIFTY-5IND-v2.4 (Prod)</span>
+<span class="material-symbols-outlined text-outline text-[16px] cursor-pointer">arrow_drop_down</span>
+</div>
+<!-- Actions -->
+<button class="bg-surface-container-high hover:bg-surface-bright text-on-surface px-3 py-1.5 rounded flex items-center gap-1.5 transition-colors font-label-ui text-label-ui" type="button">
+<span class="material-symbols-outlined text-[15px] text-tertiary">download</span>
+<span>Export CSV</span>
+</button>
+<button class="bg-surface-container-high hover:bg-surface-bright text-on-surface-variant hover:text-on-surface p-1.5 rounded transition-colors flex items-center justify-center" title="Reset Statistics" type="button">
+<span class="material-symbols-outlined text-[18px]">restart_alt</span>
+</button>
+</div>
+</div>
+</section>
+<!-- Section 2: Primary Key Performance Metrics Grid (8 Cards) -->
+<section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+<!-- Card 1: Net Realized P&L -->
+<div class="bg-surface-container-low p-5 rounded flex flex-col justify-between space-y-3 relative overflow-hidden group hover:bg-surface-container transition-colors">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Net Realized P&amp;L</span>
+<span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-primary/10 text-primary font-data-tabular-sm text-data-tabular-sm">
+<span class="material-symbols-outlined text-[13px]">trending_up</span>
+          +47.1%
+        </span>
+</div>
+<div>
+<div class="font-data-metric-lg text-data-metric-lg text-primary tracking-tight font-semibold">+₹48,320.00</div>
+<div class="font-data-tabular-sm text-data-tabular-sm text-on-surface-variant mt-1">Base Capital: ₹1,02,450.00</div>
+</div>
+<div class="w-full bg-surface-container-highest h-1 rounded overflow-hidden">
+<div class="bg-primary h-full rounded" style="width: 78%;"></div>
+</div>
+</div>
+<!-- Card 2: Win Rate -->
+<div class="bg-surface-container-low p-5 rounded flex flex-col justify-between space-y-3 hover:bg-surface-container transition-colors">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Win Rate</span>
+<span class="font-data-tabular-sm text-data-tabular-sm text-outline font-medium">38 Total Fills</span>
+</div>
+<div>
+<div class="font-data-metric-lg text-data-metric-lg text-on-surface tracking-tight font-semibold">68.4%</div>
+<div class="font-data-tabular-sm text-data-tabular-sm text-on-surface-variant mt-1 flex items-center gap-1.5">
+<span class="text-primary font-medium">26 Wins</span>
+<span class="text-outline">/</span>
+<span class="text-secondary font-medium">12 Losses</span>
+</div>
+</div>
+<div class="w-full bg-secondary-container h-1 rounded overflow-hidden flex">
+<div class="bg-primary h-full" style="width: 68.4%;"></div>
+<div class="bg-error h-full" style="width: 31.6%;"></div>
+</div>
+</div>
+<!-- Card 3: Profit Factor -->
+<div class="bg-surface-container-low p-5 rounded flex flex-col justify-between space-y-3 hover:bg-surface-container transition-colors">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Profit Factor</span>
+<span class="font-data-tabular-sm text-data-tabular-sm text-primary font-semibold">High Alpha</span>
+</div>
+<div>
+<div class="font-data-metric-lg text-data-metric-lg text-primary font-semibold">2.14</div>
+<div class="font-data-tabular-sm text-data-tabular-sm text-on-surface-variant mt-1 flex items-center gap-1">
+<span>Gross W: <strong class="text-on-surface font-semibold">₹89.4k</strong></span>
+<span class="text-outline">|</span>
+<span>L: <strong class="text-on-surface font-semibold">₹41.1k</strong></span>
+</div>
+</div>
+<div class="w-full bg-surface-container-highest h-1 rounded overflow-hidden">
+<div class="bg-primary h-full rounded" style="width: 68.1%;"></div>
+</div>
+</div>
+<!-- Card 4: Max Drawdown -->
+<div class="bg-surface-container-low p-5 rounded flex flex-col justify-between space-y-3 hover:bg-surface-container transition-colors">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Max Drawdown</span>
+<span class="px-1.5 py-0.5 rounded bg-error-container text-secondary font-data-tabular-sm text-data-tabular-sm">
+          -5.9%
+        </span>
+</div>
+<div>
+<div class="font-data-metric-lg text-data-metric-lg text-secondary font-semibold">-₹6,420.00</div>
+<div class="font-data-tabular-sm text-data-tabular-sm text-on-surface-variant mt-1">Peak-to-Trough Recovery: 4d</div>
+</div>
+<div class="w-full bg-surface-container-highest h-1 rounded overflow-hidden">
+<div class="bg-error h-full rounded" style="width: 24%;"></div>
+</div>
+</div>
+<!-- Card 5: Avg Winning Trade -->
+<div class="bg-surface-container-low p-5 rounded flex flex-col justify-between space-y-3 hover:bg-surface-container transition-colors">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Avg Winning Trade</span>
+<span class="material-symbols-outlined text-[15px] text-primary">north_east</span>
+</div>
+<div>
+<div class="font-data-metric-lg text-data-metric-lg text-primary font-semibold">+₹3,438.46</div>
+<div class="font-data-tabular-sm text-data-tabular-sm text-on-surface-variant mt-1">Avg Win Holding: 34 mins</div>
+</div>
+<div class="flex items-center justify-between font-data-tabular-sm text-data-tabular-sm text-outline">
+<span>Target: 1.5R</span>
+<span class="text-primary font-medium">94.8% efficiency</span>
+</div>
+</div>
+<!-- Card 6: Avg Losing Trade -->
+<div class="bg-surface-container-low p-5 rounded flex flex-col justify-between space-y-3 hover:bg-surface-container transition-colors">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Avg Losing Trade</span>
+<span class="material-symbols-outlined text-[15px] text-secondary">south_east</span>
+</div>
+<div>
+<div class="font-data-metric-lg text-data-metric-lg text-secondary font-semibold">-₹3,423.33</div>
+<div class="font-data-tabular-sm text-data-tabular-sm text-on-surface-variant mt-1">Max Stop Loss respected</div>
+</div>
+<div class="flex items-center justify-between font-data-tabular-sm text-data-tabular-sm text-outline">
+<span>Slippage Impact</span>
+<span class="text-on-surface">~0.42 pts/lot</span>
+</div>
+</div>
+<!-- Card 7: Expectancy / Trade -->
+<div class="bg-surface-container-low p-5 rounded flex flex-col justify-between space-y-3 hover:bg-surface-container transition-colors">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Expectancy / Trade</span>
+<span class="font-label-caps text-label-caps text-tertiary">1:1.50 RR</span>
+</div>
+<div>
+<div class="font-data-metric-lg text-data-metric-lg text-on-surface font-semibold">+₹1,271.58</div>
+<div class="font-data-tabular-sm text-data-tabular-sm text-on-surface-variant mt-1">Positive Edge Ratio: 0.37</div>
+</div>
+<div class="flex items-center justify-between font-data-tabular-sm text-data-tabular-sm text-outline">
+<span>Kelly Fraction</span>
+<span class="text-primary font-medium">18.2% Optimal</span>
+</div>
+</div>
+<!-- Card 8: Total Simulated Costs -->
+<div class="bg-surface-container-low p-5 rounded flex flex-col justify-between space-y-3 hover:bg-surface-container transition-colors">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Simulated Frictions</span>
+<span class="material-symbols-outlined text-[15px] text-outline">receipt</span>
+</div>
+<div>
+<div class="font-data-metric-lg text-data-metric-lg text-on-surface font-semibold">₹1,520.00</div>
+<div class="font-data-tabular-sm text-data-tabular-sm text-on-surface-variant mt-1">Brokerage: 38 Orders × ₹40 rt</div>
+</div>
+<div class="flex items-center justify-between font-data-tabular-sm text-data-tabular-sm text-outline">
+<span>STT/Taxes: Virtual</span>
+<span class="text-on-surface">Zero levy applied</span>
+</div>
+</div>
+</section>
+<!-- Section 3: Dual Primary Analytics Visualizations -->
+<section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+<!-- Left Pane: Paper Equity Curve & Underwater Chart (7 cols) -->
+<div class="lg:col-span-7 bg-surface-container-low p-6 rounded flex flex-col justify-between space-y-6">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+<div class="flex flex-col">
+<div class="flex items-center gap-2">
+<h2 class="font-headline-md text-headline-md text-on-surface">Equity Trajectory &amp; Capital Accumulation</h2>
+<span class="material-symbols-outlined text-outline text-[16px]" title="Compound growth curve derived from closed positions">info</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Forward test started at ₹1,00,000.00 base nominal allocation</p>
+</div>
+<div class="flex items-center gap-3 font-data-tabular-sm text-data-tabular-sm">
+<div class="flex items-center gap-1.5">
+<span class="w-3 h-0.5 bg-primary inline-block"></span>
+<span class="text-on-surface font-medium">Algo Portfolio</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="w-3 h-0.5 bg-outline inline-block stroke-dashed"></span>
+<span class="text-outline">NIFTY 50 B&amp;H</span>
+</div>
+</div>
+</div>
+<!-- Main Equity SVG Chart Canvas -->
+<div class="relative w-full h-72">
+<svg class="w-full h-full overflow-visible" preserveaspectratio="none" viewbox="0 0 700 240">
+<defs>
+<lineargradient id="equityGradient" x1="0%" x2="0%" y1="0%" y2="100%">
+<stop offset="0%" stop-color="#42e5b0" stop-opacity="0.32"></stop>
+<stop offset="60%" stop-color="#42e5b0" stop-opacity="0.08"></stop>
+<stop offset="100%" stop-color="#42e5b0" stop-opacity="0.00"></stop>
+</lineargradient>
+<lineargradient id="drawdownGradient" x1="0%" x2="0%" y1="0%" y2="100%">
+<stop offset="0%" stop-color="#ffb4ab" stop-opacity="0.0"></stop>
+<stop offset="100%" stop-color="#ffb4ab" stop-opacity="0.25"></stop>
+</lineargradient>
+</defs>
+<!-- Horizontal Reference Gridlines -->
+<line stroke="#232b33" stroke-dasharray="3 3" stroke-width="1" x1="0" x2="700" y1="30" y2="30"></line>
+<line stroke="#232b33" stroke-dasharray="3 3" stroke-width="1" x1="0" x2="700" y1="80" y2="80"></line>
+<line stroke="#232b33" stroke-dasharray="3 3" stroke-width="1" x1="0" x2="700" y1="130" y2="130"></line>
+<line stroke="#232b33" stroke-dasharray="3 3" stroke-width="1" x1="0" x2="700" y1="180" y2="180"></line>
+<!-- Benchmark NIFTY 50 Buy & Hold Dashed Line -->
+<path d="M 0 185 Q 120 175, 230 168 T 460 152 T 700 138" fill="none" opacity="0.6" stroke="#85948c" stroke-dasharray="4 4" stroke-width="1.5"></path>
+<!-- Algo Equity Shaded Area -->
+<path d="M 0 190 L 0 190 L 50 180 L 100 185 L 140 160 L 190 150 L 230 162 L 280 135 L 340 120 L 390 132 L 440 100 L 490 85 L 530 92 L 580 62 L 640 45 L 700 32 L 700 220 L 0 220 Z" fill="url(#equityGradient)"></path>
+<!-- Algo Primary Solid Equity Line -->
+<path d="M 0 190 L 50 180 L 100 185 L 140 160 L 190 150 L 230 162 L 280 135 L 340 120 L 390 132 L 440 100 L 490 85 L 530 92 L 580 62 L 640 45 L 700 32" fill="none" stroke="#42e5b0" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path>
+<!-- Peak Marker & Interactive Hover Simulation Dot -->
+<circle cx="700" cy="32" fill="#42e5b0" r="4.5" stroke="#0c141c" stroke-width="2"></circle>
+<circle cx="440" cy="100" fill="#42e5b0" r="3.5"></circle>
+<circle cx="230" cy="162" fill="#ffb4ab" r="3"></circle>
+<!-- Inline SVG Annotations -->
+<text fill="#42e5b0" font-family="JetBrains Mono" font-size="11" font-weight="600" text-anchor="end" x="690" y="24">₹1,48,320.00</text>
+<text fill="#85948c" font-family="JetBrains Mono" font-size="10" x="12" y="196">₹1,00,000</text>
+</svg>
+<!-- Dynamic Hover Annotation Tooltip -->
+<div class="absolute top-6 right-28 bg-surface-container-high/95 backdrop-blur px-3 py-1.5 rounded shadow-lg flex flex-col pointer-events-none">
+<span class="font-label-caps text-label-caps text-outline">SESSION 28 • 14:15 IST</span>
+<span class="font-data-tabular text-data-tabular text-primary font-semibold">₹1,44,890.00 (+44.8%)</span>
+</div>
+</div>
+<!-- Below Equity: Drawdown Underwater Area Module -->
+<div class="pt-4 bg-surface-container/60 p-4 rounded flex flex-col space-y-2">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Underwater Drawdown Profile (Peak-to-Trough)</span>
+<span class="font-data-tabular-sm text-data-tabular-sm text-secondary font-medium">Max -5.9% @ Day 11</span>
+</div>
+<div class="h-16 w-full">
+<svg class="w-full h-full" preserveaspectratio="none" viewbox="0 0 700 60">
+<!-- Drawdown Zero Baseline -->
+<line stroke="#3c4a43" stroke-width="1" x1="0" x2="700" y1="5" y2="5"></line>
+<!-- Underwater Dip & Fast Recovery Shape -->
+<path d="M 0 5 L 60 5 L 90 12 L 140 6 L 190 8 L 220 38 L 245 42 L 270 20 L 320 6 L 390 18 L 415 8 L 490 6 L 530 16 L 555 6 L 700 5 L 700 5 Z" fill="url(#drawdownGradient)" stroke="#ffb4ab" stroke-width="1.2"></path>
+</svg>
+</div>
+<div class="flex items-center justify-between text-outline font-data-tabular-sm text-data-tabular-sm">
+<span>0.0% Level</span>
+<span>-3.0%</span>
+<span>-5.9% Peak</span>
+<span>Full Recovery in 4 sessions</span>
+</div>
+</div>
+</div>
+<!-- Right Pane: Daily P&L Bars & Monthly Calendar Grid (5 cols) -->
+<div class="lg:col-span-5 bg-surface-container-low p-6 rounded flex flex-col justify-between space-y-6">
+<div class="flex items-center justify-between">
+<div class="flex flex-col">
+<h2 class="font-headline-md text-headline-md text-on-surface">Daily Return Distribution</h2>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Session outcome distribution (last 20 market days)</span>
+</div>
+<span class="px-2 py-0.5 rounded bg-surface-container-high text-on-surface font-data-tabular-sm text-data-tabular-sm">
+          Mean: +₹2,416/day
+        </span>
+</div>
+<!-- Bar Chart Component -->
+<div class="w-full h-44 flex items-end justify-between gap-1.5 pt-4">
+<!-- Day 1 to 18 Bars with Monospace Values on Hover -->
+<div class="flex-1 flex flex-col items-center gap-1 group relative">
+<div class="w-full bg-primary/80 group-hover:bg-primary transition-all rounded-t" style="height: 64px;"></div>
+<span class="font-data-tabular-sm text-[9px] text-outline">01</span>
+<div class="hidden group-hover:block absolute bottom-20 bg-surface-container-highest px-2 py-1 rounded text-primary font-data-tabular-sm text-data-tabular-sm shadow whitespace-nowrap z-20">+₹3,200</div>
+</div>
+<div class="flex-1 flex flex-col items-center gap-1 group relative">
+<div class="w-full bg-primary/80 group-hover:bg-primary transition-all rounded-t" style="height: 48px;"></div>
+<span class="font-data-tabular-sm text-[9px] text-outline">02</span>
+<div class="hidden group-hover:block absolute bottom-16 bg-surface-container-highest px-2 py-1 rounded text-primary font-data-tabular-sm text-data-tabular-sm shadow whitespace-nowrap z-20">+₹2,400</div>
+</div>
+<div class="flex-1 flex flex-col items-center gap-1 group relative">
+<div class="w-full bg-error/80 group-hover:bg-error transition-all rounded-t" style="height: 32px;"></div>
+<span class="font-data-tabular-sm text-[9px] text-outline">03</span>
+<div class="hidden group-hover:block absolute bottom-12 bg-surface-container-highest px-2 py-1 rounded text-secondary font-data-tabular-sm text-data-tabular-sm shadow whitespace-nowrap z-20">-₹1,600</div>
+</div>
+<div class="flex-1 flex flex-col items-center gap-1 group relative">
+<div class="w-full bg-primary/80 group-hover:bg-primary transition-all rounded-t" style="height: 72px;"></div>
+<span class="font-data-tabular-sm text-[9px] text-outline">04</span>
+<div class="hidden group-hover:block absolute bottom-24 bg-surface-container-highest px-2 py-1 rounded text-primary font-data-tabular-sm text-data-tabular-sm shadow whitespace-nowrap z-20">+₹3,600</div>
+</div>
+<div class="flex-1 flex flex-col items-center gap-1 group relative">
+<div class="w-full bg-primary/80 group-hover:bg-primary transition-all rounded-t" style="height: 40px;"></div>
+<span class="font-data-tabular-sm text-[9px] text-outline">05</span>
+<div class="hidden group-hover:block absolute bottom-14 bg-surface-container-highest px-2 py-1 rounded text-primary font-data-tabular-sm text-data-tabular-sm shadow whitespace-nowrap z-20">+₹2,000</div>
+</div>
+<div class="flex-1 flex flex-col items-center gap-1 group relative">
+<div class="w-full bg-error/80 group-hover:bg-error transition-all rounded-t" style="height: 52px;"></div>
+<span class="font-data-tabular-sm text-[9px] text-outline">08</span>
+<div class="hidden group-hover:block absolute bottom-18 bg-surface-container-highest px-2 py-1 rounded text-secondary font-data-tabular-sm text-data-tabular-sm shadow whitespace-nowrap z-20">-₹2,600</div>
+</div>
+<div class="flex-1 flex flex-col items-center gap-1 group relative">
+<div class="w-full bg-primary/80 group-hover:bg-primary transition-all rounded-t" style="height: 84px;"></div>
+<span class="font-data-tabular-sm text-[9px] text-outline">09</span>
+<div class="hidden group-hover:block absolute bottom-28 bg-surface-container-highest px-2 py-1 rounded text-primary font-data-tabular-sm text-data-tabular-sm shadow whitespace-nowrap z-20">+₹4,200</div>
+</div>
+<div class="flex-1 flex flex-col items-center gap-1 group relative">
+<div class="w-full bg-primary/80 group-hover:bg-primary transition-all rounded-t" style="height: 58px;"></div>
+<span class="font-data-tabular-sm text-[9px] text-outline">10</span>
+<div class="hidden group-hover:block absolute bottom-20 bg-surface-container-highest px-2 py-1 rounded text-primary font-data-tabular-sm text-data-tabular-sm shadow whitespace-nowrap z-20">+₹2,900</div>
+</div>
+<div class="flex-1 flex flex-col items-center gap-1 group relative">
+<div class="w-full bg-error/80 group-hover:bg-error transition-all rounded-t" style="height: 28px;"></div>
+<span class="font-data-tabular-sm text-[9px] text-outline">11</span>
+<div class="hidden group-hover:block absolute bottom-12 bg-surface-container-highest px-2 py-1 rounded text-secondary font-data-tabular-sm text-data-tabular-sm shadow whitespace-nowrap z-20">-₹1,400</div>
+</div>
+<div class="flex-1 flex flex-col items-center gap-1 group relative">
+<div class="w-full bg-primary/80 group-hover:bg-primary transition-all rounded-t" style="height: 94px;"></div>
+<span class="font-data-tabular-sm text-[9px] text-outline">12</span>
+<div class="hidden group-hover:block absolute bottom-32 bg-surface-container-highest px-2 py-1 rounded text-primary font-data-tabular-sm text-data-tabular-sm shadow whitespace-nowrap z-20">+₹4,700</div>
+</div>
+<div class="flex-1 flex flex-col items-center gap-1 group relative">
+<div class="w-full bg-primary/80 group-hover:bg-primary transition-all rounded-t" style="height: 60px;"></div>
+<span class="font-data-tabular-sm text-[9px] text-outline">15</span>
+<div class="hidden group-hover:block absolute bottom-20 bg-surface-container-highest px-2 py-1 rounded text-primary font-data-tabular-sm text-data-tabular-sm shadow whitespace-nowrap z-20">+₹3,000</div>
+</div>
+<div class="flex-1 flex flex-col items-center gap-1 group relative">
+<div class="w-full bg-primary/80 group-hover:bg-primary transition-all rounded-t" style="height: 38px;"></div>
+<span class="font-data-tabular-sm text-[9px] text-outline">16</span>
+<div class="hidden group-hover:block absolute bottom-14 bg-surface-container-highest px-2 py-1 rounded text-primary font-data-tabular-sm text-data-tabular-sm shadow whitespace-nowrap z-20">+₹1,900</div>
+</div>
+<div class="flex-1 flex flex-col items-center gap-1 group relative">
+<div class="w-full bg-error/80 group-hover:bg-error transition-all rounded-t" style="height: 24px;"></div>
+<span class="font-data-tabular-sm text-[9px] text-outline">17</span>
+<div class="hidden group-hover:block absolute bottom-10 bg-surface-container-highest px-2 py-1 rounded text-secondary font-data-tabular-sm text-data-tabular-sm shadow whitespace-nowrap z-20">-₹1,200</div>
+</div>
+<div class="flex-1 flex flex-col items-center gap-1 group relative">
+<div class="w-full bg-primary/80 group-hover:bg-primary transition-all rounded-t" style="height: 70px;"></div>
+<span class="font-data-tabular-sm text-[9px] text-outline">18</span>
+<div class="hidden group-hover:block absolute bottom-24 bg-surface-container-highest px-2 py-1 rounded text-primary font-data-tabular-sm text-data-tabular-sm shadow whitespace-nowrap z-20">+₹3,500</div>
+</div>
+</div>
+<!-- Compact Monthly Performance Calendar Grid Snippet -->
+<div class="pt-3 flex flex-col space-y-2.5">
+<div class="flex items-center justify-between font-label-caps text-label-caps text-on-surface-variant">
+<span>OCTOBER 2024 PERFORMANCE MATRIX</span>
+<span class="text-primary font-semibold">14 WIN / 4 LOSS DAYS</span>
+</div>
+<div class="grid grid-cols-7 gap-1.5 text-center">
+<span class="font-data-tabular-sm text-[10px] text-outline py-1">MO</span>
+<span class="font-data-tabular-sm text-[10px] text-outline py-1">TU</span>
+<span class="font-data-tabular-sm text-[10px] text-outline py-1">WE</span>
+<span class="font-data-tabular-sm text-[10px] text-outline py-1">TH</span>
+<span class="font-data-tabular-sm text-[10px] text-outline py-1">FR</span>
+<span class="font-data-tabular-sm text-[10px] text-outline-variant py-1">SA</span>
+<span class="font-data-tabular-sm text-[10px] text-outline-variant py-1">SU</span>
+<!-- Days Row 1 -->
+<div class="bg-primary/20 text-primary py-1.5 rounded font-data-tabular-sm text-[11px] font-semibold">+3.2k</div>
+<div class="bg-primary/20 text-primary py-1.5 rounded font-data-tabular-sm text-[11px] font-semibold">+2.4k</div>
+<div class="bg-error/20 text-secondary py-1.5 rounded font-data-tabular-sm text-[11px] font-semibold">-1.6k</div>
+<div class="bg-primary/20 text-primary py-1.5 rounded font-data-tabular-sm text-[11px] font-semibold">+3.6k</div>
+<div class="bg-primary/20 text-primary py-1.5 rounded font-data-tabular-sm text-[11px] font-semibold">+2.0k</div>
+<div class="bg-surface-container-lowest text-outline-variant py-1.5 rounded font-data-tabular-sm text-[11px]">-</div>
+<div class="bg-surface-container-lowest text-outline-variant py-1.5 rounded font-data-tabular-sm text-[11px]">-</div>
+<!-- Days Row 2 -->
+<div class="bg-error/20 text-secondary py-1.5 rounded font-data-tabular-sm text-[11px] font-semibold">-2.6k</div>
+<div class="bg-primary/20 text-primary py-1.5 rounded font-data-tabular-sm text-[11px] font-semibold">+4.2k</div>
+<div class="bg-primary/20 text-primary py-1.5 rounded font-data-tabular-sm text-[11px] font-semibold">+2.9k</div>
+<div class="bg-error/20 text-secondary py-1.5 rounded font-data-tabular-sm text-[11px] font-semibold">-1.4k</div>
+<div class="bg-primary/20 text-primary py-1.5 rounded font-data-tabular-sm text-[11px] font-semibold">+4.7k</div>
+<div class="bg-surface-container-lowest text-outline-variant py-1.5 rounded font-data-tabular-sm text-[11px]">-</div>
+<div class="bg-surface-container-lowest text-outline-variant py-1.5 rounded font-data-tabular-sm text-[11px]">-</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 4: Granular Strategy Attribution Panels (3 Balanced Cards) -->
+<section class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<!-- Card 1: CE vs PE Execution Breakdown -->
+<div class="bg-surface-container-low p-6 rounded flex flex-col justify-between space-y-5">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[20px]">swap_vert</span>
+<h3 class="font-headline-md text-headline-md text-on-surface">CE vs PE Breakdown</h3>
+</div>
+<span class="font-data-tabular-sm text-data-tabular-sm text-outline">38 Closed Fills</span>
+</div>
+<div class="space-y-4">
+<!-- Call Option Stats -->
+<div class="p-3.5 bg-surface-container rounded space-y-2">
+<div class="flex items-center justify-between font-label-caps text-label-caps">
+<span class="text-primary font-bold tracking-wider">LONG CALLS (BUY CE)</span>
+<span class="text-on-surface font-semibold">24 TRADES (63%)</span>
+</div>
+<div class="flex items-center justify-between font-data-tabular text-data-tabular">
+<span class="text-on-surface-variant font-body-sm text-body-sm">Win Rate: <strong class="text-on-surface font-semibold">70.8%</strong> (17W / 7L)</span>
+<span class="text-primary font-semibold">+₹32,450.00</span>
+</div>
+<div class="w-full bg-surface-container-highest h-1 rounded overflow-hidden">
+<div class="bg-primary h-full rounded" style="width: 70.8%;"></div>
+</div>
+</div>
+<!-- Put Option Stats -->
+<div class="p-3.5 bg-surface-container rounded space-y-2">
+<div class="flex items-center justify-between font-label-caps text-label-caps">
+<span class="text-tertiary font-bold tracking-wider">LONG PUTS (BUY PE)</span>
+<span class="text-on-surface font-semibold">14 TRADES (37%)</span>
+</div>
+<div class="flex items-center justify-between font-data-tabular text-data-tabular">
+<span class="text-on-surface-variant font-body-sm text-body-sm">Win Rate: <strong class="text-on-surface font-semibold">64.2%</strong> (9W / 5L)</span>
+<span class="text-primary font-semibold">+₹15,870.00</span>
+</div>
+<div class="w-full bg-surface-container-highest h-1 rounded overflow-hidden">
+<div class="bg-primary h-full rounded" style="width: 64.2%;"></div>
+</div>
+</div>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+        Higher momentum velocity recorded on bullish trend expansions following NSE opening range breaks.
+      </p>
+</div>
+<!-- Card 2: Trade Duration & Hourly Distribution -->
+<div class="bg-surface-container-low p-6 rounded flex flex-col justify-between space-y-5">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-tertiary text-[20px]">schedule</span>
+<h3 class="font-headline-md text-headline-md text-on-surface">Temporal Execution</h3>
+</div>
+<span class="font-data-tabular-sm text-data-tabular-sm text-tertiary font-medium">Session Windows</span>
+</div>
+<div class="space-y-3 font-data-tabular text-data-tabular">
+<div class="flex items-center justify-between p-2.5 bg-surface-container rounded">
+<span class="text-on-surface-variant font-body-sm text-body-sm">Peak Edge Session A</span>
+<span class="text-primary font-semibold">10:15 – 11:30 IST</span>
+</div>
+<div class="flex items-center justify-between p-2.5 bg-surface-container rounded">
+<span class="text-on-surface-variant font-body-sm text-body-sm">Peak Edge Session B</span>
+<span class="text-primary font-semibold">13:45 – 14:45 IST</span>
+</div>
+<div class="flex items-center justify-between p-2.5 bg-surface-container rounded">
+<span class="text-on-surface-variant font-body-sm text-body-sm">Average Holding Time</span>
+<span class="text-on-surface font-semibold">32 minutes</span>
+</div>
+<div class="flex items-center justify-between p-2.5 bg-surface-container rounded">
+<span class="text-on-surface-variant font-body-sm text-body-sm">Maximum Open Duration</span>
+<span class="text-outline font-semibold">1h 14m (Trailing)</span>
+</div>
+</div>
+<div class="flex items-center gap-2 text-outline font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[16px] text-primary">verified</span>
+<span>Zero trades held overnight (100% Intraday)</span>
+</div>
+</div>
+<!-- Card 3: Exit Reason Attribution -->
+<div class="bg-surface-container-low p-6 rounded flex flex-col justify-between space-y-5">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary text-[20px]">pie_chart</span>
+<h3 class="font-headline-md text-headline-md text-on-surface">Exit Attribution</h3>
+</div>
+<span class="font-data-tabular-sm text-data-tabular-sm text-outline">Algo Rules</span>
+</div>
+<!-- Execution Categories List -->
+<div class="space-y-3">
+<div>
+<div class="flex justify-between font-body-sm text-body-sm mb-1">
+<span class="text-on-surface font-medium">Target Hit (1:1.5 RR)</span>
+<span class="font-data-tabular-sm text-data-tabular-sm text-primary font-semibold">18 (47.4%)</span>
+</div>
+<div class="w-full bg-surface-container-highest h-1.5 rounded overflow-hidden">
+<div class="bg-primary h-full rounded" style="width: 47.4%;"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between font-body-sm text-body-sm mb-1">
+<span class="text-on-surface font-medium">Trailing Stop Dynamic Exit</span>
+<span class="font-data-tabular-sm text-data-tabular-sm text-tertiary font-semibold">11 (28.9%)</span>
+</div>
+<div class="w-full bg-surface-container-highest h-1.5 rounded overflow-hidden">
+<div class="bg-tertiary h-full rounded" style="width: 28.9%;"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between font-body-sm text-body-sm mb-1">
+<span class="text-on-surface font-medium">Hard Stop-Loss Triggered</span>
+<span class="font-data-tabular-sm text-data-tabular-sm text-secondary font-semibold">7 (18.4%)</span>
+</div>
+<div class="w-full bg-surface-container-highest h-1.5 rounded overflow-hidden">
+<div class="bg-error h-full rounded" style="width: 18.4%;"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between font-body-sm text-body-sm mb-1">
+<span class="text-on-surface font-medium">End-of-Day Square-off (15:15 IST)</span>
+<span class="font-data-tabular-sm text-data-tabular-sm text-outline font-semibold">2 (5.3%)</span>
+</div>
+<div class="w-full bg-surface-container-highest h-1.5 rounded overflow-hidden">
+<div class="bg-outline h-full rounded" style="width: 5.3%;"></div>
+</div>
+</div>
+</div>
+<div class="pt-1 flex items-center justify-between font-data-tabular-sm text-data-tabular-sm text-outline">
+<span>Exit Precision Discipline</span>
+<span class="text-primary font-semibold">99.1% Rule Adherence</span>
+</div>
+</div>
+</section>
+<!-- Section 5: Recent Closed Trades Ledger Table -->
+<section class="bg-surface-container-low rounded p-6 flex flex-col space-y-4">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+<div class="flex items-center gap-2.5">
+<h3 class="font-headline-md text-headline-md text-on-surface">Closed Trades Simulated Ledger</h3>
+<span class="px-2 py-0.5 rounded bg-surface-container text-on-surface-variant font-data-tabular-sm text-data-tabular-sm">
+          Displaying last 6 executions
+        </span>
+</div>
+<div class="flex items-center gap-2">
+<button class="bg-surface-container-high hover:bg-surface-bright text-on-surface px-3 py-1.5 rounded font-label-ui text-label-ui flex items-center gap-1.5 transition-colors" type="button">
+<span class="material-symbols-outlined text-[15px]">file_download</span>
+<span>Download Audit Log</span>
+</button>
+</div>
+</div>
+<!-- Data Table Container -->
+<div class="overflow-x-auto w-full">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-low font-label-caps text-label-caps text-outline uppercase tracking-wider">
+<th class="py-3 px-3">Trade ID</th>
+<th class="py-3 px-3">Timestamp (IST)</th>
+<th class="py-3 px-3">Contract Name</th>
+<th class="py-3 px-3">Direction</th>
+<th class="py-3 px-3 text-right">Qty</th>
+<th class="py-3 px-3 text-right">Avg Entry</th>
+<th class="py-3 px-3 text-right">Avg Exit</th>
+<th class="py-3 px-3 text-right">Gross P&amp;L</th>
+<th class="py-3 px-3 text-right">Net P&amp;L</th>
+<th class="py-3 px-3 text-right">Exit Trigger</th>
+</tr>
+</thead>
+<tbody class="divide-y-0 font-data-tabular text-data-tabular">
+<!-- Row 1 -->
+<tr class="hover:bg-surface-container transition-colors">
+<td class="py-3.5 px-3 font-semibold text-on-surface">#TRD-9042</td>
+<td class="py-3.5 px-3 text-on-surface-variant font-data-tabular-sm text-data-tabular-sm">24 Oct, 14:12:04</td>
+<td class="py-3.5 px-3 text-on-surface font-semibold">NIFTY 26200 CE</td>
+<td class="py-3.5 px-3">
+<span class="px-2 py-0.5 rounded bg-primary/10 text-primary font-label-caps text-label-caps font-bold">BUY CE</span>
+</td>
+<td class="py-3.5 px-3 text-right text-on-surface">50 (1 Lot)</td>
+<td class="py-3.5 px-3 text-right text-on-surface">₹137.40</td>
+<td class="py-3.5 px-3 text-right text-on-surface">₹182.00</td>
+<td class="py-3.5 px-3 text-right text-primary font-medium">+₹2,230.00</td>
+<td class="py-3.5 px-3 text-right text-primary font-semibold">+₹2,190.00</td>
+<td class="py-3.5 px-3 text-right">
+<span class="px-2 py-0.5 rounded bg-primary/10 text-primary font-data-tabular-sm text-data-tabular-sm">Target Hit</span>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="hover:bg-surface-container transition-colors">
+<td class="py-3.5 px-3 font-semibold text-on-surface">#TRD-9041</td>
+<td class="py-3.5 px-3 text-on-surface-variant font-data-tabular-sm text-data-tabular-sm">24 Oct, 11:34:18</td>
+<td class="py-3.5 px-3 text-on-surface font-semibold">NIFTY 26150 PE</td>
+<td class="py-3.5 px-3">
+<span class="px-2 py-0.5 rounded bg-tertiary/10 text-tertiary font-label-caps text-label-caps font-bold">BUY PE</span>
+</td>
+<td class="py-3.5 px-3 text-right text-on-surface">50 (1 Lot)</td>
+<td class="py-3.5 px-3 text-right text-on-surface">₹112.50</td>
+<td class="py-3.5 px-3 text-right text-on-surface">₹158.20</td>
+<td class="py-3.5 px-3 text-right text-primary font-medium">+₹2,285.00</td>
+<td class="py-3.5 px-3 text-right text-primary font-semibold">+₹2,245.00</td>
+<td class="py-3.5 px-3 text-right">
+<span class="px-2 py-0.5 rounded bg-primary/10 text-primary font-data-tabular-sm text-data-tabular-sm">Target Hit</span>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="hover:bg-surface-container transition-colors">
+<td class="py-3.5 px-3 font-semibold text-on-surface">#TRD-9040</td>
+<td class="py-3.5 px-3 text-on-surface-variant font-data-tabular-sm text-data-tabular-sm">23 Oct, 13:48:50</td>
+<td class="py-3.5 px-3 text-on-surface font-semibold">NIFTY 26300 CE</td>
+<td class="py-3.5 px-3">
+<span class="px-2 py-0.5 rounded bg-primary/10 text-primary font-label-caps text-label-caps font-bold">BUY CE</span>
+</td>
+<td class="py-3.5 px-3 text-right text-on-surface">50 (1 Lot)</td>
+<td class="py-3.5 px-3 text-right text-on-surface">₹98.00</td>
+<td class="py-3.5 px-3 text-right text-on-surface">₹74.50</td>
+<td class="py-3.5 px-3 text-right text-secondary font-medium">-₹1,175.00</td>
+<td class="py-3.5 px-3 text-right text-secondary font-semibold">-₹1,215.00</td>
+<td class="py-3.5 px-3 text-right">
+<span class="px-2 py-0.5 rounded bg-error-container text-secondary font-data-tabular-sm text-data-tabular-sm">Stop Loss Hit</span>
+</td>
+</tr>
+<!-- Row 4 -->
+<tr class="hover:bg-surface-container transition-colors">
+<td class="py-3.5 px-3 font-semibold text-on-surface">#TRD-9039</td>
+<td class="py-3.5 px-3 text-on-surface-variant font-data-tabular-sm text-data-tabular-sm">23 Oct, 10:22:11</td>
+<td class="py-3.5 px-3 text-on-surface font-semibold">NIFTY 26250 CE</td>
+<td class="py-3.5 px-3">
+<span class="px-2 py-0.5 rounded bg-primary/10 text-primary font-label-caps text-label-caps font-bold">BUY CE</span>
+</td>
+<td class="py-3.5 px-3 text-right text-on-surface">50 (1 Lot)</td>
+<td class="py-3.5 px-3 text-right text-on-surface">₹145.00</td>
+<td class="py-3.5 px-3 text-right text-on-surface">₹212.80</td>
+<td class="py-3.5 px-3 text-right text-primary font-medium">+₹3,390.00</td>
+<td class="py-3.5 px-3 text-right text-primary font-semibold">+₹3,350.00</td>
+<td class="py-3.5 px-3 text-right">
+<span class="px-2 py-0.5 rounded bg-surface-container text-tertiary font-data-tabular-sm text-data-tabular-sm">Trailing Stop</span>
+</td>
+</tr>
+<!-- Row 5 -->
+<tr class="hover:bg-surface-container transition-colors">
+<td class="py-3.5 px-3 font-semibold text-on-surface">#TRD-9038</td>
+<td class="py-3.5 px-3 text-on-surface-variant font-data-tabular-sm text-data-tabular-sm">22 Oct, 14:02:45</td>
+<td class="py-3.5 px-3 text-on-surface font-semibold">NIFTY 26100 PE</td>
+<td class="py-3.5 px-3">
+<span class="px-2 py-0.5 rounded bg-tertiary/10 text-tertiary font-label-caps text-label-caps font-bold">BUY PE</span>
+</td>
+<td class="py-3.5 px-3 text-right text-on-surface">50 (1 Lot)</td>
+<td class="py-3.5 px-3 text-right text-on-surface">₹128.60</td>
+<td class="py-3.5 px-3 text-right text-on-surface">₹164.00</td>
+<td class="py-3.5 px-3 text-right text-primary font-medium">+₹1,770.00</td>
+<td class="py-3.5 px-3 text-right text-primary font-semibold">+₹1,730.00</td>
+<td class="py-3.5 px-3 text-right">
+<span class="px-2 py-0.5 rounded bg-primary/10 text-primary font-data-tabular-sm text-data-tabular-sm">Target Hit</span>
+</td>
+</tr>
+<!-- Row 6 -->
+<tr class="hover:bg-surface-container transition-colors">
+<td class="py-3.5 px-3 font-semibold text-on-surface">#TRD-9037</td>
+<td class="py-3.5 px-3 text-on-surface-variant font-data-tabular-sm text-data-tabular-sm">22 Oct, 09:45:19</td>
+<td class="py-3.5 px-3 text-on-surface font-semibold">NIFTY 26200 PE</td>
+<td class="py-3.5 px-3">
+<span class="px-2 py-0.5 rounded bg-tertiary/10 text-tertiary font-label-caps text-label-caps font-bold">BUY PE</span>
+</td>
+<td class="py-3.5 px-3 text-right text-on-surface">50 (1 Lot)</td>
+<td class="py-3.5 px-3 text-right text-on-surface">₹160.00</td>
+<td class="py-3.5 px-3 text-right text-on-surface">₹125.00</td>
+<td class="py-3.5 px-3 text-right text-secondary font-medium">-₹1,750.00</td>
+<td class="py-3.5 px-3 text-right text-secondary font-semibold">-₹1,790.00</td>
+<td class="py-3.5 px-3 text-right">
+<span class="px-2 py-0.5 rounded bg-error-container text-secondary font-data-tabular-sm text-data-tabular-sm">Stop Loss Hit</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Table Footer / Pagination -->
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-border-subtle/0">
+<span class="font-data-tabular-sm text-data-tabular-sm text-outline">
+        Showing 1 to 6 of 38 audit entries (Simulated forward executions)
+      </span>
+<div class="flex items-center gap-1 font-data-tabular-sm text-data-tabular-sm">
+<button class="px-2.5 py-1 rounded bg-surface-container text-outline hover:text-on-surface transition-colors" disabled="" type="button">Prev</button>
+<button class="px-2.5 py-1 rounded bg-primary text-on-primary font-bold" type="button">1</button>
+<button class="px-2.5 py-1 rounded bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors" type="button">2</button>
+<button class="px-2.5 py-1 rounded bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors" type="button">3</button>
+<button class="px-2.5 py-1 rounded bg-surface-container text-outline hover:text-on-surface transition-colors" type="button">Next</button>
+</div>
+</div>
+</section>
+</div></main>
+</div>
+<!-- Emergency Kill Switch Confirmation Modal -->
+<div class="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4" id="killSwitchModal">
+<div class="bg-surface-panel border border-error max-w-md w-full p-6 rounded shadow-2xl">
+<div class="flex items-center gap-3 text-error">
+<span class="material-symbols-outlined text-[32px]">warning</span>
+<div>
+<h3 class="text-base font-bold text-on-surface">EMERGENCY KILL SWITCH</h3>
+<p class="font-mono text-xs text-error">HALT ALL PAPER ENGINES &amp; FLATTEN POSITIONS</p>
+</div>
+</div>
+<p class="text-on-surface-variant text-xs mt-3 leading-relaxed">
+        This action will immediately execute virtual market orders to square off the 1 open paper position and set strategy NIFTY-DELTA-ORBIT-V2 to <strong class="text-on-surface">HALTED</strong>.
+      </p>
+<div class="mt-4 p-2.5 bg-background rounded border border-border-subtle font-mono text-xs text-outline">
+        CONFIRMATION CODE: <span class="text-on-surface font-semibold">KILL_PAPER_NSE_2024</span>
+</div>
+<div class="mt-5 flex items-center justify-end gap-3 font-mono text-xs">
+<button class="px-4 py-1.5 rounded bg-surface-subtle text-on-surface hover:bg-surface-elevated transition" onclick="closeKillModal()" type="button">
+          CANCEL
+        </button>
+<button class="px-4 py-1.5 rounded bg-error text-white font-bold hover:brightness-110 transition" onclick="executeKillSwitch()" type="button">
+          EXECUTE KILL &amp; FLATTEN
+        </button>
+</div>
+</div>
+</div>
+<!-- Interactive Logic -->
+<script>
+    function togglePause() {
+      const btn = document.getElementById('pauseBtn');
+      if (!btn) return;
+      const span = btn.querySelector('span:last-child');
+      if (span.textContent === 'PAUSE ENTRIES') {
+        span.textContent = 'RESUME ENTRIES';
+        btn.classList.remove('text-tertiary', 'border-tertiary/40');
+        btn.classList.add('bg-tertiary', 'text-background', 'border-tertiary');
+      } else {
+        span.textContent = 'PAUSE ENTRIES';
+        btn.classList.remove('bg-tertiary', 'text-background', 'border-tertiary');
+        btn.classList.add('text-tertiary', 'border-tertiary/40');
+      }
+    }
+
+    function stopStrategy() {
+      if (confirm("Stop autonomous paper strategy NIFTY-DELTA-ORBIT-V2?")) {
+        alert("Strategy stopped. No new orders will be calculated.");
+      }
+    }
+
+    function triggerManualExit() {
+      if (confirm("Execute instantaneous paper market exit for 1 Lot NIFTY 26200 CE at CMP ₹146.00?")) {
+        alert("PAPER POSITION EXITED: Realized P&L +₹430.00 booked to virtual ledger.");
+      }
+    }
+
+    function closeSimulatedPosition() {
+      triggerManualExit();
+    }
+
+    function confirmKillSwitch() {
+      const modal = document.getElementById('killSwitchModal');
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeKillModal() {
+      const modal = document.getElementById('killSwitchModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function executeKillSwitch() {
+      alert("SIMULATION KILL SWITCH ENGAGED: Open position flattened @ simulated best bid (₹145.80). Strategy engine halted.");
+      closeKillModal();
+    }
+
+    function resetPortfolio() {
+      if (confirm("Reset paper trading simulation ledger back to ₹1,00,000 initial equity?")) {
+        alert("Virtual Portfolio reset to default ₹1,00,000 seed capital.");
+      }
+    }
+  </script>
+</body></html>

@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>NIFTY Algo Terminal — Live Technical Charts</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              bg: "#0B1117",
+              panel: "#121A22",
+              surface: "#18222C",
+              border: "#1E2C3A",
+              borderLight: "#27384A",
+              primary: "#00C896",
+              primaryGlow: "rgba(0,200,150,0.15)",
+              danger: "#F06469",
+              sky: "#58A6FF",
+              amber: "#F2B824",
+              muted: "#7D8B99",
+              text: "#DDE4EB",
+              subtext: "#94A3B8"
+            }
+          },
+          fontFamily: {
+            sans: ["Inter", "sans-serif"],
+            mono: ["JetBrains Mono", "monospace"]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    body {
+      background-color: #0B1117;
+      color: #DDE4EB;
+      font-family: 'Inter', sans-serif;
+      overscroll-behavior: none;
+    }
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1E2C3A;
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body class="bg-brand-bg text-brand-text min-h-screen flex antialiased select-none">
+<!-- LEFT MINI/EXPANDED NAVIGATION RAIL -->
+<aside class="fixed left-0 top-0 h-full w-56 bg-[#0E151E] border-r border-brand-border z-50 flex flex-col justify-between">
+<div class="flex flex-col">
+<!-- Logo branding -->
+<div class="h-14 px-4 border-b border-brand-border flex items-center justify-between">
+<div class="flex items-center gap-2.5">
+<div class="w-7 h-7 rounded bg-brand-primary/10 border border-brand-primary/30 flex items-center justify-center text-brand-primary">
+<span class="material-symbols-outlined text-[18px]">polyline</span>
+</div>
+<div>
+<div class="font-mono text-[13px] font-bold tracking-tight text-white flex items-center gap-1">
+              NIFTY<span class="text-brand-primary">ALGO</span>
+</div>
+<span class="font-mono text-[9px] uppercase tracking-wider text-brand-muted">v2.4 Pro Terminal</span>
+</div>
+</div>
+<span class="w-2 h-2 rounded-full bg-brand-primary animate-pulse"></span>
+</div>
+<!-- Nav sections -->
+<div class="py-3 px-2 flex flex-col gap-4 overflow-y-auto max-h-[calc(100vh-180px)]">
+<div>
+<div class="px-3 pb-1.5 font-mono text-[10px] tracking-wider uppercase text-brand-muted">Market &amp; Execution</div>
+<nav class="flex flex-col gap-0.5">
+<a class="flex items-center gap-2.5 px-3 py-2 rounded text-[13px] text-brand-subtext hover:text-white hover:bg-brand-panel transition-colors" href="#">
+<span class="material-symbols-outlined text-[17px]">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="flex items-center gap-2.5 px-3 py-2 rounded text-[13px] bg-brand-primary/10 text-brand-primary border-l-2 border-brand-primary font-medium" href="#">
+<span class="material-symbols-outlined text-[17px]">candlestick_chart</span>
+<span>Live Charts</span>
+</a>
+<a class="flex items-center gap-2.5 px-3 py-2 rounded text-[13px] text-brand-subtext hover:text-white hover:bg-brand-panel transition-colors" href="#">
+<span class="material-symbols-outlined text-[17px]">sensors</span>
+<span>Signal Monitor</span>
+</a>
+<a class="flex items-center gap-2.5 px-3 py-2 rounded text-[13px] text-brand-subtext hover:text-white hover:bg-brand-panel transition-colors" href="#">
+<span class="material-symbols-outlined text-[17px]">play_circle</span>
+<span>Paper Trading</span>
+</a>
+<a class="flex items-center gap-2.5 px-3 py-2 rounded text-[13px] text-brand-subtext hover:text-white hover:bg-brand-panel transition-colors" href="#">
+<span class="material-symbols-outlined text-[17px]">receipt_long</span>
+<span>Positions &amp; Orders</span>
+</a>
+</nav>
+</div>
+<div>
+<div class="px-3 pb-1.5 font-mono text-[10px] tracking-wider uppercase text-brand-muted">Intelligence</div>
+<nav class="flex flex-col gap-0.5">
+<a class="flex items-center gap-2.5 px-3 py-2 rounded text-[13px] text-brand-subtext hover:text-white hover:bg-brand-panel transition-colors" href="#">
+<span class="material-symbols-outlined text-[17px]">query_stats</span>
+<span>Strategy Engine</span>
+</a>
+<a class="flex items-center gap-2.5 px-3 py-2 rounded text-[13px] text-brand-subtext hover:text-white hover:bg-brand-panel transition-colors" href="#">
+<span class="material-symbols-outlined text-[17px]">history_edu</span>
+<span>Backtest Lab</span>
+</a>
+<a class="flex items-center gap-2.5 px-3 py-2 rounded text-[13px] text-brand-subtext hover:text-white hover:bg-brand-panel transition-colors" href="#">
+<span class="material-symbols-outlined text-[17px]">shield</span>
+<span>Risk Sentinel</span>
+</a>
+</nav>
+</div>
+</div>
+</div>
+<!-- Engine Status Footer -->
+<div class="p-3 border-t border-brand-border bg-[#090E14] flex flex-col gap-2">
+<div class="flex items-center justify-between text-[11px] font-mono">
+<span class="text-brand-muted">ENGINE:</span>
+<span class="text-brand-primary flex items-center gap-1 font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-brand-primary"></span>ACTIVE (5/5)
+        </span>
+</div>
+<div class="flex items-center justify-between text-[11px] font-mono">
+<span class="text-brand-muted">NSE REGULAR:</span>
+<span class="text-white">09:15 – 15:30</span>
+</div>
+<button class="w-full mt-1 py-1.5 rounded bg-brand-danger/10 hover:bg-brand-danger/20 border border-brand-danger/40 text-brand-danger font-mono text-[10px] uppercase font-bold tracking-wider transition-colors flex items-center justify-center gap-1.5" type="button">
+<span class="material-symbols-outlined text-[13px]">power_settings_new</span>
+<span>Kill Switch Armed</span>
+</button>
+</div>
+</aside>
+<!-- MAIN WORKSPACE -->
+<div class="pl-56 w-full flex flex-col min-h-screen">
+<!-- TOP APP BAR -->
+<header class="h-14 bg-[#0E151E] border-b border-brand-border px-6 flex items-center justify-between sticky top-0 z-40">
+<!-- Breadcrumb & Spot Ticker -->
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2 text-xs text-brand-subtext font-mono">
+<span class="text-white font-medium">TERMINAL</span>
+<span class="text-brand-border">/</span>
+<span class="text-brand-primary">LIVE CHARTS</span>
+</div>
+<div class="h-4 w-px bg-brand-border"></div>
+<!-- Live Spot Metric Pill -->
+<div class="flex items-center gap-3 px-3 py-1 rounded bg-brand-panel border border-brand-border font-mono text-xs">
+<span class="text-[10px] uppercase font-bold tracking-wider text-brand-muted flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-brand-primary animate-ping"></span>SPOT
+          </span>
+<span class="font-bold text-white tracking-wide">NIFTY 50</span>
+<span class="font-bold text-brand-primary">26,250.00</span>
+<span class="text-brand-primary text-[11px] font-medium">+142.30 (+0.54%)</span>
+</div>
+</div>
+<!-- Right Utility Bar -->
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-500/10 border border-amber-500/30 text-brand-amber text-xs font-mono">
+<span class="material-symbols-outlined text-[14px]">science</span>
+<span>PAPER SIMULATION</span>
+</div>
+<div class="hidden lg:flex items-center gap-2 px-2.5 py-1 rounded bg-brand-panel border border-brand-border text-xs font-mono text-brand-subtext">
+<span class="w-1.5 h-1.5 rounded-full bg-brand-primary"></span>
+<span>Feed: Angel SmartAPI (14ms)</span>
+</div>
+<div class="h-4 w-px bg-brand-border"></div>
+<!-- Account user & sidebar collapse trigger -->
+<div class="flex items-center gap-3">
+<div class="flex flex-col text-right font-mono text-[11px]">
+<span class="text-white font-semibold leading-tight">ALGO-TRADER-09</span>
+<span class="text-brand-muted text-[10px]">11:42:18 IST</span>
+</div>
+<div class="w-8 h-8 rounded bg-brand-panel border border-brand-border flex items-center justify-center text-brand-primary font-mono text-xs font-bold">
+            TR
+          </div>
+<button class="ml-1 p-1.5 rounded bg-brand-panel border border-brand-border text-brand-subtext hover:text-white hover:border-brand-primary/40 transition-colors" id="toggle-sidebar-btn" title="Toggle Option Sidebar">
+<span class="material-symbols-outlined text-[18px]">vertical_split</span>
+</button>
+</div>
+</div>
+</header>
+<!-- CONTENT AREA -->
+<div class="flex-1 p-4 lg:p-5 flex gap-4 overflow-hidden">
+<!-- PRIMARY TECHNICAL ANALYSIS CANVAS AREA -->
+<div class="flex-1 flex flex-col gap-3 min-w-0">
+<!-- TOP CONTROL DOCK & OHLC STRIP -->
+<div class="bg-brand-panel border border-brand-border rounded-lg p-3 flex flex-col gap-2.5 shadow-sm">
+<!-- Control Row: Instruments, Timeframes, Chart Toggles, Timer -->
+<div class="flex flex-wrap items-center justify-between gap-3">
+<!-- Left Controls: Instrument & Timeframe -->
+<div class="flex flex-wrap items-center gap-2.5">
+<!-- Instrument Dropdown / Switcher -->
+<div class="relative">
+<button class="flex items-center gap-2 px-3 py-1.5 rounded bg-brand-surface border border-brand-border hover:border-brand-primary/40 text-xs font-mono font-medium text-white transition-colors" type="button">
+<span class="w-2 h-2 rounded-full bg-brand-primary"></span>
+<span class="font-bold">NIFTY 50 Spot</span>
+<span class="text-brand-muted text-[10px] ml-0.5">▾</span>
+</button>
+</div>
+<div class="h-4 w-px bg-brand-border hidden sm:block"></div>
+<!-- Timeframe Selector -->
+<div class="flex items-center bg-brand-surface rounded p-0.5 border border-brand-border font-mono text-xs">
+<button class="px-2 py-1 rounded text-brand-muted hover:text-white hover:bg-brand-panel transition-colors" type="button">1m</button>
+<button class="px-2 py-1 rounded text-brand-muted hover:text-white hover:bg-brand-panel transition-colors" type="button">3m</button>
+<button class="px-2.5 py-1 rounded bg-brand-primary text-black font-bold shadow transition-colors" type="button">5m</button>
+<button class="px-2 py-1 rounded text-brand-muted hover:text-white hover:bg-brand-panel transition-colors" type="button">15m</button>
+<button class="px-2 py-1 rounded text-brand-muted hover:text-white hover:bg-brand-panel transition-colors" type="button">1h</button>
+<button class="px-2 py-1 rounded text-brand-muted hover:text-white hover:bg-brand-panel transition-colors" type="button">1D</button>
+</div>
+<div class="h-4 w-px bg-brand-border hidden md:block"></div>
+<!-- Chart Type Selector -->
+<div class="flex items-center bg-brand-surface rounded p-0.5 border border-brand-border text-xs font-mono">
+<button class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-brand-panel text-brand-primary font-medium" type="button">
+<span class="material-symbols-outlined text-[14px]">candlestick_chart</span>
+<span>Candles</span>
+</button>
+<button class="flex items-center gap-1.5 px-2.5 py-1 rounded text-brand-muted hover:text-white transition-colors" type="button">
+<span class="material-symbols-outlined text-[14px]">show_chart</span>
+<span>Line</span>
+</button>
+</div>
+</div>
+<!-- Right Controls: Indicators & Live Candle Timer -->
+<div class="flex items-center gap-3">
+<!-- Active Overlays Indicators -->
+<div class="hidden xl:flex items-center gap-2 text-xs font-mono">
+<span class="px-2.5 py-1 rounded bg-brand-primary/10 border border-brand-primary/30 text-brand-primary font-medium flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-brand-primary"></span>SuperTrend (10,3)
+                </span>
+<span class="px-2.5 py-1 rounded bg-brand-sky/10 border border-brand-sky/30 text-brand-sky font-medium flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-brand-sky"></span>VWAP (Anchor)
+                </span>
+</div>
+<!-- Indicators Catalog trigger -->
+<button class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-brand-surface hover:bg-brand-surface/80 border border-brand-border text-xs font-mono text-brand-subtext hover:text-white transition-colors">
+<span class="material-symbols-outlined text-[14px]">tune</span>
+<span>Indicators</span>
+</button>
+<!-- Live Countdown Clock -->
+<div class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-brand-surface border border-brand-border font-mono text-xs">
+<span class="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse"></span>
+<span class="text-brand-muted">CANDLE:</span>
+<span class="text-brand-primary font-bold tracking-wider" id="candle-timer">03:15 rem</span>
+</div>
+</div>
+</div>
+<!-- Clean Horizontal OHLC Strip with Generous Spacing -->
+<div class="pt-2 border-t border-brand-border/60 flex flex-wrap items-center justify-between gap-y-2 text-xs font-mono">
+<div class="flex flex-wrap items-center gap-x-6 gap-y-1">
+<span class="text-white font-bold tracking-tight">NIFTY 50 INDEX</span>
+<span class="text-brand-subtext">O: <strong class="text-white font-semibold">26,210.00</strong></span>
+<span class="text-brand-subtext">H: <strong class="text-brand-primary font-semibold">26,268.40</strong></span>
+<span class="text-brand-subtext">L: <strong class="text-brand-danger font-semibold">26,202.10</strong></span>
+<span class="text-brand-subtext">C: <strong class="text-brand-primary font-bold text-[13px]">26,250.00</strong></span>
+<span class="text-brand-primary font-semibold">Chg: +142.30 (+0.54%)</span>
+</div>
+<div class="flex items-center gap-4 text-brand-muted text-[11px]">
+<span>Vol: <strong class="text-white font-medium">4.82M</strong></span>
+<span>VWAP: <strong class="text-brand-sky font-medium">26,198.50</strong></span>
+<span>ST Support: <strong class="text-brand-primary font-medium">26,140.00</strong></span>
+</div>
+</div>
+</div>
+<!-- MAIN EXPANSIVE CANDLESTICK CHART (SVG) -->
+<div class="bg-brand-panel border border-brand-border rounded-lg p-3 relative flex-1 flex flex-col min-h-[380px] shadow-sm">
+<!-- Drawing Mini Tools Rail (Floating clean horizontal bar on chart top-left) -->
+<div class="absolute top-4 left-4 z-20 flex items-center bg-[#0E151E]/90 backdrop-blur border border-brand-border rounded p-1 gap-1 text-brand-subtext">
+<button class="w-6 h-6 rounded bg-brand-primary text-black flex items-center justify-center font-bold" title="Crosshair">
+<span class="material-symbols-outlined text-[14px]">near_me</span>
+</button>
+<button class="w-6 h-6 rounded hover:bg-brand-surface hover:text-white flex items-center justify-center transition-colors" title="Trendline">
+<span class="material-symbols-outlined text-[14px]">timeline</span>
+</button>
+<button class="w-6 h-6 rounded hover:bg-brand-surface hover:text-white flex items-center justify-center transition-colors" title="Horizontal Ray">
+<span class="material-symbols-outlined text-[14px]">horizontal_rule</span>
+</button>
+<button class="w-6 h-6 rounded hover:bg-brand-surface hover:text-white flex items-center justify-center transition-colors" title="Fibonacci Retracement">
+<span class="material-symbols-outlined text-[14px]">linear_scale</span>
+</button>
+<button class="w-6 h-6 rounded hover:bg-brand-surface hover:text-white flex items-center justify-center transition-colors" title="Ruler / Measure">
+<span class="material-symbols-outlined text-[14px]">straighten</span>
+</button>
+</div>
+<!-- Chart Area with Full SVG Graphic -->
+<div class="relative w-full h-full min-h-[340px] flex-1">
+<svg class="w-full h-full" preserveaspectratio="none" viewbox="0 0 1000 360">
+<defs>
+<!-- SuperTrend Support Area Gradient -->
+<lineargradient id="supertrend-fill" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="#00C896" stop-opacity="0.18"></stop>
+<stop offset="100%" stop-color="#00C896" stop-opacity="0.01"></stop>
+</lineargradient>
+</defs>
+<!-- Subtle Horizontal Price Grid -->
+<line stroke="#1E2C3A" stroke-dasharray="3,4" stroke-width="1" x1="0" x2="920" y1="50" y2="50"></line>
+<line stroke="#1E2C3A" stroke-dasharray="3,4" stroke-width="1" x1="0" x2="920" y1="110" y2="110"></line>
+<line stroke="#1E2C3A" stroke-dasharray="3,4" stroke-width="1" x1="0" x2="920" y1="170" y2="170"></line>
+<line stroke="#1E2C3A" stroke-dasharray="3,4" stroke-width="1" x1="0" x2="920" y1="230" y2="230"></line>
+<line stroke="#1E2C3A" stroke-dasharray="3,4" stroke-width="1" x1="0" x2="920" y1="290" y2="290"></line>
+<!-- Subtle Vertical Time Grids -->
+<line stroke="#16202B" stroke-width="1" x1="100" x2="100" y1="0" y2="330"></line>
+<line stroke="#16202B" stroke-width="1" x1="220" x2="220" y1="0" y2="330"></line>
+<line stroke="#16202B" stroke-width="1" x1="340" x2="340" y1="0" y2="330"></line>
+<line stroke="#16202B" stroke-width="1" x1="460" x2="460" y1="0" y2="330"></line>
+<line stroke="#16202B" stroke-width="1" x1="580" x2="580" y1="0" y2="330"></line>
+<line stroke="#16202B" stroke-width="1" x1="700" x2="700" y1="0" y2="330"></line>
+<line stroke="#16202B" stroke-width="1" x1="820" x2="820" y1="0" y2="330"></line>
+<!-- SuperTrend Trailing Support Ribbon -->
+<polygon fill="url(#supertrend-fill)" points="50,290 120,285 200,280 280,270 360,250 440,240 520,232 600,220 680,215 760,205 840,195 910,190 910,330 50,330"></polygon>
+<path d="M 50,290 L 120,285 L 200,280 L 280,270 L 360,250 L 440,240 L 520,232 L 600,220 L 680,215 L 760,205 L 840,195 L 910,190" fill="none" stroke="#00C896" stroke-width="2"></path>
+<!-- VWAP Benchmark Line (Sky Blue dashed) -->
+<path d="M 50,230 C 200,215 400,200 600,185 S 800,175 910,170" fill="none" stroke="#58A6FF" stroke-dasharray="6,4" stroke-width="1.8"></path>
+<!-- Bottom Volume Histogram Bars -->
+<rect fill="#F06469" height="25" opacity="0.45" rx="1" width="12" x="94" y="305"></rect>
+<rect fill="#00C896" height="35" opacity="0.45" rx="1" width="12" x="144" y="295"></rect>
+<rect fill="#F06469" height="20" opacity="0.45" rx="1" width="12" x="194" y="310"></rect>
+<rect fill="#00C896" height="45" opacity="0.45" rx="1" width="12" x="244" y="285"></rect>
+<rect fill="#F06469" height="30" opacity="0.45" rx="1" width="12" x="294" y="300"></rect>
+<rect fill="#00C896" height="70" opacity="0.7" rx="1" width="12" x="344" y="260"></rect>
+<rect fill="#00C896" height="55" opacity="0.55" rx="1" width="12" x="394" y="275"></rect>
+<rect fill="#00C896" height="50" opacity="0.55" rx="1" width="12" x="444" y="280"></rect>
+<rect fill="#F06469" height="40" opacity="0.45" rx="1" width="12" x="494" y="290"></rect>
+<rect fill="#00C896" height="60" opacity="0.6" rx="1" width="12" x="544" y="270"></rect>
+<rect fill="#00C896" height="65" opacity="0.65" rx="1" width="12" x="594" y="265"></rect>
+<rect fill="#00C896" height="80" opacity="0.75" rx="1" width="12" x="644" y="250"></rect>
+<rect fill="#F06469" height="45" opacity="0.45" rx="1" width="12" x="694" y="285"></rect>
+<rect fill="#00C896" height="75" opacity="0.8" rx="1" width="12" x="744" y="255"></rect>
+<rect fill="#00C896" height="90" opacity="0.9" rx="1" width="14" x="794" y="240"></rect>
+<!-- Candlestick Series (Clear Green #00C896 and Red #F06469 with distinct wicks) -->
+<!-- Candle 1 - Red -->
+<line stroke="#F06469" stroke-width="1.5" x1="100" x2="100" y1="230" y2="280"></line>
+<rect fill="#F06469" height="25" rx="1" width="12" x="94" y="245"></rect>
+<!-- Candle 2 - Green -->
+<line stroke="#00C896" stroke-width="1.5" x1="150" x2="150" y1="225" y2="275"></line>
+<rect fill="#00C896" height="30" rx="1" width="12" x="144" y="235"></rect>
+<!-- Candle 3 - Red -->
+<line stroke="#F06469" stroke-width="1.5" x1="200" x2="200" y1="220" y2="265"></line>
+<rect fill="#F06469" height="22" rx="1" width="12" x="194" y="230"></rect>
+<!-- Candle 4 - Green -->
+<line stroke="#00C896" stroke-width="1.5" x1="250" x2="250" y1="200" y2="250"></line>
+<rect fill="#00C896" height="32" rx="1" width="12" x="244" y="210"></rect>
+<!-- Candle 5 - Red (Consolidation pullback) -->
+<line stroke="#F06469" stroke-width="1.5" x1="300" x2="300" y1="205" y2="245"></line>
+<rect fill="#F06469" height="18" rx="1" width="12" x="294" y="212"></rect>
+<!-- Candle 6 (11:15 IST) - ALGO EXECUTION BREAKOUT CANDLE -->
+<line stroke="#00C896" stroke-width="2" x1="350" x2="350" y1="160" y2="235"></line>
+<rect fill="#00C896" height="52" rx="1" width="14" x="343" y="170"></rect>
+<!-- Candle 7 - Green continuation -->
+<line stroke="#00C896" stroke-width="1.5" x1="400" x2="400" y1="145" y2="200"></line>
+<rect fill="#00C896" height="35" rx="1" width="12" x="394" y="155"></rect>
+<!-- Candle 8 - Green -->
+<line stroke="#00C896" stroke-width="1.5" x1="450" x2="450" y1="130" y2="185"></line>
+<rect fill="#00C896" height="35" rx="1" width="12" x="444" y="140"></rect>
+<!-- Candle 9 - Red pause -->
+<line stroke="#F06469" stroke-width="1.5" x1="500" x2="500" y1="135" y2="175"></line>
+<rect fill="#F06469" height="20" rx="1" width="12" x="494" y="142"></rect>
+<!-- Candle 10 - Green expansion -->
+<line stroke="#00C896" stroke-width="1.5" x1="550" x2="550" y1="110" y2="160"></line>
+<rect fill="#00C896" height="32" rx="1" width="12" x="544" y="120"></rect>
+<!-- Candle 11 - Green -->
+<line stroke="#00C896" stroke-width="1.5" x1="600" x2="600" y1="95" y2="150"></line>
+<rect fill="#00C896" height="34" rx="1" width="12" x="594" y="105"></rect>
+<!-- Candle 12 - Green strong surge -->
+<line stroke="#00C896" stroke-width="1.8" x1="650" x2="650" y1="75" y2="135"></line>
+<rect fill="#00C896" height="42" rx="1" width="14" x="643" y="85"></rect>
+<!-- Candle 13 - Small Red test -->
+<line stroke="#F06469" stroke-width="1.5" x1="700" x2="700" y1="80" y2="120"></line>
+<rect fill="#F06469" height="18" rx="1" width="12" x="694" y="88"></rect>
+<!-- Candle 14 - Green continuation -->
+<line stroke="#00C896" stroke-width="1.5" x1="750" x2="750" y1="65" y2="115"></line>
+<rect fill="#00C896" height="36" rx="1" width="12" x="744" y="72"></rect>
+<!-- Candle 15 - Current Forming Bull Candle (at 26,250 - Y: 110) -->
+<line stroke="#00C896" stroke-width="2" x1="800" x2="800" y1="50" y2="105"></line>
+<rect class="animate-pulse" fill="#00C896" height="38" rx="1.5" width="16" x="792" y="58"></rect>
+<!-- Crosshair Horiz & Vert tracking at LTP 26,250 -->
+<line opacity="0.7" stroke="#00C896" stroke-dasharray="2,2" stroke-width="1" x1="0" x2="920" y1="110" y2="110"></line>
+<line opacity="0.7" stroke="#00C896" stroke-dasharray="2,2" stroke-width="1" x1="800" x2="800" y1="0" y2="330"></line>
+<circle cx="800" cy="110" fill="#00C896" r="4"></circle>
+<!-- RIGHT PRICE SCALE AXIS -->
+<rect fill="#0E151E" height="330" opacity="0.9" width="80" x="920" y="0"></rect>
+<line stroke="#1E2C3A" stroke-width="1" x1="920" x2="920" y1="0" y2="330"></line>
+<!-- Clean Price Ticks -->
+<text fill="#7D8B99" font-family="JetBrains Mono" font-size="11" x="930" y="54">26,280.00</text>
+<!-- Current Price LTP Highlight Badge -->
+<rect fill="#00C896" height="22" rx="2" width="79" x="921" y="99"></rect>
+<text fill="#000000" font-family="JetBrains Mono" font-size="11" font-weight="700" x="926" y="114">26,250.00</text>
+<text fill="#7D8B99" font-family="JetBrains Mono" font-size="11" x="930" y="174">26,220.00</text>
+<text fill="#7D8B99" font-family="JetBrains Mono" font-size="11" x="930" y="234">26,190.00</text>
+<text fill="#7D8B99" font-family="JetBrains Mono" font-size="11" x="930" y="294">26,160.00</text>
+<!-- Target 1 & SL Guide Rays on Canvas -->
+<line stroke="#00C896" stroke-dasharray="4,4" stroke-width="1.2" x1="350" x2="920" y1="50" y2="50"></line>
+<line stroke="#F06469" stroke-dasharray="4,4" stroke-width="1.2" x1="350" x2="920" y1="270" y2="270"></line>
+<!-- Bottom Time Axis Labels -->
+<line stroke="#1E2C3A" stroke-width="1" x1="0" x2="920" y1="330" y2="330"></line>
+<text fill="#7D8B99" font-family="JetBrains Mono" font-size="10" text-anchor="middle" x="100" y="348">10:45</text>
+<text fill="#7D8B99" font-family="JetBrains Mono" font-size="10" text-anchor="middle" x="220" y="348">11:00</text>
+<text fill="#00C896" font-family="JetBrains Mono" font-size="10" font-weight="600" text-anchor="middle" x="350" y="348">11:15</text>
+<text fill="#7D8B99" font-family="JetBrains Mono" font-size="10" text-anchor="middle" x="470" y="348">11:25</text>
+<text fill="#7D8B99" font-family="JetBrains Mono" font-size="10" text-anchor="middle" x="590" y="348">11:35</text>
+<text fill="#00C896" font-family="JetBrains Mono" font-size="10" font-weight="700" text-anchor="middle" x="800" y="348">11:45</text>
+</svg>
+<!-- Execution Signal Annotation Flag -->
+<div class="absolute left-[35%] top-[50%] -translate-y-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded bg-brand-primary text-black font-mono text-[11px] font-bold shadow-lg border border-white/20">
+<span class="material-symbols-outlined text-[15px]">arrow_upward</span>
+<span>BUY CE SIGNAL @ 26,190.00 (11:15 IST)</span>
+</div>
+<!-- Target & Stop Badges on Right Axis Margin -->
+<div class="absolute right-[82px] top-[14%] flex items-center gap-1 px-2 py-0.5 rounded bg-brand-primary/20 border border-brand-primary text-brand-primary font-mono text-[10px] font-semibold">
+<span>Target 1: 26,280</span>
+</div>
+<div class="absolute right-[82px] top-[74%] flex items-center gap-1 px-2 py-0.5 rounded bg-brand-danger/20 border border-brand-danger text-brand-danger font-mono text-[10px] font-semibold">
+<span>SL: 26,160</span>
+</div>
+</div>
+</div>
+<!-- SYNCHRONIZED SUB-PANES (Clean, Well-Spaced, Stacked) -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+<!-- PANEL A: MACD (12, 26, 9) -->
+<div class="bg-brand-panel border border-brand-border rounded-lg p-3 flex flex-col justify-between shadow-sm">
+<div class="flex items-center justify-between pb-2 border-b border-brand-border/40 font-mono text-xs">
+<div class="flex items-center gap-1.5">
+<span class="font-bold text-white">MACD</span>
+<span class="text-brand-muted text-[11px]">(12, 26, 9)</span>
+</div>
+<span class="text-brand-primary text-[10px] font-bold uppercase tracking-wider bg-brand-primary/10 px-1.5 py-0.5 rounded">Bull Cross</span>
+</div>
+<!-- Value Readout Strip -->
+<div class="py-1 flex items-center justify-between font-mono text-[11px]">
+<span class="text-brand-sky font-medium">MACD: +18.42</span>
+<span class="text-brand-amber font-medium">Sig: +12.07</span>
+<span class="text-brand-primary font-bold">Hist: +6.35</span>
+</div>
+<!-- Crisp MACD SVG Graph -->
+<div class="h-16 w-full pt-1">
+<svg class="w-full h-full" preserveaspectratio="none" viewbox="0 0 300 60">
+<!-- Zero Line -->
+<line stroke="#1E2C3A" stroke-dasharray="2,3" stroke-width="1" x1="0" x2="300" y1="36" y2="36"></line>
+<!-- Histogram Bars -->
+<rect fill="#F06469" height="12" opacity="0.6" width="6" x="20" y="36"></rect>
+<rect fill="#F06469" height="15" opacity="0.6" width="6" x="40" y="36"></rect>
+<rect fill="#F06469" height="8" opacity="0.6" width="6" x="60" y="36"></rect>
+<rect fill="#F06469" height="3" opacity="0.6" width="6" x="80" y="36"></rect>
+<rect fill="#00C896" height="6" opacity="0.7" width="6" x="100" y="30"></rect>
+<rect fill="#00C896" height="11" opacity="0.75" width="6" x="120" y="25"></rect>
+<rect fill="#00C896" height="17" opacity="0.8" width="6" x="140" y="19"></rect>
+<rect fill="#00C896" height="22" opacity="0.85" width="6" x="160" y="14"></rect>
+<rect fill="#00C896" height="26" opacity="0.9" width="6" x="180" y="10"></rect>
+<rect fill="#00C896" height="28" opacity="0.9" width="6" x="200" y="8"></rect>
+<rect fill="#00C896" height="30" opacity="0.95" width="6" x="220" y="6"></rect>
+<rect fill="#00C896" height="31" opacity="1" width="6" x="240" y="5"></rect>
+<!-- MACD Cyan Curve -->
+<path d="M 10,48 C 60,50 100,42 140,24 S 200,12 250,8" fill="none" stroke="#58A6FF" stroke-width="1.8"></path>
+<!-- Signal Amber Curve -->
+<path d="M 10,46 C 60,48 100,44 140,32 S 200,20 250,15" fill="none" stroke="#F2B824" stroke-dasharray="3,2" stroke-width="1.5"></path>
+</svg>
+</div>
+</div>
+<!-- PANEL B: ADX (14) & DIRECTIONAL MOVEMENT -->
+<div class="bg-brand-panel border border-brand-border rounded-lg p-3 flex flex-col justify-between shadow-sm">
+<div class="flex items-center justify-between pb-2 border-b border-brand-border/40 font-mono text-xs">
+<div class="flex items-center gap-1.5">
+<span class="font-bold text-white">ADX</span>
+<span class="text-brand-muted text-[11px]">(14)</span>
+</div>
+<span class="text-brand-primary text-[10px] font-bold uppercase tracking-wider bg-brand-primary/10 px-1.5 py-0.5 rounded">Strong Trend</span>
+</div>
+<!-- Value Readout Strip -->
+<div class="py-1 flex items-center justify-between font-mono text-[11px]">
+<span class="text-white font-bold">ADX: 31.5</span>
+<span class="text-brand-primary font-medium">+DI: 28.4</span>
+<span class="text-brand-danger font-medium">-DI: 14.2</span>
+</div>
+<!-- Clean ADX Graph with Trend Gate -->
+<div class="h-16 w-full pt-1">
+<svg class="w-full h-full" preserveaspectratio="none" viewbox="0 0 300 60">
+<!-- Trend Gate 25.0 Line -->
+<line opacity="0.6" stroke="#7D8B99" stroke-dasharray="2,3" stroke-width="1" x1="0" x2="300" y1="32" y2="32"></line>
+<text fill="#7D8B99" font-family="JetBrains Mono" font-size="8" x="252" y="30">Trend Gate 25</text>
+<!-- +DI Green Path -->
+<path d="M 10,45 C 80,42 140,30 200,18 S 260,14 290,12" fill="none" stroke="#00C896" stroke-width="1.5"></path>
+<!-- -DI Red Path -->
+<path d="M 10,20 C 80,24 140,36 200,46 S 260,50 290,52" fill="none" stroke="#F06469" stroke-width="1.5"></path>
+<!-- ADX Solid White Line -->
+<path d="M 10,40 C 80,38 140,32 200,22 S 260,14 290,10" fill="none" stroke="#FFFFFF" stroke-width="2"></path>
+</svg>
+</div>
+</div>
+<!-- PANEL C: INTRADAY PCR SENTIMENT -->
+<div class="bg-brand-panel border border-brand-border rounded-lg p-3 flex flex-col justify-between shadow-sm">
+<div class="flex items-center justify-between pb-2 border-b border-brand-border/40 font-mono text-xs">
+<div class="flex items-center gap-1.5">
+<span class="font-bold text-white">INTRADAY PCR</span>
+<span class="text-brand-muted text-[11px]">(NIFTY)</span>
+</div>
+<span class="text-brand-primary text-[10px] font-bold uppercase tracking-wider bg-brand-primary/10 px-1.5 py-0.5 rounded">Put Writing Ramp</span>
+</div>
+<!-- Value Readout Strip -->
+<div class="py-1 flex items-center justify-between font-mono text-[11px]">
+<span class="text-brand-primary font-bold text-[12px]">Current: 1.24</span>
+<span class="text-brand-subtext">Open: 1.10</span>
+<span class="text-brand-muted">Base: 1.00</span>
+</div>
+<!-- Clean PCR Curve Graph -->
+<div class="h-16 w-full pt-1">
+<svg class="w-full h-full" preserveaspectratio="none" viewbox="0 0 300 60">
+<defs>
+<lineargradient id="pcr-gradient" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="#00C896" stop-opacity="0.25"></stop>
+<stop offset="100%" stop-color="#00C896" stop-opacity="0.0"></stop>
+</lineargradient>
+</defs>
+<!-- Neutral Baseline 1.00 -->
+<line stroke="#1E2C3A" stroke-dasharray="2,3" stroke-width="1" x1="0" x2="300" y1="48" y2="48"></line>
+<text fill="#7D8B99" font-family="JetBrains Mono" font-size="8" x="260" y="45">Base 1.0</text>
+<!-- Gradient Fill Under PCR Curve -->
+<polygon fill="url(#pcr-gradient)" points="10,50 60,46 120,40 180,30 240,20 285,12 285,55 10,55"></polygon>
+<!-- Ascending PCR Curve -->
+<path d="M 10,50 L 60,46 L 120,40 L 180,30 L 240,20 L 285,12" fill="none" stroke="#00C896" stroke-width="2"></path>
+<circle cx="285" cy="12" fill="#00C896" r="3.5"></circle>
+</svg>
+</div>
+</div>
+</div>
+</div>
+<!-- COLLAPSIBLE RIGHT ANALYSIS SIDEBAR -->
+<aside class="w-80 flex flex-col gap-3 transition-all duration-300" id="option-sidebar">
+<!-- CARD 1: ACTIVE OPTION SNAPSHOT -->
+<div class="bg-brand-panel border border-brand-border rounded-lg p-4 shadow-sm flex flex-col gap-3">
+<div class="flex items-center justify-between pb-2 border-b border-brand-border/60">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px] text-brand-primary">bolt</span>
+<span class="font-mono text-xs font-bold text-white uppercase tracking-wider">Candidate Spotlight</span>
+</div>
+<span class="px-2 py-0.5 rounded bg-brand-primary/10 border border-brand-primary/30 text-brand-primary font-mono text-[10px] font-bold">ITM CALL</span>
+</div>
+<div>
+<div class="flex items-center justify-between">
+<span class="font-mono font-bold text-[15px] text-white">NIFTY 26200 CE</span>
+<span class="font-mono text-[11px] text-brand-muted">WEEKLY 27-MAR</span>
+</div>
+<div class="flex items-baseline justify-between mt-1">
+<div class="flex items-baseline gap-2">
+<span class="font-mono text-2xl font-bold text-brand-primary">₹146.00</span>
+<span class="font-mono text-xs font-semibold text-brand-primary">+18.40 (+14.4%)</span>
+</div>
+<span class="font-mono text-[10px] text-brand-subtext bg-brand-surface px-1.5 py-0.5 rounded border border-brand-border">Spot 26,250</span>
+</div>
+</div>
+<!-- GREEKS GRID: 2x2 with Ample Padding -->
+<div class="bg-brand-surface border border-brand-border rounded-md p-2.5">
+<span class="font-mono text-[10px] uppercase tracking-wider text-brand-muted block mb-2 font-semibold">Option Greeks Matrix</span>
+<div class="grid grid-cols-2 gap-2.5 font-mono text-xs">
+<div class="flex items-center justify-between bg-brand-panel px-2.5 py-2 rounded border border-brand-border/50">
+<span class="text-brand-muted text-[11px]">Delta (Δ)</span>
+<span class="font-bold text-brand-primary">+0.58</span>
+</div>
+<div class="flex items-center justify-between bg-brand-panel px-2.5 py-2 rounded border border-brand-border/50">
+<span class="text-brand-muted text-[11px]">Gamma (γ)</span>
+<span class="font-bold text-white">0.0018</span>
+</div>
+<div class="flex items-center justify-between bg-brand-panel px-2.5 py-2 rounded border border-brand-border/50">
+<span class="text-brand-muted text-[11px]">Theta (θ)</span>
+<span class="font-bold text-brand-danger">-11.20</span>
+</div>
+<div class="flex items-center justify-between bg-brand-panel px-2.5 py-2 rounded border border-brand-border/50">
+<span class="text-brand-muted text-[11px]">Vega (ν)</span>
+<span class="font-bold text-brand-sky">+8.40</span>
+</div>
+</div>
+</div>
+<!-- Position Telemetry Pill -->
+<div class="flex items-center justify-between px-3 py-2 rounded bg-brand-surface border border-brand-border font-mono text-xs">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-brand-primary animate-pulse"></span>
+<span class="text-white font-medium">Position:</span>
+</div>
+<div class="text-right">
+<span class="text-white font-bold">+150 Qty (2 Lots)</span>
+<span class="block text-brand-primary font-semibold text-[11px]">+₹2,760.00 P&amp;L</span>
+</div>
+</div>
+</div>
+<!-- CARD 2: 5-INDICATOR ALIGNMENT CHECKLIST -->
+<div class="bg-brand-panel border border-brand-border rounded-lg p-4 shadow-sm flex flex-col gap-2.5">
+<div class="flex items-center justify-between pb-2 border-b border-brand-border/60">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px] text-brand-primary">verified</span>
+<span class="font-mono text-xs font-bold text-white uppercase tracking-wider">Indicator Alignment</span>
+</div>
+<span class="px-2 py-0.5 rounded bg-brand-primary text-black font-mono text-[10px] font-bold">5/5 PASS</span>
+</div>
+<div class="flex flex-col gap-1.5 font-mono text-xs">
+<!-- Indicator 1 -->
+<div class="flex items-center justify-between px-2.5 py-1.5 rounded bg-brand-surface border border-brand-border/40">
+<div class="flex items-center gap-2">
+<span class="w-4 h-4 rounded-full bg-brand-primary/20 text-brand-primary flex items-center justify-center text-[10px] font-bold">✓</span>
+<span class="text-white">SuperTrend (10,3)</span>
+</div>
+<span class="text-brand-primary font-semibold text-[11px]">Bullish Support</span>
+</div>
+<!-- Indicator 2 -->
+<div class="flex items-center justify-between px-2.5 py-1.5 rounded bg-brand-surface border border-brand-border/40">
+<div class="flex items-center gap-2">
+<span class="w-4 h-4 rounded-full bg-brand-primary/20 text-brand-primary flex items-center justify-center text-[10px] font-bold">✓</span>
+<span class="text-white">MACD Crossover</span>
+</div>
+<span class="text-brand-primary font-semibold text-[11px]">+6.35 Hist</span>
+</div>
+<!-- Indicator 3 -->
+<div class="flex items-center justify-between px-2.5 py-1.5 rounded bg-brand-surface border border-brand-border/40">
+<div class="flex items-center gap-2">
+<span class="w-4 h-4 rounded-full bg-brand-primary/20 text-brand-primary flex items-center justify-center text-[10px] font-bold">✓</span>
+<span class="text-white">Anchored VWAP</span>
+</div>
+<span class="text-brand-primary font-semibold text-[11px]">Above (+51.5)</span>
+</div>
+<!-- Indicator 4 -->
+<div class="flex items-center justify-between px-2.5 py-1.5 rounded bg-brand-surface border border-brand-border/40">
+<div class="flex items-center gap-2">
+<span class="w-4 h-4 rounded-full bg-brand-primary/20 text-brand-primary flex items-center justify-center text-[10px] font-bold">✓</span>
+<span class="text-white">ADX (14) Trend</span>
+</div>
+<span class="text-brand-primary font-semibold text-[11px]">31.5 Strong</span>
+</div>
+<!-- Indicator 5 -->
+<div class="flex items-center justify-between px-2.5 py-1.5 rounded bg-brand-surface border border-brand-border/40">
+<div class="flex items-center gap-2">
+<span class="w-4 h-4 rounded-full bg-brand-primary/20 text-brand-primary flex items-center justify-center text-[10px] font-bold">✓</span>
+<span class="text-white">Intraday PCR</span>
+</div>
+<span class="text-brand-primary font-semibold text-[11px]">1.24 Ramp</span>
+</div>
+</div>
+</div>
+<!-- CARD 3: QUICK ACTIONS -->
+<div class="bg-brand-panel border border-brand-border rounded-lg p-4 shadow-sm flex flex-col gap-2">
+<span class="font-mono text-[10px] uppercase tracking-wider text-brand-muted font-bold block mb-1">Quick Actions</span>
+<button class="w-full py-2 px-3 rounded bg-brand-surface hover:bg-brand-border text-white text-xs font-mono font-medium transition-colors border border-brand-border flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[15px] text-brand-sky">table_view</span>
+<span>View in Option Chain</span>
+</button>
+<button class="w-full py-2 px-3 rounded bg-brand-surface hover:bg-brand-border text-white text-xs font-mono font-medium transition-colors border border-brand-border flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[15px] text-brand-primary">terminal</span>
+<span>Open in Paper Terminal</span>
+</button>
+<button class="w-full py-2 px-3 rounded bg-brand-danger/10 hover:bg-brand-danger/20 text-brand-danger text-xs font-mono font-semibold transition-colors border border-brand-danger/30 flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[15px]">exit_to_app</span>
+<span>Simulate Exit</span>
+</button>
+</div>
+</aside>
+</div>
+</div>
+<!-- Interactive script for Timer & Sidebar Collapse -->
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // Countdown Timer Emulation
+      let secondsLeft = 195; // 3m 15s
+      const timerElement = document.getElementById('candle-timer');
+      if (timerElement) {
+        setInterval(() => {
+          if (secondsLeft <= 0) {
+            secondsLeft = 300;
+          } else {
+            secondsLeft--;
+          }
+          const m = Math.floor(secondsLeft / 60).toString().padStart(2, '0');
+          const s = (secondsLeft % 60).toString().padStart(2, '0');
+          timerElement.textContent = `${m}:${s} rem`;
+        }, 1000);
+      }
+
+      // Sidebar Toggle
+      const toggleBtn = document.getElementById('toggle-sidebar-btn');
+      const sidebar = document.getElementById('option-sidebar');
+      if (toggleBtn && sidebar) {
+        toggleBtn.addEventListener('click', () => {
+          sidebar.classList.toggle('hidden');
+        });
+      }
+    });
+  </script>
+</body></html>
