@@ -13,6 +13,12 @@ vi.mock('./api', () => ({
   saveConfiguration: vi.fn(),
   assessNativeHistory: api.assess,
   preparePaperMonitor: vi.fn(),
+  uploadCalendar: vi.fn(),
+  approveCalendar: vi.fn(),
+  rejectCalendar: vi.fn(),
+  updateCalendarEntries: vi.fn(),
+  requestMode: vi.fn(),
+  MAX_CALENDAR_BYTES: 2 * 1024 * 1024,
 }))
 vi.mock('@/components/socket/SocketProvider', () => ({
   useSocketContext: socketContext.read,

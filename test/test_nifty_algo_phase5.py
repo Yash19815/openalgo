@@ -687,3 +687,19 @@ def test_mode_api_post(client, store, monkeypatch, caplog):
     stale = post({"mode": "PAPER", "revision": 1})
     assert stale.status_code == 409 and stale.json["code"] == "REVISION_CONFLICT"
     assert client.get("/api/nifty-algo/mode").json["data"]["mode"] == "PAPER"
+
+
+def test_risk_api_reports_calendar_approval_read_only(client, store, monkeypatch):
+    from datetime import datetime
+
+    from test.nifty_calendar_helpers import seed_approved_nfo_calendar
+
+    seed_auth_sources(monkeypatch)
+    _login(client)
+    year = datetime.now(session_calendar.IST).year
+    blocked = client.get("/api/nifty-algo/risk").json["data"]["calendar"]
+    assert blocked == {"year": year, "status": "CALENDAR_UNAPPROVED", "approved_version_id": None}
+    assert store.calendar_versions(USER) == []
+    version = seed_approved_nfo_calendar(store, USER, year)
+    approved = client.get("/api/nifty-algo/risk").json["data"]["calendar"]
+    assert approved == {"year": year, "status": "APPROVED", "approved_version_id": version["id"]}

@@ -3,6 +3,7 @@ import {
   Activity,
   BarChart3,
   BookOpen,
+  CalendarDays,
   CandlestickChart,
   FlaskConical,
   LayoutDashboard,
@@ -10,9 +11,10 @@ import {
   Settings2,
   ShieldCheck,
   Square,
+  Telescope,
   Zap,
 } from 'lucide-react'
-import { type ReactNode, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { useSocketContext } from '@/components/socket/SocketProvider'
 import { Button } from '@/components/ui/button'
@@ -35,6 +37,12 @@ import {
   readNifty,
   saveConfiguration,
 } from './api'
+import { CalendarBanner, CalendarPanel } from './CalendarPanel'
+import { KeySettings } from './KeySettings'
+import { Panel } from './parts'
+import { RiskLocksPanel } from './RiskLocksPanel'
+import { OpportunitiesPanel, ShadowPanel } from './ShadowResearchPanel'
+import { TradingModePanel } from './TradingModePanel'
 import './workspace.css'
 
 const pages = [
@@ -43,8 +51,10 @@ const pages = [
   ['terminal', 'Paper Trading', Play],
   ['positions', 'Positions & Orders', BookOpen],
   ['performance', 'Performance', BarChart3],
+  ['research', 'Shadow & Research', Telescope],
   ['configuration', 'Strategy Settings', Settings2],
   ['risk', 'Risk Management', ShieldCheck],
+  ['calendar', 'Session Calendar', CalendarDays],
   ['connections', 'Connections & Setup', Zap],
 ] as const
 
@@ -53,15 +63,6 @@ function valueText(value: unknown): string {
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
   if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
-}
-
-function Panel({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="nifty-panel">
-      <h2>{title}</h2>
-      {children}
-    </section>
-  )
 }
 
 function Fields({ data }: { data: DataRecord | undefined }) {
@@ -196,6 +197,15 @@ function Configuration() {
       queryClient.invalidateQueries({ queryKey: niftyKeys.all })
     },
   })
+  const text = draft || JSON.stringify(query.data?.configuration ?? {}, null, 2)
+  let current: DataRecord | null = null
+  try {
+    const parsed: unknown = JSON.parse(text)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+      current = parsed as DataRecord
+  } catch {
+    current = null
+  }
   function submit() {
     try {
       const parsed: unknown = JSON.parse(draft || JSON.stringify(query.data?.configuration))
@@ -216,11 +226,15 @@ function Configuration() {
         <p role="alert">{query.error.message}</p>
       ) : (
         <>
+          <KeySettings
+            value={current}
+            onChange={(next) => setDraft(JSON.stringify(next, null, 2))}
+          />
           <label htmlFor="nifty-config">Versioned research parameters</label>
           <textarea
             id="nifty-config"
             className="nifty-config"
-            value={draft || JSON.stringify(query.data?.configuration, null, 2)}
+            value={text}
             onChange={(event) => setDraft(event.target.value)}
             spellCheck={false}
           />
@@ -330,6 +344,7 @@ export default function Workspace() {
         {status.error && <p role="alert">Status unavailable. {status.error.message}</p>}
         {action.error && <p role="alert">{action.error.message}</p>}
         {monitor.error && <p role="alert">{monitor.error.message}</p>}
+        {page !== 'calendar' && <CalendarBanner />}
         {(page === 'overview' || page === 'terminal') && (
           <div className="nifty-controls">
             <Button variant="outline" disabled={monitor.isPending} onClick={() => monitor.mutate()}>
@@ -412,10 +427,23 @@ export default function Workspace() {
             <Resource name="trades" title="Trade journal" records />
           </>
         )}
+        {page === 'research' && (
+          <>
+            <ShadowPanel />
+            <OpportunitiesPanel />
+          </>
+        )}
         {page === 'configuration' && <Configuration />}
-        {page === 'risk' && <Resource name="risk" title="Risk controls & current utilization" />}
+        {page === 'risk' && (
+          <>
+            <RiskLocksPanel />
+            <Resource name="risk" title="Risk controls & current utilization" />
+          </>
+        )}
+        {page === 'calendar' && <CalendarPanel />}
         {page === 'connections' && (
           <>
+            <TradingModePanel />
             <Panel title="Startup readiness">
               <ul className="nifty-readiness">
                 {status.data?.readiness?.map((item, index) => (

@@ -222,11 +222,17 @@ def indicators():
 @nifty_algo_bp.route("/risk")
 @check_session_validity
 def risk():
+    from datetime import datetime
+
     from services.nifty_algo.trading_mode import mode_overview
 
     state = store().read(session["user"])
     executor = NiftyPaperExecutor(store(), session["user"])
     overview = mode_overview(store(), session["user"])
+    # Read-only: entries are refused with CALENDAR_UNAPPROVED until the current
+    # IST year has an approved NFO calendar version.
+    year = datetime.now(nifty_calendar.IST).year
+    approved = store().approved_calendar_version(session["user"], year)
     return success(
         {
             "mode": "PAPER_ONLY",
@@ -236,6 +242,11 @@ def risk():
             "account": store().account(session["user"]),
             "account_reconciled": store().account(session["user"])["reconciled"],
             "entry_locks": store().risk_locks(session["user"]),
+            "calendar": {
+                "year": year,
+                "status": "APPROVED" if approved else "CALENDAR_UNAPPROVED",
+                "approved_version_id": approved["id"] if approved else None,
+            },
             "readiness": executor.readiness(),
             "trading_mode": {
                 "mode": overview["mode"],
