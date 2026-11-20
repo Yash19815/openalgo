@@ -180,6 +180,8 @@ dependencies = [
   "litellm==1.106.6",
   "agno==3.0.5",
   "ddgs>=9.16.0",
+  "reportlab==5.1.0",
+  "pypdf==7.0.1",
 ]
 
 [tool.uv]

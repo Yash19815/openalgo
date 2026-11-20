@@ -5,6 +5,7 @@ The database lease fences ownership across application restarts.
 """
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from hashlib import sha256
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -12,8 +13,9 @@ from zoneinfo import ZoneInfo
 from utils.keyed_locks import KeyedLocks
 
 from .assessment import assess_current
+from .calendar import IST
 from .config import StrategyConfig
-from .contract_resolver import Resolver
+from .contract_resolver import Resolver, moneyness
 from .native_data import NativeDataAdapter
 from .paper_executor import NiftyPaperExecutor, OrderRefused, _charges
 from .protection import early_booking_exit, momentum_weakening
@@ -251,6 +253,7 @@ class NiftyRunner:
             spot = market.get("spot")
             if not spot or spot["status"] != "AVAILABLE":
                 raise OrderRefused(["SPOT_REFERENCE_UNAVAILABLE"])
+            spot_reference = Decimal(str(spot["ltp"]))
             instruments = self.native.instruments(now)
             if config.pcr_expiry:
                 instruments = [
@@ -261,8 +264,25 @@ class NiftyRunner:
                 for i in instruments
                 if i.kind == decision["side"]
             }
+            session_day = now.astimezone(IST).date()
+            option_metadata = [
+                item
+                for item in instruments
+                if item.exchange == "NFO"
+                and item.underlying == "NIFTY"
+                and item.kind == decision["side"]
+                and item.tradable
+                and item.expiry >= session_day
+                and item.master_date == session_day
+                and (not config.avoid_expiry_day or item.expiry > session_day)
+            ]
+            active_expiry = min(item.expiry for item in option_metadata)
+            atm_strike = min(
+                (item.strike for item in option_metadata if item.expiry == active_expiry),
+                key=lambda strike: (abs(strike - spot_reference), strike),
+            )
             candidates = Resolver().candidates(
-                instruments, quotes, spot["ltp"], decision["side"], now, config
+                instruments, quotes, spot_reference, decision["side"], now, config
             )
             instrument = candidates[0]
             self.executor.admit(
@@ -274,6 +294,15 @@ class NiftyRunner:
                     "token": instrument.token,
                     "instrument": instrument,
                     "candidates": candidates,
+                    "candidate_metadata": [
+                        {
+                            "token": candidate.token,
+                            "moneyness": moneyness(candidate, spot_reference, atm_strike),
+                            "spot_reference": str(spot_reference),
+                            "atm_strike": str(atm_strike),
+                        }
+                        for candidate in candidates
+                    ],
                     "runner_owner": self.owner,
                 },
                 now,

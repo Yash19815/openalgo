@@ -1,11 +1,14 @@
 """Authenticated feature API. Order admission remains closed until ready."""
 
+from hashlib import sha256
+
 from flask import Blueprint, current_app, jsonify, request, session
 from flask_socketio import join_room, leave_room
 from pydantic import ValidationError
 
 from database.nifty_algo_db import NiftyStore, StateConflict
 from extensions import socketio
+from services.nifty_algo import calendar as nifty_calendar
 from services.nifty_algo.config import StrategyConfig
 from services.nifty_algo.paper_executor import NiftyPaperExecutor
 from utils.session import check_session_validity
@@ -313,3 +316,146 @@ def trades():
 @check_session_validity
 def performance():
     return success(store().performance(session["user"]))
+
+
+def _calendar_response(version):
+    return {
+        **version,
+        "preview_diff": nifty_calendar.preview_diff(version["entries"], version["year"]),
+    }
+
+
+@nifty_algo_bp.route("/calendar/upload", methods=["POST"])
+@check_session_validity
+def upload_calendar():
+    from services.nifty_algo.calendar_import import (
+        MAX_CALENDAR_BYTES,
+        CalendarImportError,
+        parse_holiday_csv,
+        parse_holiday_pdf,
+    )
+
+    uploaded = request.files.get("file")
+    if uploaded is None or not uploaded.filename:
+        return jsonify(status="error", code="FILE_REQUIRED", message="Calendar file required"), 400
+    data = uploaded.stream.read(MAX_CALENDAR_BYTES + 1)
+    try:
+        if len(data) > MAX_CALENDAR_BYTES:
+            raise CalendarImportError("FILE_TOO_LARGE", "Calendar upload exceeds 2 MB")
+        if data.startswith(b"%PDF-"):
+            parsed = parse_holiday_pdf(data)
+            extension = "pdf"
+        else:
+            parsed = parse_holiday_csv(data)
+            extension = "csv"
+    except CalendarImportError as error:
+        return jsonify(status="error", code=error.code, message=str(error)), 400
+    supplied_year = request.form.get("year")
+    try:
+        year = int(supplied_year) if supplied_year else parsed.year
+        if year is None or year < 2000 or year > 2100:
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify(
+            status="error",
+            code="YEAR_UNCONFIRMED",
+            message="Provide the calendar year when it cannot be determined unambiguously.",
+        ), 400
+    entries = [dict(entry) for entry in parsed.entries]
+    issues = list(parsed.issues)
+    for entry in entries:
+        if entry["date"] and entry["date"][:4] != str(year):
+            entry["ambiguous"] = True
+            entry["issue"] = ",".join(filter(None, (entry["issue"], "DATE_OUTSIDE_CIRCULAR_YEAR")))
+            issues.append("DATE_OUTSIDE_CIRCULAR_YEAR")
+    version = store().create_calendar_draft(
+        session["user"],
+        year=year,
+        segment=parsed.segment,
+        source_filename=uploaded.filename,
+        sha256=sha256(data).hexdigest(),
+        uploader=session["user"],
+        entries=entries,
+        issues=list(dict.fromkeys(issues)),
+        data=data,
+        extension=extension,
+    )
+    return success(_calendar_response(version))
+
+
+@nifty_algo_bp.route("/calendar/versions")
+@check_session_validity
+def calendar_versions():
+    year = request.args.get("year")
+    try:
+        versions = store().calendar_versions(session["user"], int(year) if year else None)
+    except ValueError:
+        return jsonify(status="error", code="YEAR_INVALID", message="Year must be an integer"), 400
+    return success([_calendar_response(version) for version in versions])
+
+
+@nifty_algo_bp.route("/calendar/versions/<int:version_id>")
+@check_session_validity
+def calendar_version(version_id):
+    version = store().calendar_version(session["user"], version_id)
+    if version is None:
+        return jsonify(status="error", code="CALENDAR_NOT_FOUND", message="Calendar not found"), 404
+    return success(_calendar_response(version))
+
+
+@nifty_algo_bp.route("/calendar/versions/<int:version_id>", methods=["PATCH"])
+@check_session_validity
+def update_calendar(version_id):
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or set(body) != {"entries"} or not isinstance(body["entries"], list):
+        return jsonify(status="error", code="ENTRIES_INVALID", message="Provide an entries list"), 400
+    try:
+        version = store().update_draft_entries(
+            session["user"], version_id, body["entries"], session["user"]
+        )
+    except ValueError as error:
+        return jsonify(status="error", code="CALENDAR_UPDATE_REFUSED", message=str(error)), 409
+    return success(_calendar_response(version))
+
+
+@nifty_algo_bp.route("/calendar/versions/<int:version_id>/approve", methods=["POST"])
+@check_session_validity
+def approve_calendar(version_id):
+    body = request.get_json(silent=True)
+    if (
+        not isinstance(body, dict)
+        or set(body) != {"confirmed_year", "confirmed_segment"}
+        or type(body["confirmed_year"]) is not int
+        or not isinstance(body["confirmed_segment"], str)
+    ):
+        return jsonify(
+            status="error",
+            code="CALENDAR_CONFIRMATION_REQUIRED",
+            message="Confirm the calendar year and segment explicitly.",
+        ), 400
+    try:
+        version = store().approve_calendar(
+            session["user"],
+            version_id,
+            confirmed_year=body["confirmed_year"],
+            confirmed_segment=body["confirmed_segment"],
+            actor=session["user"],
+        )
+    except ValueError as error:
+        return jsonify(status="error", code="CALENDAR_APPROVAL_REFUSED", message=str(error)), 409
+    return success(_calendar_response(version))
+
+
+@nifty_algo_bp.route("/calendar/versions/<int:version_id>/reject", methods=["POST"])
+@check_session_validity
+def reject_calendar(version_id):
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict) or set(body) - {"detail"}:
+        return jsonify(status="error", code="REQUEST_INVALID", message="Invalid reject request"), 400
+    try:
+        version = store().reject_calendar(
+            session["user"], version_id, session["user"], body.get("detail")
+        )
+    except ValueError as error:
+        return jsonify(status="error", code="CALENDAR_REJECT_REFUSED", message=str(error)), 409
+    return success(_calendar_response(version))

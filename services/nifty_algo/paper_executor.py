@@ -212,6 +212,25 @@ class NiftyPaperExecutor:
                 else []
             )
             decision = decisions[0] if decisions else {}
+            from .contract_resolver import moneyness
+
+            supplied_metadata = intent.get("candidate_metadata") or []
+            metadata = {
+                item.get("token"): item
+                for item in supplied_metadata
+                if isinstance(item, dict) and item.get("token")
+            }
+            for candidate in candidate_instruments:
+                details = metadata.get(candidate.token, {})
+                spot_reference = details.get("spot_reference", decision.get("spot_reference"))
+                atm_strike = details.get("atm_strike", decision.get("atm_strike"))
+                classification = (
+                    moneyness(candidate, spot_reference, atm_strike)
+                    if spot_reference is not None
+                    else details.get("moneyness")
+                )
+                if classification not in ("ATM", "ITM"):
+                    raise OrderRefused(["OTM_PROHIBITED"])
             confidence = decision.get("confidence")
             if (
                 not decision.get("eligible")
@@ -230,6 +249,18 @@ class NiftyPaperExecutor:
                     raise ValueError("Decision expired")
             except (ValueError, TypeError, KeyError):
                 raise OrderRefused(["CONFIDENCE_OR_DECISION_INVALID"]) from None
+            from .calendar import nifty_session
+
+            session = nifty_session(
+                self.user_id, now.astimezone(IST).date(), store=self.store
+            )
+            if session["status"] == "CALENDAR_UNAPPROVED":
+                raise OrderRefused(["CALENDAR_UNAPPROVED"])
+            entry_session_open = bool(
+                session["status"] == "TRADING"
+                and session["window"]
+                and session["window"][0] <= now < session["window"][1]
+            )
             risk = AccountRisk(
                 equity=Decimal(row["equity"]),
                 available=Decimal(row["available"]),
@@ -245,15 +276,19 @@ class NiftyPaperExecutor:
             candidate_quotes = [
                 (candidate, self._depth(candidate, now)) for candidate in candidate_instruments
             ]
-            quote = candidate_quotes[0][1]
+            entry_candidate, quote = next(
+                ((candidate, candidate_quote) for candidate, candidate_quote in candidate_quotes
+                 if candidate_quote is not None),
+                (instrument, None),
+            )
             reasons = entry_reasons(
                 risk,
-                instrument,
+                entry_candidate,
                 quote,
                 now,
                 config,
-                session_open=self._session_open(now),
-                data_healthy=quote is not None,
+                session_open=entry_session_open,
+                data_healthy=any(candidate_quote for _, candidate_quote in candidate_quotes),
             )
             if reasons:
                 raise OrderRefused(reasons)
@@ -272,6 +307,9 @@ class NiftyPaperExecutor:
             if intent.get("quantity") is not None and intent["quantity"] != sizing.quantity:
                 raise OrderRefused(["POSITION_SIZE_ZERO"])
             instrument = sizing.instrument
+            intent = dict(intent)
+            intent["token"] = instrument.token
+            intent["symbol"] = instrument.symbol
             quote = next(
                 candidate_quote
                 for candidate, candidate_quote in candidate_quotes
@@ -433,7 +471,19 @@ class NiftyPaperExecutor:
             quote = self._depth(order["payload"]["instrument"], now, config)
             if quote is None:
                 continue
-            if not self._session_open(now):
+            if order["side"] == "BUY":
+                from .calendar import nifty_session
+
+                session = nifty_session(
+                    self.user_id, now.astimezone(IST).date(), store=self.store
+                )
+                if (
+                    session["status"] != "TRADING"
+                    or not session["window"]
+                    or not session["window"][0] <= now < session["window"][1]
+                ):
+                    continue
+            elif not self._session_open(now):
                 continue
             tick = Decimal(str(order["payload"]["instrument"]["tick_size"]))
             if order["side"] == "BUY":

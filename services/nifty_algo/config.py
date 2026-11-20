@@ -12,7 +12,7 @@ from .models import Model
 
 class StrategyConfig(Model):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False, frozen=True)
-    strategy_version: Literal["3.0.0"] = "3.0.0"
+    strategy_version: Literal["3.1.0"] = "3.1.0"
     confidence_method: Literal["five-indicator-v1"] = "five-indicator-v1"
     virtual_capital: Decimal = Field(default=Decimal("20000"), gt=0)
     atr_period: int = Field(default=10, ge=2, le=100)
@@ -36,7 +36,7 @@ class StrategyConfig(Model):
     entry_timeframe: Literal[5] = 5
     confirmation_timeframe: Literal[15] = 15
     previous_candle_break: bool = False
-    selection: Literal["ATM", "ITM", "OTM", "DELTA"] = "ATM"
+    selection: Literal["ATM", "ITM", "DELTA"] = "ATM"
     candidate_strike_window: int = Field(default=2, ge=0, le=5)
     delta_target: float = Field(default=0.5, gt=0, lt=1)
     avoid_expiry_day: bool = True
@@ -130,9 +130,9 @@ class StrategyConfig(Model):
 
 
 def migrate_configuration(values):
-    """Return a validated v3 revision; unknown versions remain blocked."""
+    """Return a validated v3.1 revision; unknown versions remain blocked."""
     version = values.get("strategy_version", "1.0.0")
-    if version not in ("1.0.0", "2.0.0"):
+    if version not in ("1.0.0", "2.0.0", "3.0.0"):
         return StrategyConfig.model_validate(values)
     changed = dict(values)
     if version == "1.0.0":
@@ -145,12 +145,17 @@ def migrate_configuration(values):
         except ArithmeticError:
             raise ValueError("Invalid legacy premium stop") from None
         changed["strategy_version"] = "2.0.0"
-    changed.pop("risk_fraction", None)
-    try:
-        changed["max_lots"] = min(3, max(1, int(changed.get("max_lots", 1))))
-    except (TypeError, ValueError, OverflowError):
-        raise ValueError("Invalid legacy lot count") from None
-    changed["max_daily_entries"] = 1
-    changed["entry_after"] = time(10, 30).isoformat()
-    changed["strategy_version"] = "3.0.0"
+    if changed.get("strategy_version") == "2.0.0":
+        changed.pop("risk_fraction", None)
+        try:
+            changed["max_lots"] = min(3, max(1, int(changed.get("max_lots", 1))))
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError("Invalid legacy lot count") from None
+        changed["max_daily_entries"] = 1
+        changed["entry_after"] = time(10, 30).isoformat()
+        changed["strategy_version"] = "3.0.0"
+    if changed.get("strategy_version") == "3.0.0":
+        if changed.get("selection") == "OTM":
+            changed["selection"] = "ATM"
+        changed["strategy_version"] = "3.1.0"
     return StrategyConfig.model_validate(changed)

@@ -151,12 +151,12 @@ def test_contract_resolver_uses_listed_strikes_and_requires_fresh_depth():
     quotes = {"call": quote(), "higher": quote("higher")}
     config = StrategyConfig()
     assert Resolver().resolve(contracts, quotes, 22040, "CE", NOW, config).token == "call"
-    assert (
-        Resolver()
-        .resolve(contracts, quotes, 22040, "CE", NOW, StrategyConfig(selection="OTM"))
-        .token
-        == "higher"
-    )
+    assert [
+        candidate.token
+        for candidate in Resolver().candidates(
+            contracts, quotes, 22040, "CE", NOW, config
+        )
+    ] == ["call"]
     with pytest.raises(ValueError):
         Resolver().resolve(contracts, quotes, 22040, "FUT", NOW, config)
     with pytest.raises(ValueError):

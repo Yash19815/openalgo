@@ -15,13 +15,16 @@ from services.nifty_algo.config import StrategyConfig
 from services.nifty_algo.native_data import NativeDataAdapter
 from services.nifty_algo.paper_executor import NiftyPaperExecutor
 from services.nifty_algo.runner import NiftyRunner, attach_runner
-from test.test_nifty_algo_paper_executor import NOW, USER, running
+from test.nifty_calendar_helpers import seed_nifty_calendar_dependencies
+from test.test_nifty_algo_paper_executor import IST, NOW, USER, running
 from test.test_nifty_algo_paper_executor import store as feature_store
 
 
 @pytest.fixture
 def store(request):
-    return request.getfixturevalue("feature_store")
+    value = request.getfixturevalue("feature_store")
+    seed_nifty_calendar_dependencies(value, USER, NOW.astimezone(IST).year)
+    return value
 
 
 def session(day, exchange):
@@ -259,6 +262,7 @@ def test_offline_end_to_end_runner_never_calls_order_services(store, monkeypatch
     )
     runner.protect(NOW - timedelta(seconds=1))
     decision = runner.evaluate(NOW)
+    assert decision is not None, runner.last_issue
     assert decision["eligible"] and len(store.pending_orders(USER)) == 1
     assert runner.evaluate(NOW + timedelta(seconds=1)) is None and reads.call_count == 1
     market.stamp = NOW + timedelta(seconds=1)

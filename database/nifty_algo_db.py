@@ -8,6 +8,8 @@ this feature only; it never shares the shared Sandbox balance.
 
 from datetime import UTC, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from hashlib import sha256 as sha256_bytes
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import (
@@ -57,6 +59,25 @@ class NiftyEvent(Base):
     kind = Column(String(40), nullable=False)
     payload = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class NiftyCalendarVersion(Base):
+    __tablename__ = "nifty_algo_calendar_version"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(String(255), nullable=False, index=True)
+    year = Column(Integer, nullable=False)
+    segment = Column(String(20), nullable=False)
+    source_filename = Column(String(255), nullable=False)
+    sha256 = Column(String(64), nullable=False)
+    uploader = Column(String(255), nullable=False)
+    status = Column(String(20), nullable=False, default="DRAFT")
+    entries = Column(JSON, nullable=False)
+    issues = Column(JSON, nullable=False)
+    audit = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    approved_at = Column(DateTime(timezone=True))
+    approved_by = Column(String(255))
+    supersedes_id = Column(Integer)
 
 
 class NiftyDecision(Base):
@@ -172,12 +193,173 @@ def _instant(value):
 
 
 class NiftyStore:
-    def __init__(self, engine):
+    def __init__(self, engine, calendar_blob_dir=None):
         self.engine = engine
         self.sessions = sessionmaker(bind=engine, expire_on_commit=False)
+        self.calendar_blob_dir = Path(calendar_blob_dir or "db/nifty_calendar")
 
     def initialize(self):
         Base.metadata.create_all(self.engine)
+
+    @staticmethod
+    def _calendar_dict(row):
+        if row is None:
+            return None
+        return {
+            "id": row.id, "user_id": row.user_id, "year": row.year,
+            "segment": row.segment, "source_filename": row.source_filename,
+            "sha256": row.sha256, "uploader": row.uploader, "status": row.status,
+            "entries": row.entries, "issues": row.issues, "audit": row.audit,
+            "created_at": _instant(row.created_at),
+            "approved_at": _instant(row.approved_at) if row.approved_at else None,
+            "approved_by": row.approved_by, "supersedes_id": row.supersedes_id,
+        }
+
+    def create_calendar_draft(
+        self, user_id, *, year, segment, source_filename, sha256, uploader,
+        entries, issues, data, extension,
+    ):
+        self.ensure_user(user_id)
+        if not year:
+            raise ValueError("Calendar year is unconfirmed")
+        if extension not in ("pdf", "csv") or sha256_bytes(data).hexdigest() != sha256:
+            raise ValueError("Calendar upload metadata does not match its content")
+        destination = self.calendar_blob_dir / f"{sha256}.{extension}"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        created_file = False
+        try:
+            with destination.open("xb") as output:
+                output.write(data)
+            created_file = True
+        except FileExistsError:
+            if destination.read_bytes() != data:
+                raise ValueError("Calendar content hash collision") from None
+        now = datetime.now(UTC)
+        audit = [{"at": now.isoformat(), "actor": uploader, "action": "DRAFT_CREATED",
+                  "detail": {"sha256": sha256}}]
+        try:
+            with self.sessions.begin() as db:
+                self._lock(db, user_id)
+                row = NiftyCalendarVersion(
+                    user_id=user_id, year=int(year), segment=segment,
+                    source_filename=Path(source_filename).name[:255], sha256=sha256,
+                    uploader=uploader, status="DRAFT", entries=entries, issues=list(issues),
+                    audit=audit, created_at=now,
+                )
+                db.add(row)
+                db.flush()
+                result = self._calendar_dict(row)
+        except Exception:
+            if created_file:
+                destination.unlink(missing_ok=True)
+            raise
+        return result
+
+    def calendar_versions(self, user_id, year=None):
+        self.ensure_user(user_id)
+        with self.sessions() as db:
+            query = select(NiftyCalendarVersion).where(NiftyCalendarVersion.user_id == user_id)
+            if year is not None:
+                query = query.where(NiftyCalendarVersion.year == int(year))
+            rows = db.scalars(query.order_by(NiftyCalendarVersion.created_at.desc())).all()
+            return [self._calendar_dict(row) for row in rows]
+
+    def calendar_version(self, user_id, version_id):
+        self.ensure_user(user_id)
+        with self.sessions() as db:
+            row = db.scalar(select(NiftyCalendarVersion).where(
+                NiftyCalendarVersion.user_id == user_id,
+                NiftyCalendarVersion.id == int(version_id),
+            ))
+            return self._calendar_dict(row)
+
+    def approved_calendar_version(self, user_id, year):
+        self.ensure_user(user_id)
+        with self.sessions() as db:
+            row = db.scalar(select(NiftyCalendarVersion).where(
+                NiftyCalendarVersion.user_id == user_id,
+                NiftyCalendarVersion.year == int(year),
+                NiftyCalendarVersion.segment == "NFO",
+                NiftyCalendarVersion.status == "APPROVED",
+            ))
+            return self._calendar_dict(row)
+
+    def update_draft_entries(self, user_id, version_id, entries, actor):
+        from services.nifty_algo.calendar_import import recompute_entries
+
+        self.ensure_user(user_id)
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            row = db.scalar(select(NiftyCalendarVersion).where(
+                NiftyCalendarVersion.user_id == user_id,
+                NiftyCalendarVersion.id == int(version_id),
+            ))
+            if row is None or row.status != "DRAFT":
+                raise ValueError("Calendar version is not an editable draft")
+            normalized, issues = recompute_entries(entries, row.year)
+            row.entries = normalized
+            row.issues = list(issues)
+            row.audit = [*row.audit, {
+                "at": datetime.now(UTC).isoformat(), "actor": actor,
+                "action": "DRAFT_ENTRIES_UPDATED", "detail": {"count": len(normalized)},
+            }]
+            result = self._calendar_dict(row)
+        return result
+
+    def approve_calendar(self, user_id, version_id, *, confirmed_year, confirmed_segment, actor):
+        self.ensure_user(user_id)
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            row = db.scalar(select(NiftyCalendarVersion).where(
+                NiftyCalendarVersion.user_id == user_id,
+                NiftyCalendarVersion.id == int(version_id),
+            ))
+            if row is None or row.status != "DRAFT":
+                raise ValueError("Calendar version is not an approvable draft")
+            if int(confirmed_year) != row.year or confirmed_segment != row.segment:
+                raise ValueError("Calendar year and segment confirmation must match")
+            if row.segment != "NFO" or any(item.get("ambiguous") for item in row.entries):
+                raise ValueError("Calendar has an unconfirmed segment or ambiguous entries")
+            prior = db.scalar(select(NiftyCalendarVersion).where(
+                NiftyCalendarVersion.user_id == user_id,
+                NiftyCalendarVersion.year == row.year,
+                NiftyCalendarVersion.status == "APPROVED",
+            ))
+            now = datetime.now(UTC)
+            if prior:
+                prior.status = "SUPERSEDED"
+                row.supersedes_id = prior.id
+                prior.audit = [*prior.audit, {
+                    "at": now.isoformat(), "actor": actor, "action": "SUPERSEDED",
+                    "detail": {"by_version": row.id},
+                }]
+            row.status = "APPROVED"
+            row.approved_at = now
+            row.approved_by = actor
+            row.audit = [*row.audit, {
+                "at": now.isoformat(), "actor": actor, "action": "APPROVED",
+                "detail": {"year": row.year, "segment": row.segment},
+            }]
+            result = self._calendar_dict(row)
+        return result
+
+    def reject_calendar(self, user_id, version_id, actor, detail=None):
+        self.ensure_user(user_id)
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            row = db.scalar(select(NiftyCalendarVersion).where(
+                NiftyCalendarVersion.user_id == user_id,
+                NiftyCalendarVersion.id == int(version_id),
+            ))
+            if row is None or row.status != "DRAFT":
+                raise ValueError("Calendar version is not a rejectable draft")
+            row.status = "REJECTED"
+            row.audit = [*row.audit, {
+                "at": datetime.now(UTC).isoformat(), "actor": actor,
+                "action": "REJECTED", "detail": detail or {},
+            }]
+            result = self._calendar_dict(row)
+        return result
 
     def ensure_user(self, user_id):
         from services.nifty_algo.config import StrategyConfig
@@ -819,6 +1001,16 @@ class NiftyStore:
                     config = StrategyConfig.model_validate(order["payload"]["configuration"])
                     reasons = []
                     local_day = order["created_at"].astimezone(ZoneInfo("Asia/Kolkata")).date()
+                    approved_calendar = db.scalar(
+                        select(NiftyCalendarVersion.id).where(
+                            NiftyCalendarVersion.user_id == user_id,
+                            NiftyCalendarVersion.year == local_day.year,
+                            NiftyCalendarVersion.segment == "NFO",
+                            NiftyCalendarVersion.status == "APPROVED",
+                        )
+                    )
+                    if approved_calendar is None:
+                        reasons.append("CALENDAR_UNAPPROVED")
                     day_start = datetime.combine(
                         local_day, time.min, tzinfo=ZoneInfo("Asia/Kolkata")
                     ).astimezone(UTC)

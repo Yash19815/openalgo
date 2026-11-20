@@ -17,7 +17,9 @@ from services.nifty_algo.protection import (
     observe_bid,
     profit_floor_stop,
 )
+from test.nifty_calendar_helpers import seed_nifty_calendar_dependencies
 from test.test_nifty_algo_paper_executor import (
+    IST,
     NOW,
     USER,
     FakeMarket,
@@ -42,6 +44,7 @@ def store(tmp_path):
     value = NiftyStore(engine)
     value.initialize()
     value.ensure_user(USER)
+    seed_nifty_calendar_dependencies(value, USER, NOW.astimezone(IST).year)
     yield value
     engine.dispose()
 

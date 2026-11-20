@@ -25,6 +25,21 @@ def liquid(instrument, quote, now, config):
     )
 
 
+def moneyness(instrument, spot, atm_strike=None):
+    """Classify an option against spot, treating the listed ATM strike as ATM."""
+    spot = Decimal(str(spot))
+    strike = Decimal(str(instrument.strike))
+    if atm_strike is not None and strike == Decimal(str(atm_strike)):
+        return "ATM"
+    if strike == spot:
+        return "ATM"
+    if instrument.kind == "CE":
+        return "ITM" if strike < spot else "OTM"
+    if instrument.kind == "PE":
+        return "ITM" if strike > spot else "OTM"
+    raise ValueError("Moneyness requires a CE or PE instrument")
+
+
 class Resolver:
     def candidates(self, instruments, quotes, spot, side, now, config):
         spot = Decimal(str(spot))
@@ -48,12 +63,31 @@ class Resolver:
         options = [i for i in options if i.expiry == expiry]
         strikes = sorted({i.strike for i in options})
         atm = min(strikes, key=lambda s: (abs(s - spot), s))
-        index = strikes.index(atm)
-        if config.selection in ("ITM", "OTM"):
-            shift = -1 if (side == "CE") == (config.selection == "ITM") else 1
-            if not 0 <= index + shift < len(strikes):
-                raise ValueError("Adjacent listed strike missing")
-            atm = strikes[index + shift]
+        atm_strike = atm
+        if config.selection == "ITM":
+            itm_strikes = [
+                strike
+                for strike in strikes
+                if moneyness(next(i for i in options if i.strike == strike), spot, atm_strike)
+                == "ITM"
+            ]
+            if not itm_strikes:
+                raise ValueError("Adjacent listed ITM strike missing")
+            selected_strike = min(itm_strikes, key=lambda strike: abs(strike - atm_strike))
+            ordered_strikes = [selected_strike]
+            if config.candidate_strike_window:
+                ordered_strikes.append(atm_strike)
+                ordered_strikes.extend(
+                    strike for strike in sorted(
+                        itm_strikes,
+                        key=lambda strike: (abs(strike - atm_strike), strike),
+                    )[: config.candidate_strike_window]
+                    if strike != selected_strike
+                )
+            ordered_strikes = list(dict.fromkeys(ordered_strikes))
+            ordered = [
+                i for strike in ordered_strikes for i in options if i.strike == strike
+            ]
         if config.selection == "DELTA":
             # Delta must be attached to current metadata by a trusted same-time Greeks adapter.
             # The initial Angel adapter deliberately does not populate unverified Greeks.
@@ -67,22 +101,27 @@ class Resolver:
             if not options:
                 raise ValueError("Reliable synchronized Greeks unavailable")
             ordered = sorted(
-                options,
+                [
+                    i
+                    for i in options
+                    if moneyness(i, spot, atm_strike) in ("ATM", "ITM")
+                ],
                 key=lambda i: abs(abs(i.delta) - config.delta_target),
             )[: 2 * config.candidate_strike_window + 1]
-        else:
-            selected = next(i for i in options if i.strike == atm)
-            selected_index = strikes.index(selected.strike)
-            nearby_strikes = [
-                *strikes[max(0, selected_index - config.candidate_strike_window) : selected_index],
-                *strikes[
-                    selected_index + 1 : selected_index + config.candidate_strike_window + 1
-                ],
+        elif config.selection == "ATM":
+            itm_strikes = [
+                strike
+                for strike in strikes
+                if moneyness(next(i for i in options if i.strike == strike), spot, atm_strike)
+                == "ITM"
             ]
-            nearby_strikes.sort(key=lambda strike: (abs(strike - selected.strike), strike))
+            nearby_itm = sorted(
+                itm_strikes,
+                key=lambda strike: (abs(strike - atm_strike), strike),
+            )[: config.candidate_strike_window]
             ordered = [
                 i
-                for strike in (selected.strike, *nearby_strikes)
+                for strike in (atm_strike, *nearby_itm)
                 for i in options
                 if i.strike == strike
             ]

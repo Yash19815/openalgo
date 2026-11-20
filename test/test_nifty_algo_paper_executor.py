@@ -1,22 +1,26 @@
 """Phase 6 — isolated NIFTY paper execution: strict fills, costs, idempotency."""
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from database.engine_factory import create_db_engine
 from database.nifty_algo_db import NiftyState, NiftyStore
 from services.nifty_algo.config import StrategyConfig
+from services.nifty_algo.contract_resolver import moneyness
 from services.nifty_algo.models import Instrument
 from services.nifty_algo.paper_executor import (
     NiftyPaperExecutor,
     OrderRefused,
     PaperExecutionUnavailable,
 )
+from test.nifty_calendar_helpers import seed_approved_nfo_calendar, seed_market_timing
 
 NOW = datetime(2026, 11, 19, 5, 0, tzinfo=UTC)  # 10:30 IST, entry window opens
 USER = "trader"
+IST = ZoneInfo("Asia/Kolkata")
 
 
 def _paper_test_config(config=None):
@@ -43,6 +47,11 @@ def store(tmp_path):
     store.initialize()
     yield store
     engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def market_calendar():
+    seed_market_timing()
 
 
 class FakeMarket:
@@ -86,12 +95,26 @@ def instrument():
 
 
 def buy_intent(intent_id="i-1", **extra):
+    contract = extra.get("instrument", instrument())
+    candidate_list = extra.get("candidates") or [contract]
+    spot_reference = extra.get("spot_reference", contract.strike)
+    atm_strike = extra.get("atm_strike", contract.strike)
     payload = {
         "intent_id": intent_id,
         "side": "BUY",
-        "symbol": "TEST_CONTRACT",
-        "token": "token-ce",
-        "instrument": instrument(),
+        "symbol": contract.symbol,
+        "token": contract.token,
+        "instrument": contract,
+        "candidates": candidate_list,
+        "candidate_metadata": [
+            {
+                "token": candidate.token,
+                "moneyness": moneyness(candidate, spot_reference, atm_strike),
+                "spot_reference": str(spot_reference),
+                "atm_strike": str(atm_strike),
+            }
+            for candidate in candidate_list
+        ],
         "decision_id": "d-1",
     }
     payload.update(extra)
@@ -102,6 +125,7 @@ def executor(store, market=None, config=None, clock=None):
     # Explicit offline qualifying-decision fixture; never real indicator evidence.
     config = _paper_test_config(config)
     store.ensure_user(USER)
+    seed_approved_nfo_calendar(store, USER, NOW.astimezone(IST).year)
     if not store.orders(USER, now=NOW):
         with store.sessions.begin() as db:
             state = db.get(NiftyState, USER)

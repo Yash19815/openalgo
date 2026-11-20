@@ -16,7 +16,9 @@ from services.nifty_algo.models import PCR
 from services.nifty_algo.paper_executor import NiftyPaperExecutor, OrderRefused
 from services.nifty_algo.protection import initial_protection, observe_bid
 from services.nifty_algo.runner import NiftyRunner
+from test.nifty_calendar_helpers import seed_nifty_calendar_dependencies
 from test.test_nifty_algo_paper_executor import (
+    IST,
     NOW,
     USER,
     FakeMarket,
@@ -32,7 +34,9 @@ from test.test_nifty_algo_paper_executor import (
 
 @pytest.fixture
 def store(request):
-    return request.getfixturevalue("feature_store")
+    value = request.getfixturevalue("feature_store")
+    seed_nifty_calendar_dependencies(value, USER, NOW.astimezone(IST).year)
+    return value
 
 
 def confidence(score=50):
