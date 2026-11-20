@@ -222,6 +222,43 @@ Pure functions in `protection.py`:
   reports `LIVE_NOT_READY`, so Live cannot activate in this release.
 - Broker status is read from existing OpenAlgo auth and broker configuration,
   with secrets masked. No second credential store.
+- Implementation decisions (Phase 5):
+  - `nifty_algo_mode` (user, mode, revision, history JSON capped at the last 50
+    changes, updated_at) is created by `create_all`. New users get a PAPER row in
+    `ensure_user`; users that predate the table get one on first read. Every
+    change is a `mode_changed` event and every refusal a `mode_change_refused`
+    event (previous, requested, actor, time, exposure, masked readiness snapshot).
+  - `services/nifty_algo/trading_mode.py` holds the pure evaluator. Live codes,
+    in order: `BROKER_STATUS_UNAVAILABLE`, `API_MISSING`, `AUTH_EXPIRED`,
+    `BROKER_UNREACHABLE`, `LIVE_NOT_READY`, `MARKET_DATA_UNVERIFIED`,
+    `PROTECTIVE_ORDERS_UNVERIFIED`, `FILL_RECONCILIATION_UNVERIFIED`,
+    `STATIC_IP_UNVERIFIED`, `OPEN_EXPOSURE`, `ACK_REQUIRED`. The live adapter
+    stub never probes the broker, so reachability counts as unverified and
+    `BROKER_UNREACHABLE` is always present. `LIVE_NOT_READY` is added by the
+    evaluator and again by `NiftyStore.change_mode` whatever the evaluator says.
+  - A mode request is decided once under the user lock: compare-and-set on the
+    mode revision (a stale one is `REVISION_CONFLICT`, 409), exposure read in
+    the same transaction, then the update. Exposure is primary only: held
+    positions and PENDING intents not yet past expiry. Shadows are hypothetical.
+  - A request for the current mode is a no-op that succeeds without bumping the
+    revision. A real switch with open exposure is refused with `OPEN_EXPOSURE`.
+    `ACK_REQUIRED` clears only for a JSON boolean `true`.
+  - Broker status reads the `auth` row (token presence and `is_revoked`, never
+    decrypted), `live_broker()` for a session from the current trading day,
+    `utils.broker_keys.resolve` for key presence and source, and
+    `auth_db.get_api_key` for the OpenAlgo API key. It starts no login and calls
+    no broker. Masking is one function (`_masked`): only booleans, the broker id
+    and the key source leave it, never a character or the length of a secret.
+    A failed read returns `BROKER_STATUS_UNAVAILABLE` and logs the exception
+    type only.
+  - The paper executor refuses BUY intents when the stored mode is not PAPER
+    (the stub's `submit` raises `LIVE_NOT_READY`; no transport exists), the
+    runner sees the same code from `entry_lock_reasons`, and `admit_order` and
+    BUY fills re-check it under the user lock. Exits of existing paper positions
+    stay simulated in any mode, so protection never stops.
+  - API: `GET/POST /api/nifty-algo/mode` (session and global CSRF). A refusal is
+    409 `MODE_CHANGE_REFUSED` with `reasons`. `/risk` keeps its shape and gains
+    `trading_mode` (mode, revision, `live_available: false`, `live_readiness`).
 
 ### Phase 6: reports and SMTP
 

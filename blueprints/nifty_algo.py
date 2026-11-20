@@ -222,8 +222,11 @@ def indicators():
 @nifty_algo_bp.route("/risk")
 @check_session_validity
 def risk():
+    from services.nifty_algo.trading_mode import mode_overview
+
     state = store().read(session["user"])
     executor = NiftyPaperExecutor(store(), session["user"])
+    overview = mode_overview(store(), session["user"])
     return success(
         {
             "mode": "PAPER_ONLY",
@@ -234,8 +237,56 @@ def risk():
             "account_reconciled": store().account(session["user"])["reconciled"],
             "entry_locks": store().risk_locks(session["user"]),
             "readiness": executor.readiness(),
+            "trading_mode": {
+                "mode": overview["mode"],
+                "revision": overview["revision"],
+                "live_available": overview["live_available"],
+                "live_readiness": overview["readiness"],
+            },
         }
     )
+
+
+@nifty_algo_bp.route("/mode", methods=["GET", "POST"])
+@check_session_validity
+def trading_mode():
+    """Paper/Live mode. Live readiness is reported; Live cannot activate in this release."""
+    from services.nifty_algo.trading_mode import MODES, mode_overview, request_mode
+
+    user = session["user"]
+    if request.method == "GET":
+        return success(mode_overview(store(), user))
+    body = request.get_json(silent=True)
+    if (
+        not isinstance(body, dict)
+        or not {"mode", "revision"} <= set(body) <= {"mode", "revision", "acknowledged"}
+        or body["mode"] not in MODES
+        or type(body["revision"]) is not int
+        or body["revision"] < 1
+        or type(body.get("acknowledged", False)) is not bool
+    ):
+        return jsonify(
+            status="error",
+            code="MODE_REQUEST_INVALID",
+            message="Provide mode (PAPER or LIVE), integer revision and optional boolean acknowledged",
+        ), 400
+    mode, codes, changed = request_mode(
+        store(),
+        user,
+        body["revision"],
+        body["mode"],
+        acknowledged=body.get("acknowledged", False),
+        actor=user,
+    )
+    if codes:
+        return jsonify(
+            status="error",
+            code="MODE_CHANGE_REFUSED",
+            message="Trading mode change refused.",
+            reasons=codes,
+            data=mode,
+        ), 409
+    return success({**mode, "changed": changed})
 
 
 @nifty_algo_bp.route("/shadow")

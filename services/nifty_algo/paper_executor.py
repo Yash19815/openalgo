@@ -179,6 +179,11 @@ class NiftyPaperExecutor:
         side = intent["side"]
         if side not in ("BUY", "SELL"):
             raise OrderRefused(["SIDE_RESTRICTED"])
+        if side == "BUY" and self._live_mode():
+            from .trading_mode import LIVE_ADAPTER
+
+            # No live executor exists: the stub refuses without any transport.
+            LIVE_ADAPTER.submit(intent)
         try:
             raw_candidates = intent.get("candidates") if side == "BUY" else None
             candidate_instruments = [
@@ -540,8 +545,13 @@ class NiftyPaperExecutor:
 
     def entry_lock_reasons(self, now, config):
         """Resolve pending cooldowns, latch monthly locks, return refusals."""
+        modes = ["LIVE_NOT_READY"] if self._live_mode() else []
         self.store.resolve_cooldowns(self.user_id, now)
-        return self.store.entry_locks(self.user_id, now, config)
+        return modes + self.store.entry_locks(self.user_id, now, config)
+
+    def _live_mode(self):
+        """Any mode other than PAPER. Exits of paper positions stay simulated."""
+        return self.store.trading_mode(self.user_id)["mode"] != "PAPER"
 
     def monitor_exits(
         self,

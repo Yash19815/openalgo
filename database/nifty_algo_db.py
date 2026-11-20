@@ -290,6 +290,24 @@ class NiftyOpportunity(Base):
     closed_at = Column(DateTime(timezone=True))
 
 
+class NiftyMode(Base):
+    """Per-user trading mode. PAPER by default; Live cannot activate in this release.
+
+    ``revision`` is the compare-and-set token for mode requests. ``history``
+    keeps the most recent changes; the full trail is in ``nifty_algo_event``.
+    """
+
+    __tablename__ = "nifty_algo_mode"
+    user_id = Column(String(255), primary_key=True)
+    mode = Column(String(8), nullable=False, default="PAPER")
+    revision = Column(Integer, nullable=False, default=1)
+    history = Column(JSON, nullable=False, default=list)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
+MODE_HISTORY_LIMIT = 50
+
+
 class StateConflict(ValueError):
     """The caller used an obsolete state revision."""
 
@@ -593,6 +611,12 @@ class NiftyStore:
                         created_at=now,
                     )
                 )
+                if db.get(NiftyMode, user_id) is None:
+                    db.add(
+                        NiftyMode(
+                            user_id=user_id, mode="PAPER", revision=1, history=[], updated_at=now
+                        )
+                    )
         except IntegrityError:
             # Another request can initialize the same user concurrently.
             with self.sessions() as db:
@@ -795,6 +819,141 @@ class NiftyStore:
     def record_event(self, user_id, kind, payload, now):
         with self.sessions.begin() as db:
             db.add(NiftyEvent(user_id=user_id, kind=kind, payload=payload, created_at=now))
+
+    # Trading mode ----------------------------------------------------------
+
+    @staticmethod
+    def _mode_dict(row):
+        return {
+            "mode": row.mode,
+            "revision": row.revision,
+            "history": list(row.history or []),
+            "updated_at": _instant(row.updated_at),
+        }
+
+    @staticmethod
+    def _mode_reasons(db, user_id):
+        """A missing row is PAPER. Any other mode has no executor in this release."""
+        row = db.get(NiftyMode, user_id)
+        return [] if row is None or row.mode == "PAPER" else ["LIVE_NOT_READY"]
+
+    @staticmethod
+    def _exposure(db, user_id, now):
+        """Open primary exposure: held positions and live pending intents. Shadows excluded."""
+        from sqlalchemy import func
+
+        positions = db.scalar(
+            select(func.count()).select_from(NiftyPosition).where(NiftyPosition.user_id == user_id)
+        )
+        pending = db.scalar(
+            select(func.count())
+            .select_from(NiftyOrder)
+            .where(
+                NiftyOrder.user_id == user_id,
+                NiftyOrder.status == "PENDING",
+                NiftyOrder.expires_at > now,
+            )
+        )
+        return {"positions": int(positions or 0), "pending_orders": int(pending or 0)}
+
+    def open_exposure(self, user_id, now=None):
+        with self.sessions() as db:
+            return self._exposure(db, user_id, now or datetime.now(UTC))
+
+    def trading_mode(self, user_id):
+        """The user's mode row, created as PAPER for users that predate it."""
+        self.ensure_user(user_id)
+        with self.sessions() as db:
+            row = db.get(NiftyMode, user_id)
+            if row is not None:
+                return self._mode_dict(row)
+        try:
+            with self.sessions.begin() as db:
+                row = NiftyMode(
+                    user_id=user_id,
+                    mode="PAPER",
+                    revision=1,
+                    history=[],
+                    updated_at=datetime.now(UTC),
+                )
+                db.add(row)
+                db.flush()
+                result = self._mode_dict(row)
+        except IntegrityError:
+            with self.sessions() as db:
+                return self._mode_dict(db.get(NiftyMode, user_id))
+        return result
+
+    def change_mode(self, user_id, revision, requested, *, actor, evaluate, snapshot, now=None):
+        """Compare-and-set mode change, decided once under the user lock.
+
+        ``evaluate(exposure, current_mode)`` is a pure callable returning refusal
+        codes. Live is refused here whatever it returns: no live executor exists.
+        Returns ``(mode, codes, changed)``; a refusal is audited and changes nothing.
+        """
+        if requested not in ("PAPER", "LIVE"):
+            raise ValueError("Unsupported trading mode")
+        self.trading_mode(user_id)
+        now = now or datetime.now(UTC)
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            row = db.get(NiftyMode, user_id)
+            if row.revision != revision:
+                raise StateConflict("Trading mode changed. Reload before switching.")
+            exposure = self._exposure(db, user_id, now)
+            codes = list(dict.fromkeys(evaluate(exposure, row.mode)))
+            if requested == "LIVE" and "LIVE_NOT_READY" not in codes:
+                codes.append("LIVE_NOT_READY")
+            previous = row.mode
+            audit = {
+                "previous": previous,
+                "requested": requested,
+                "actor": actor,
+                "at": now.isoformat(),
+                "revision": revision,
+                "exposure": exposure,
+                "readiness": snapshot,
+            }
+            if codes:
+                db.add(
+                    NiftyEvent(
+                        user_id=user_id,
+                        kind="mode_change_refused",
+                        payload={**audit, "codes": codes},
+                        created_at=now,
+                    )
+                )
+                return self._mode_dict(row), codes, False
+            if requested == previous:
+                return self._mode_dict(row), [], False
+            entry = {
+                "at": now.isoformat(),
+                "actor": actor,
+                "previous": previous,
+                "new": requested,
+                "revision": revision + 1,
+            }
+            changed = db.execute(
+                update(NiftyMode)
+                .where(NiftyMode.user_id == user_id, NiftyMode.revision == revision)
+                .values(
+                    mode=requested,
+                    revision=revision + 1,
+                    history=[*(row.history or []), entry][-MODE_HISTORY_LIMIT:],
+                    updated_at=now,
+                )
+            )
+            if changed.rowcount != 1:
+                raise StateConflict("Trading mode changed. Reload before switching.")
+            db.add(
+                NiftyEvent(
+                    user_id=user_id,
+                    kind="mode_changed",
+                    payload={**audit, "new": requested, "revision": revision + 1},
+                    created_at=now,
+                )
+            )
+        return self.trading_mode(user_id), [], True
 
     # Isolated paper ledger -------------------------------------------------
 
@@ -1157,7 +1316,8 @@ class NiftyStore:
                 )
                 if order["side"] == "BUY":
                     config = StrategyConfig.model_validate(order["payload"]["configuration"])
-                    reasons = []
+                    # Paper entries only; a non-PAPER mode has no executor here.
+                    reasons = self._mode_reasons(db, user_id)
                     local_day = order["created_at"].astimezone(ZoneInfo("Asia/Kolkata")).date()
                     approved_calendar = db.scalar(
                         select(NiftyCalendarVersion.id).where(
@@ -1486,6 +1646,8 @@ class NiftyStore:
                     or state.configuration_id != config.version_id
                 ):
                     order.status, order.reason = "CANCELED", "ENTRIES_DISABLED"
+                elif mode_reasons := self._mode_reasons(db, user_id):
+                    order.status, order.reason = "REJECTED", mode_reasons[0]
                 elif entry_locks := (
                     self._cooldown_reasons(
                         db, user_id, now.astimezone(_IST).date().isoformat()
