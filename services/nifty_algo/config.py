@@ -12,9 +12,9 @@ from .models import Model
 
 class StrategyConfig(Model):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False, frozen=True)
-    strategy_version: Literal["2.0.0"] = "2.0.0"
+    strategy_version: Literal["3.0.0"] = "3.0.0"
     confidence_method: Literal["five-indicator-v1"] = "five-indicator-v1"
-    virtual_capital: Decimal = Field(default=Decimal("100000"), gt=0)
+    virtual_capital: Decimal = Field(default=Decimal("20000"), gt=0)
     atr_period: int = Field(default=10, ge=2, le=100)
     atr_multiplier: float = Field(default=3, gt=0, le=10)
     macd_fast: int = Field(default=12, ge=2, le=100)
@@ -37,16 +37,29 @@ class StrategyConfig(Model):
     confirmation_timeframe: Literal[15] = 15
     previous_candle_break: bool = False
     selection: Literal["ATM", "ITM", "OTM", "DELTA"] = "ATM"
+    candidate_strike_window: int = Field(default=2, ge=0, le=5)
     delta_target: float = Field(default=0.5, gt=0, lt=1)
     avoid_expiry_day: bool = True
     max_spread_bps: float = Field(default=150, gt=0, le=1000)
     min_volume: int = Field(default=1000, ge=1)
     quote_max_age: int = Field(default=5, ge=1, le=30)
-    risk_fraction: Decimal = Field(default=Decimal("0.005"), gt=0, le=Decimal("0.02"))
     daily_loss_fraction: Decimal = Field(default=Decimal("0.015"), gt=0, le=Decimal("0.1"))
     max_positions: Literal[1] = 1
-    max_lots: int = Field(default=1, ge=1, le=10)
-    max_daily_entries: int = Field(default=3, ge=1, le=100)
+    max_lots: int = Field(default=3, ge=1, le=3)
+    max_daily_entries: int = Field(default=1, ge=1, le=1)
+    lot_score_thresholds: tuple[Decimal, ...] = (
+        Decimal("0"),
+        Decimal("40"),
+        Decimal("70"),
+    )
+    max_planned_loss: Decimal = Field(default=Decimal("400"), ge=0)
+    min_projected_net_reward: Decimal = Field(default=Decimal("350"), ge=0)
+    planned_loss_buffer: Decimal = Field(default=Decimal("10"), ge=0)
+    profit_lock_activation_net: Decimal = Field(default=Decimal("400"), ge=0)
+    profit_lock_floor_net: Decimal = Field(default=Decimal("350"), ge=0)
+    early_booking_min_net: Decimal = Field(default=Decimal("300"), ge=0)
+    monthly_loss_limit: Decimal = Field(default=Decimal("2000"), ge=0)
+    monthly_profit_target: Decimal | None = Field(default=None, gt=0)
     premium_stop: Decimal = Field(default=Decimal("0.08"), gt=0, le=Decimal("0.08"))
     target_min: Decimal = Field(default=Decimal("0.10"), ge=Decimal("0.10"), le=Decimal("0.15"))
     target_max: Decimal = Field(default=Decimal("0.15"), ge=Decimal("0.10"), le=Decimal("0.15"))
@@ -63,7 +76,8 @@ class StrategyConfig(Model):
     max_hold_minutes: int = Field(default=45, ge=1, le=360)
     technical_exit: bool = True
     atr_exit_multiple: float = Field(default=2, gt=0, le=10)
-    entry_after: time = time(9, 30)
+    shadow_entry_after: time = time(9, 15)
+    entry_after: time = time(10, 30)
     entry_before: time = time(14, 45)
     exit_by: time = time(15, 10)
     latency_ms: int = Field(default=250, ge=1, le=10000)
@@ -82,6 +96,23 @@ class StrategyConfig(Model):
             not x.is_finite() or x <= 0 for x in self.trailing_candidates
         ):
             raise ValueError("Positive finite option-premium trailing candidates required")
+        if (
+            not self.lot_score_thresholds
+            or len(self.lot_score_thresholds) > 3
+            or self.lot_score_thresholds[0] != 0
+            or any(not x.is_finite() or not 0 <= x <= 100 for x in self.lot_score_thresholds)
+            or any(
+                a >= b
+                for a, b in zip(
+                    self.lot_score_thresholds, self.lot_score_thresholds[1:], strict=False
+                )
+            )
+        ):
+            raise ValueError("Lot score thresholds must ascend from zero within 0..100")
+        if self.profit_lock_floor_net >= self.profit_lock_activation_net:
+            raise ValueError("Profit-lock floor must be below activation")
+        if self.shadow_entry_after > self.entry_after:
+            raise ValueError("Shadow entry must not start after entry")
         if self.trailing_distance_points != min(self.trailing_candidates):
             raise ValueError("Trailing distance must equal minimum trailing candidate")
         return self
@@ -93,21 +124,27 @@ class StrategyConfig(Model):
 
 
 def migrate_configuration(values):
-    """Return a validated v2 revision. The caller retains history and pauses entries.
-
-    Only the known v1 schema is migrated automatically. Unknown configurations
-    remain blocked rather than receiving guessed settings.
-    """
-    if values.get("strategy_version", "1.0.0") != "1.0.0":
+    """Return a validated v3 revision; unknown versions remain blocked."""
+    version = values.get("strategy_version", "1.0.0")
+    if version not in ("1.0.0", "2.0.0"):
         return StrategyConfig.model_validate(values)
     changed = dict(values)
-    changed.pop("target", None)
-    changed.pop("trailing", None)
-    changed["strategy_version"] = "2.0.0"
+    if version == "1.0.0":
+        changed.pop("target", None)
+        changed.pop("trailing", None)
+        try:
+            changed["premium_stop"] = str(
+                min(Decimal(str(values.get("premium_stop", "0.08"))), Decimal("0.08"))
+            )
+        except ArithmeticError:
+            raise ValueError("Invalid legacy premium stop") from None
+        changed["strategy_version"] = "2.0.0"
+    changed.pop("risk_fraction", None)
     try:
-        changed["premium_stop"] = str(
-            min(Decimal(str(values.get("premium_stop", "0.08"))), Decimal("0.08"))
-        )
-    except ArithmeticError:
-        raise ValueError("Invalid legacy premium stop") from None
+        changed["max_lots"] = min(3, max(1, int(changed.get("max_lots", 1))))
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError("Invalid legacy lot count") from None
+    changed["max_daily_entries"] = 1
+    changed["entry_after"] = time(10, 30).isoformat()
+    changed["strategy_version"] = "3.0.0"
     return StrategyConfig.model_validate(changed)

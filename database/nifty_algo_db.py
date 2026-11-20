@@ -6,7 +6,7 @@ paper ledger keeps funds, order intents, positions and closed trades inside
 this feature only; it never shares the shared Sandbox balance.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
 
@@ -188,12 +188,14 @@ class NiftyStore:
             with self.sessions.begin() as db:
                 existing = db.get(NiftyState, user_id)
                 if existing is not None:
-                    if existing.configuration.get("strategy_version", "1.0.0") == "1.0.0":
+                    source_version = existing.configuration.get("strategy_version", "1.0.0")
+                    if source_version != config.strategy_version:
                         from services.nifty_algo.config import migrate_configuration
 
                         self._lock(db, user_id)
                         db.refresh(existing)
-                        if existing.configuration.get("strategy_version", "1.0.0") == "1.0.0":
+                        source_version = existing.configuration.get("strategy_version", "1.0.0")
+                        if source_version != config.strategy_version:
                             try:
                                 migrated = migrate_configuration(existing.configuration)
                             except ValueError:
@@ -228,14 +230,14 @@ class NiftyStore:
                                     user_id=user_id,
                                     kind="configuration_migration",
                                     payload={
-                                        "from": "1.0.0",
-                                        "to": "2.0.0",
+                                        "from": source_version,
+                                        "to": migrated.strategy_version,
                                         "revision": existing.revision,
                                     },
                                     created_at=now,
                                 )
                             )
-                    else:
+                    if existing.configuration.get("strategy_version") == config.strategy_version:
                         try:
                             StrategyConfig.model_validate(existing.configuration)
                         except ValueError:
@@ -816,6 +818,21 @@ class NiftyStore:
                 if order["side"] == "BUY":
                     config = StrategyConfig.model_validate(order["payload"]["configuration"])
                     reasons = []
+                    local_day = order["created_at"].astimezone(ZoneInfo("Asia/Kolkata")).date()
+                    day_start = datetime.combine(
+                        local_day, time.min, tzinfo=ZoneInfo("Asia/Kolkata")
+                    ).astimezone(UTC)
+                    day_end = day_start + timedelta(days=1)
+                    daily_orders = db.scalars(
+                        select(NiftyOrder).where(
+                            NiftyOrder.user_id == user_id,
+                            NiftyOrder.side == "BUY",
+                            NiftyOrder.created_at >= day_start,
+                            NiftyOrder.created_at < day_end,
+                        )
+                    )
+                    if any(row.status in ("PENDING", "FILLED", "PARTIAL") for row in daily_orders):
+                        reasons.append("DAILY_ENTRY_USED")
                     owner = order["payload"].get("runner_owner")
                     lease = db.get(NiftyRunnerLease, user_id)
                     if owner and (
@@ -844,9 +861,9 @@ class NiftyStore:
                         reasons.append("INSUFFICIENT_FUNDS")
                     if (
                         Decimal(order["payload"]["reserved_risk"])
-                        > account.equity * config.risk_fraction
+                        > config.max_planned_loss
                     ):
-                        reasons.append("RISK_BUDGET")
+                        reasons.append("PLANNED_LOSS_LIMIT")
                     if reasons:
                         raise OrderRefused(reasons)
                 else:
@@ -1027,6 +1044,13 @@ class NiftyStore:
                 return self._order_dict(order)
             account = db.get(NiftyAccount, user_id)
             quantity = order.quantity
+            if (
+                order.side == "BUY"
+                and now.astimezone(ZoneInfo("Asia/Kolkata")).time().replace(tzinfo=None)
+                >= time(14, 45)
+            ):
+                order.status, order.reason, order.resolved_at = "EXPIRED", "ENTRY_CUTOFF", now
+                return self._order_dict(order)
             if now < datetime.fromisoformat(_instant(order.eligible_at)):
                 return self._order_dict(order)
             if now >= datetime.fromisoformat(_instant(order.expires_at)):
@@ -1092,12 +1116,14 @@ class NiftyStore:
                     return self._order_dict(order)
                 from services.nifty_algo.paper_executor import _charges
 
-                planned = (
-                    price
-                    - Decimal(protection["initial_stop"])
-                    + Decimal(order.payload["instrument"]["tick_size"]) * config.slippage_ticks
-                ) * quantity
-                planned += fees + _charges("SELL", price, quantity, config)
+                stop_exit = (
+                    Decimal(protection["initial_stop"])
+                    - Decimal(order.payload["instrument"]["tick_size"]) * config.slippage_ticks
+                )
+                planned = (price - stop_exit) * quantity + fees
+                planned += (
+                    _charges("SELL", stop_exit, quantity, config) + config.planned_loss_buffer
+                )
                 if (
                     state.killed
                     or state.daily_locked
@@ -1112,9 +1138,9 @@ class NiftyStore:
                     or instrument.expiry < now.astimezone(ZoneInfo("Asia/Kolkata")).date()
                 ):
                     order.status, order.reason = "REJECTED", "METADATA_INVALID"
-                elif planned > account.equity * config.risk_fraction or planned > Decimal(
-                    order.payload["reserved_risk"]
-                ):
+                elif planned > config.max_planned_loss:
+                    order.status, order.reason = "REJECTED", "PLANNED_LOSS_LIMIT"
+                elif planned > Decimal(order.payload["reserved_risk"]):
                     order.status, order.reason = "REJECTED", "FILL_RISK_BUDGET"
                 elif (
                     account.daily_entries >= config.max_daily_entries
@@ -1127,7 +1153,9 @@ class NiftyStore:
                 else:
                     account.available -= cost
                     account.equity -= fees
-                    account.daily_entries += 1
+                    if not order.payload.get("daily_entry_counted"):
+                        account.daily_entries += 1
+                        order.payload = dict(order.payload, daily_entry_counted=True)
                     existing = db.get(NiftyPosition, (user_id, order.token))
                     if existing is None:
                         db.add(

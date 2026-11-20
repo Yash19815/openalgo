@@ -26,7 +26,7 @@ def liquid(instrument, quote, now, config):
 
 
 class Resolver:
-    def resolve(self, instruments, quotes, spot, side, now, config):
+    def candidates(self, instruments, quotes, spot, side, now, config):
         spot = Decimal(str(spot))
         if side not in ("CE", "PE") or not spot.is_finite() or spot <= 0:
             raise ValueError("Valid spot and CE/PE side required")
@@ -66,9 +66,34 @@ class Resolver:
             ]
             if not options:
                 raise ValueError("Reliable synchronized Greeks unavailable")
-            selected = min(options, key=lambda i: abs(abs(i.delta) - config.delta_target))
+            ordered = sorted(
+                options,
+                key=lambda i: abs(abs(i.delta) - config.delta_target),
+            )[: 2 * config.candidate_strike_window + 1]
         else:
             selected = next(i for i in options if i.strike == atm)
-        if not liquid(selected, quotes.get(selected.token), now, config):
+            selected_index = strikes.index(selected.strike)
+            nearby_strikes = [
+                *strikes[max(0, selected_index - config.candidate_strike_window) : selected_index],
+                *strikes[
+                    selected_index + 1 : selected_index + config.candidate_strike_window + 1
+                ],
+            ]
+            nearby_strikes.sort(key=lambda strike: (abs(strike - selected.strike), strike))
+            ordered = [
+                i
+                for strike in (selected.strike, *nearby_strikes)
+                for i in options
+                if i.strike == strike
+            ]
+        suitable = [
+            instrument
+            for instrument in ordered
+            if liquid(instrument, quotes.get(instrument.token), now, config)
+        ]
+        if not suitable:
             raise ValueError("Selected contract fails fresh depth, volume or spread requirements")
-        return selected
+        return suitable
+
+    def resolve(self, instruments, quotes, spot, side, now, config):
+        return self.candidates(instruments, quotes, spot, side, now, config)[0]

@@ -7,7 +7,7 @@ closed: orders enter only through ``admit`` after risk-manager checks and
 resolve only through ``process`` against fresh market depth.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from decimal import ROUND_CEILING, Decimal
 from math import isfinite
 from uuid import uuid4
@@ -158,7 +158,7 @@ class NiftyPaperExecutor:
     def admit(self, intent, now=None):
         """Validate an intent through the risk manager, then persist it once."""
         from services.nifty_algo.config import StrategyConfig
-        from services.nifty_algo.risk_manager import AccountRisk, entry_reasons, size_quantity
+        from services.nifty_algo.risk_manager import AccountRisk, entry_reasons, plan_entry
 
         now = now or self.clock()
         existing = self.store.order_by_intent(self.user_id, intent["intent_id"])
@@ -178,7 +178,12 @@ class NiftyPaperExecutor:
         if side not in ("BUY", "SELL"):
             raise OrderRefused(["SIDE_RESTRICTED"])
         try:
-            instrument = Instrument.model_validate(intent["instrument"])
+            raw_candidates = intent.get("candidates") if side == "BUY" else None
+            candidate_instruments = [
+                Instrument.model_validate(value)
+                for value in (raw_candidates or [intent["instrument"]])
+            ]
+            instrument = candidate_instruments[0]
         except (ValueError, TypeError, KeyError):
             raise OrderRefused(["METADATA_INVALID"]) from None
         if (
@@ -237,7 +242,10 @@ class NiftyPaperExecutor:
                 reconciled=row["reconciled"],
                 entries_enabled=state["state"] == "RUNNING",
             )
-            quote = self._depth(instrument, now)
+            candidate_quotes = [
+                (candidate, self._depth(candidate, now)) for candidate in candidate_instruments
+            ]
+            quote = candidate_quotes[0][1]
             reasons = entry_reasons(
                 risk,
                 instrument,
@@ -249,63 +257,64 @@ class NiftyPaperExecutor:
             )
             if reasons:
                 raise OrderRefused(reasons)
-            allowed_quantity = size_quantity(
+            sizing = plan_entry(
                 risk,
-                instrument,
-                quote,
+                candidate_quotes,
                 config,
-                round_trip_cost_per_lot=(
-                    _charges(
-                        "BUY",
-                        quote.ask + instrument.tick_size * config.slippage_ticks,
-                        instrument.lot_size,
-                        config,
-                    )
-                    + _charges(
-                        "SELL",
-                        quote.ask + instrument.tick_size * config.slippage_ticks,
-                        instrument.lot_size,
-                        config,
-                    )
-                ),
+                confidence["score"],
+                _charges,
             )
-            quantity = intent.get("quantity", allowed_quantity)
-            if (
-                type(quantity) is not int
-                or quantity < 1
-                or quantity > allowed_quantity
-                or quantity % instrument.lot_size
-            ):
+            if sizing.instrument is None:
+                reasons = list(dict.fromkeys(reason for _, _, reason in sizing.rejections))
+                if not reasons:
+                    reasons = ["POSITION_SIZE_ZERO"]
+                raise OrderRefused(reasons)
+            if intent.get("quantity") is not None and intent["quantity"] != sizing.quantity:
                 raise OrderRefused(["POSITION_SIZE_ZERO"])
-            if quote.ask_size < quantity:
-                raise OrderRefused(["INSUFFICIENT_DISPLAYED_DEPTH"])
-        reservation = {}
-        if side == "BUY":
-            price = quote.ask + instrument.tick_size * config.slippage_ticks
-            from .protection import initial_protection
-
-            try:
-                initial_protection(price, instrument.tick_size, config, confidence)
-            except ValueError:
-                raise OrderRefused(["PROTECTION_TICK_INVALID"]) from None
-            costs = _charges("BUY", price, quantity, config) + _charges(
-                "SELL", price, quantity, config
+            instrument = sizing.instrument
+            quote = next(
+                candidate_quote
+                for candidate, candidate_quote in candidate_quotes
+                if candidate.token == instrument.token
             )
-            # Budget an adverse exit tick as well as entry slippage and costs.
+            quantity = sizing.quantity
+        reservation = {}
+        sizing_plan = None
+        if side == "BUY":
             reservation = {
-                "reserved_capital": str(price * quantity + costs),
-                "reserved_risk": str(
-                    (price * config.premium_stop + instrument.tick_size * config.slippage_ticks)
-                    * quantity
-                    + costs
-                ),
+                "reserved_capital": str(sizing.cash_required),
+                "reserved_risk": str(sizing.planned_loss),
             }
+            sizing_plan = {
+                "instrument": instrument.token,
+                "quantity": sizing.quantity,
+                "lots": sizing.lots,
+                "entry_price": str(sizing.entry_price),
+                "stop_price": str(sizing.stop_price),
+                "stop_exit_price": str(sizing.stop_exit_price),
+                "target_price": str(sizing.target_price),
+                "planned_loss": str(sizing.planned_loss),
+                "projected_net_reward": str(sizing.projected_net_reward),
+                "cash_required": str(sizing.cash_required),
+                "rejections": [
+                    {"token": token, "lots": lots, "reason": reason}
+                    for token, lots, reason in sizing.rejections
+                ],
+                "rejection_details": {
+                    "PLANNED_LOSS_LIMIT": str(config.max_planned_loss),
+                    "NET_REWARD_BELOW_MINIMUM": str(config.min_projected_net_reward),
+                },
+            }
+        expires_at = now + timedelta(seconds=config.order_ttl_seconds)
+        if side == "BUY":
+            cutoff = datetime.combine(now.astimezone(IST).date(), time(14, 45), tzinfo=IST)
+            expires_at = min(expires_at, cutoff)
         order = {
             "order_id": uuid4().hex[:20],
             "intent_id": intent["intent_id"],
             "side": side,
-            "symbol": intent["symbol"],
-            "token": intent["token"],
+            "symbol": instrument.symbol,
+            "token": instrument.token,
             "quantity": quantity,
             "payload": {
                 "instrument": instrument.model_dump(mode="json"),
@@ -317,6 +326,7 @@ class NiftyPaperExecutor:
                 "runner_owner": intent.get("runner_owner"),
                 "protection": held.get("protection") if side == "SELL" else None,
                 "signal_context": decision if side == "BUY" else None,
+                "sizing_plan": sizing_plan,
                 "entry_order_id": held["entry_order_id"] if side == "SELL" else None,
                 "risk_approval": {
                     "approved": True,
@@ -328,7 +338,7 @@ class NiftyPaperExecutor:
                 **reservation,
             },
             "eligible_at": now + timedelta(milliseconds=config.latency_ms),
-            "expires_at": now + timedelta(seconds=config.order_ttl_seconds),
+            "expires_at": expires_at,
             "created_at": now,
         }
         return self.store.admit_order(self.user_id, order)

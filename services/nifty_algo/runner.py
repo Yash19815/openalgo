@@ -215,9 +215,10 @@ class NiftyRunner:
                 for i in instruments
                 if i.kind == decision["side"]
             }
-            instrument = Resolver().resolve(
+            candidates = Resolver().candidates(
                 instruments, quotes, spot["ltp"], decision["side"], now, config
             )
+            instrument = candidates[0]
             self.executor.admit(
                 {
                     "intent_id": f"entry:{decision['decision_id']}",
@@ -226,6 +227,7 @@ class NiftyRunner:
                     "symbol": instrument.symbol,
                     "token": instrument.token,
                     "instrument": instrument,
+                    "candidates": candidates,
                     "runner_owner": self.owner,
                 },
                 now,

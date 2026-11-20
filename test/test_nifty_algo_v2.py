@@ -282,7 +282,10 @@ def test_entry_snapshot_does_not_follow_later_config(store):
 def test_partial_exit_allocates_entry_fees_and_preserves_trailing(store):
     running(store)
     market = FakeMarket()
-    exe = executor(store, config=StrategyConfig(slippage_ticks=0), market=market)
+    config = StrategyConfig(
+        slippage_ticks=0, max_lots=1, lot_score_thresholds=(D("0"),)
+    )
+    exe = executor(store, config=config, market=market)
     exe.admit(buy_intent())
     exe.process(NOW + timedelta(seconds=1))
     market.bid, market.ask, market.stamp = "106", "106.5", NOW + timedelta(seconds=2)
@@ -309,7 +312,7 @@ def test_partial_exit_allocates_entry_fees_and_preserves_trailing(store):
     assert not store.positions(USER)
     trades = store.trades(USER)
     net = sum((D(t["net"]) for t in trades), D(0))
-    assert D(store.account(USER, NOW)["equity"]) - 100000 == net
+    assert D(store.account(USER, NOW)["equity"]) - 20000 == net
 
 
 def test_expired_exit_latch_retries_after_restart_and_retains_exposure(store):
@@ -467,7 +470,8 @@ def test_realized_gap_loss_locks_day_and_survives_restart(store):
 def test_fee_allocation_conserves_money_across_uneven_partial_exits(store):
     running(store)
     market = FakeMarket()
-    exe = executor(store, market=market)
+    config = StrategyConfig(max_lots=1, lot_score_thresholds=(D("0"),))
+    exe = executor(store, market=market, config=config)
     exe.admit(buy_intent())
     exe.process(NOW + timedelta(seconds=1))
     market.bid, market.ask = "101", "101.5"
@@ -477,7 +481,7 @@ def test_fee_allocation_conserves_money_across_uneven_partial_exits(store):
         assert exe.process(market.stamp + timedelta(seconds=1))[0]["status"] == "FILLED"
     assert not store.positions(USER)
     net = sum((D(t["net"]) for t in store.trades(USER)), D(0))
-    assert D(store.account(USER, NOW)["equity"]) == 100000 + net
+    assert D(store.account(USER, NOW)["equity"]) == 20000 + net
 
 
 def test_performance_aggregates_entire_ledger_beyond_journal_page(store):

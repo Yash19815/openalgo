@@ -15,8 +15,25 @@ from services.nifty_algo.paper_executor import (
     PaperExecutionUnavailable,
 )
 
-NOW = datetime(2026, 11, 19, 4, 30, tzinfo=UTC)  # 10:00 IST, mid-session
+NOW = datetime(2026, 11, 19, 5, 0, tzinfo=UTC)  # 10:30 IST, entry window opens
 USER = "trader"
+
+
+def _paper_test_config(config=None):
+    config = config or StrategyConfig()
+    if (
+        config.max_planned_loss == Decimal("400")
+        and config.min_projected_net_reward == Decimal("350")
+        and config.planned_loss_buffer == Decimal("10")
+    ):
+        config = config.model_copy(
+            update={
+                "max_planned_loss": Decimal("10000"),
+                "min_projected_net_reward": Decimal("0"),
+                "planned_loss_buffer": Decimal("0"),
+            }
+        )
+    return config
 
 
 @pytest.fixture
@@ -83,7 +100,7 @@ def buy_intent(intent_id="i-1", **extra):
 
 def executor(store, market=None, config=None, clock=None):
     # Explicit offline qualifying-decision fixture; never real indicator evidence.
-    config = config or StrategyConfig()
+    config = _paper_test_config(config)
     store.ensure_user(USER)
     if not store.orders(USER, now=NOW):
         with store.sessions.begin() as db:
@@ -176,7 +193,7 @@ def test_buy_fills_at_ask_plus_slippage(store):
 
     account = store.account(USER)
     cost = (expected * fill["quantity"] + Decimal(fill["fees"])).quantize(Decimal("0.0001"))
-    assert Decimal(account["available"]) == Decimal("100000") - cost
+    assert Decimal(account["available"]) == Decimal("20000") - cost
 
 
 def test_fill_is_idempotent(store):
@@ -269,9 +286,9 @@ def test_accounts_isolated_per_user(store):
     exe.admit(buy_intent())
     exe.process(now=NOW + timedelta(seconds=1))
 
-    assert Decimal(store.account("other")["equity"]) == Decimal("100000")
+    assert Decimal(store.account("other")["equity"]) == Decimal("20000")
     assert store.positions("other") == []
-    assert Decimal(store.account(USER)["equity"]) < Decimal("100000")
+    assert Decimal(store.account(USER)["equity"]) < Decimal("20000")
 
 
 def test_daily_rollover_resets_counters(store):

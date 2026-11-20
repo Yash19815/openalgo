@@ -38,7 +38,7 @@ def minute_rows():
     rows = []
     for day in range(9):
         opening = NOW.replace(hour=3, minute=45) - timedelta(days=8 - day)
-        for minute in range(375 if day < 8 else 45):
+        for minute in range(375 if day < 8 else 75):
             price = 24000 + day * 100 + minute * 0.2
             if day == 8 and minute >= 15:
                 price -= min(minute - 15, 24)
@@ -100,6 +100,7 @@ def master_rows():
 class DeterministicMarket:
     def __init__(self):
         self.stamp, self.bid, self.ask = NOW, 99, 100
+        self.bid_size = self.ask_size = 100
         self.missing_oi, self.missing_time, self.stale_put = False, False, False
 
     def get_all_data(self, symbol, exchange):
@@ -115,8 +116,8 @@ class DeterministicMarket:
             "volume": 5000,
             "oi": (200 if symbol.endswith("PE") else 100),
             "depth": {
-                "buy": [{"price": self.bid, "quantity": 100}],
-                "sell": [{"price": self.ask, "quantity": 100}],
+                "buy": [{"price": self.bid, "quantity": self.bid_size}],
+                "sell": [{"price": self.ask, "quantity": self.ask_size}],
             },
         }
         if self.missing_oi:
@@ -155,7 +156,10 @@ def assess(native, now=NOW, rows=None, config=None):
 
 
 def test_real_calculations_connect_complete_pcr_to_eligible_confidence():
-    decision = assess(pipeline())
+    now = NOW - timedelta(minutes=30)
+    market = DeterministicMarket()
+    market.stamp = now
+    decision = assess(pipeline(market), now=now)
     assert decision["eligible"]
     assert all(c["state"] == "PASS" for c in decision["checks"])
     assert decision["pcr"]["value"] == 2 and "2026-11-24" in decision["pcr"]["scope"]
@@ -222,11 +226,29 @@ def test_offline_end_to_end_runner_never_calls_order_services(store, monkeypatch
         row = db.get(NiftyState, USER)
         row.configuration, row.configuration_id = config.model_dump(mode="json"), config.version_id
     market = DeterministicMarket()
+    market.bid, market.ask = 79, 80
     native = pipeline(market)
+    rows = minute_rows()
+    history = rows[:-75]
+    for minute, row in enumerate(rows[-75:]):
+        price = 24800 + minute * 0.2
+        if minute >= 15:
+            price -= min(minute - 15, 24)
+        if minute >= 46:
+            price += (minute - 46) * 0.5
+        history.append(
+            row
+            | {
+                "open": price,
+                "high": price + 1,
+                "low": price - 1,
+                "close": price,
+            }
+        )
     exe = NiftyPaperExecutor(
         store, USER, config, market, clock=lambda: market.stamp, session_reader=session
     )
-    reads = Mock(side_effect=lambda config, now: assess(native, now, config=config))
+    reads = Mock(side_effect=lambda config, now: assess(native, now, history, config))
     runner = NiftyRunner(
         store,
         USER,
@@ -249,9 +271,15 @@ def test_offline_end_to_end_runner_never_calls_order_services(store, monkeypatch
     assert Decimal(store.positions(USER)[0]["protection"]["stop_price"]) == Decimal("104.5")
     state = store.read(USER)
     store.change(USER, state["revision"], action="kill-switch")
-    market.bid, market.ask, market.stamp = 114, 114.5, NOW + timedelta(seconds=3)
+    market.bid, market.ask, market.bid_size, market.stamp = (
+        114,
+        114.5,
+        0,
+        NOW + timedelta(seconds=3),
+    )
     runner.protect(market.stamp)
     assert store.positions(USER) and store.pending_orders(USER)[0]["side"] == "SELL"
+    market.bid_size = 100
     market.stamp = NOW + timedelta(seconds=4)
     runner.protect(market.stamp)
     assert store.positions(USER) == []
