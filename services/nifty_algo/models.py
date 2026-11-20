@@ -56,7 +56,7 @@ class Quote(Model):
     token: str
     source_time: datetime
     received_time: datetime
-    ltp: Decimal = Field(gt=0)
+    ltp: Decimal | None = Field(default=None, gt=0)
     bid: Decimal | None = Field(default=None, gt=0)
     ask: Decimal | None = Field(default=None, gt=0)
     bid_size: int = Field(default=0, ge=0)

@@ -1,5 +1,11 @@
 # NIFTY ALGO migration analysis
 
+Historical migration proposal: shared-Sandbox dispatch recommendations below
+have been superseded by the implemented isolated NIFTY paper ledger. They
+remain for audit context, not as current operational instructions. Use
+[ARCHITECTURE.md](ARCHITECTURE.md), [SETUP.md](SETUP.md) and
+[READINESS_REPORT.md](READINESS_REPORT.md) for the active design and limits.
+
 Source is the sibling `../trader-bot/` checkout, version `0.1.0`, commit `cf7acb4`. Target is this OpenAlgo fork, inspected at `de8456ab3`. This is a static review of all 98 tracked source files. Paths in the inventory are relative to `trader-bot`. OpenAlgo paths are named explicitly. The legacy app, database, providers, tests and order paths were never run. Local databases, caches, virtual environments and installed dependencies were excluded.
 
 The reusable core is the deterministic NIFTY decision evaluator, indicator reference behavior, strategy-specific entry and exit policy, research coverage rules, analytics and UI presentation. OpenAlgo already provides the broker plugin, instrument master, market-data transport, calendar, strategy lifecycle, shared risk evaluation, Sandbox order and trade records, authentication and frontend shell.

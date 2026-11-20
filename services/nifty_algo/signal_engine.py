@@ -2,6 +2,7 @@ from hashlib import sha256
 from math import isfinite
 from zoneinfo import ZoneInfo
 
+from .confidence import signal_strength
 from .indicators import adx, macd, supertrend, vwap
 
 
@@ -129,6 +130,13 @@ class Rules:
             )
             gate("R-CANDLE", passed, "Previous completed candle high/low break")
         eligible = bool(direction) and all(c["state"] == "PASS" for c in checks)
+        confidence = None
+        if eligible:
+            try:
+                confidence = signal_strength(snap, h, pcr, direction, config)
+            except (ValueError, TypeError, KeyError, ZeroDivisionError):
+                gate("R-CONFIDENCE", False, "Confidence calculation unavailable or invalid", False)
+                eligible = False
         bias = ("BULLISH" if direction == 1 else "BEARISH") if direction else "NO_TRADE"
         if eligible:
             bias = "STRONG_" + bias
@@ -137,6 +145,32 @@ class Rules:
         if any(check["state"] == "UNAVAILABLE" for check in checks):
             bias = "DATA_UNAVAILABLE"
         stamp = bars[-1].end.isoformat() if bars else now.isoformat()
+        indicator_states = {}
+        for name, rule, value, signal_direction in (
+            ("supertrend", "R-ST", st, direction),
+            ("macd", "R-MACD", momentum, momentum.get("cross_direction") if momentum else None),
+            ("vwap", "R-VWAP", vw, (1 if distance >= 0 else -1) if distance is not None else None),
+            ("adx", "R-ADX", strength, direction if strong else 0),
+            (
+                "pcr",
+                "R-PCR",
+                pcr.value if valid_pcr else None,
+                (1 if pcr.value >= config.pcr_bull else -1 if pcr.value < config.pcr_bear else 0)
+                if valid_pcr
+                else None,
+            ),
+        ):
+            check = next(c for c in checks if c["rule"] == rule)
+            indicator_states[name] = {
+                "value": value,
+                "timestamp": pcr.source_time.isoformat()
+                if name == "pcr" and valid_pcr
+                else snap.get("end"),
+                "valid": check["state"] != "UNAVAILABLE",
+                "gate": check["state"],
+                "direction": signal_direction,
+                "reason": None if check["state"] == "PASS" else check["detail"],
+            }
         return {
             "decision_id": sha256(f"{token}:{stamp}:{config_id}".encode()).hexdigest(),
             "timestamp": now.isoformat(),
@@ -151,6 +185,11 @@ class Rules:
             "bias": bias,
             "side": "CE" if direction == 1 else "PE" if direction else None,
             "eligible": eligible,
+            "confidence": confidence,
+            "confidence_score": confidence["score"] if confidence else None,
+            "target_fraction": confidence["target_fraction"] if confidence else None,
+            "indicator_states": indicator_states,
+            "point_unit": config.point_unit,
             "checks": checks,
             "reasons": [c["rule"] + ": " + c["detail"] for c in checks if c["state"] != "PASS"],
             "contract": None,

@@ -31,8 +31,7 @@ def store(tmp_path):
 class FakeMarket:
     """Minimal stand-in for the cached market-data service."""
 
-    def __init__(self, bid="99", ask="100", ltp="99.5", volume=5000,
-                 size=100, stamp=None):
+    def __init__(self, bid="99", ask="100", ltp="99.5", volume=5000, size=100, stamp=None):
         self.bid = bid
         self.ask = ask
         self.ltp = ltp
@@ -83,12 +82,35 @@ def buy_intent(intent_id="i-1", **extra):
 
 
 def executor(store, market=None, config=None, clock=None):
+    # Explicit offline qualifying-decision fixture; never real indicator evidence.
+    config = config or StrategyConfig()
+    store.ensure_user(USER)
+    if not store.orders(USER, now=NOW):
+        with store.sessions.begin() as db:
+            state = db.get(NiftyState, USER)
+            state.configuration = config.model_dump(mode="json")
+            state.configuration_id = config.version_id
+    store.record_decision(
+        USER,
+        {
+            "decision_id": "d-1",
+            "eligible": True,
+            "side": "CE",
+            "config_id": config.version_id,
+            "timestamp": NOW.isoformat(),
+            "confidence": {"method": config.confidence_method, "score": 50},
+        },
+    )
     return NiftyPaperExecutor(
         store=store,
         user_id=USER,
-        config=config or StrategyConfig(),
+        config=config,
         market_data=market or FakeMarket(),
         clock=clock or (lambda: NOW),
+        session_reader=lambda day, exchange: {
+            "start_ms": NOW.replace(hour=3, minute=45).timestamp() * 1000,
+            "end_ms": NOW.replace(hour=10, minute=0).timestamp() * 1000,
+        },
     )
 
 
@@ -115,6 +137,9 @@ def test_buy_admitted_pending_once(store):
     assert created_again is False
     assert again["order_id"] == order["order_id"]
     assert len(store.pending_orders(USER)) == 1
+    admissions = [row for row in store.events(USER) if row["kind"] == "paper_intent_admitted"]
+    assert len(admissions) == 1
+    assert admissions[0]["payload"]["risk_approval"]["approved"]
 
 
 def test_entries_refused_when_not_running(store):
@@ -142,7 +167,7 @@ def test_buy_fills_at_ask_plus_slippage(store):
     assert len(fills) == 1
     fill = fills[0]
     assert fill["status"] == "FILLED"
-    expected = Decimal("100") + exe._slippage()
+    expected = Decimal("100") + exe._slippage(instrument())
     assert Decimal(fill["price"]) == expected
 
     positions = store.positions(USER)
@@ -150,9 +175,7 @@ def test_buy_fills_at_ask_plus_slippage(store):
     assert positions[0]["token"] == "token-ce"
 
     account = store.account(USER)
-    cost = (expected * fill["quantity"] + Decimal(fill["fees"])).quantize(
-        Decimal("0.0001")
-    )
+    cost = (expected * fill["quantity"] + Decimal(fill["fees"])).quantize(Decimal("0.0001"))
     assert Decimal(account["available"]) == Decimal("100000") - cost
 
 
@@ -174,13 +197,11 @@ def test_sell_fills_at_bid_and_journals_trade(store):
     exe.admit(buy_intent())
     exe.process(now=NOW + timedelta(seconds=1))
 
-    sell, _ = exe.admit(
-        buy_intent(intent_id="i-2", side="SELL", exit_reason="TARGET_HIT")
-    )
+    sell, _ = exe.admit(buy_intent(intent_id="i-2", side="SELL", exit_reason="TARGET_HIT"))
     fills = exe.process(now=NOW + timedelta(seconds=2))
     fill = fills[0]
     assert fill["status"] == "FILLED"
-    expected = Decimal("99") - exe._slippage()
+    expected = Decimal("99") - exe._slippage(instrument())
     assert Decimal(fill["price"]) == expected
 
     assert store.positions(USER) == []
@@ -204,9 +225,7 @@ def test_pending_waits_for_eligibility(store):
     order, _ = exe.admit(buy_intent())
     fills = exe.process(now=NOW + timedelta(milliseconds=100))
     assert fills == []
-    assert store.orders(USER, now=NOW + timedelta(milliseconds=100))[0][
-        "status"
-    ] == "PENDING"
+    assert store.orders(USER, now=NOW + timedelta(milliseconds=100))[0]["status"] == "PENDING"
 
     fills = exe.process(now=NOW + timedelta(seconds=1))
     assert fills[0]["status"] == "FILLED"
@@ -218,9 +237,7 @@ def test_order_expires_after_ttl(store):
     exe.admit(buy_intent())
     fills = exe.process(now=NOW + timedelta(seconds=6))
     assert fills == []
-    assert store.orders(USER, now=NOW + timedelta(seconds=6))[0][
-        "status"
-    ] == "EXPIRED"
+    assert store.orders(USER, now=NOW + timedelta(seconds=6))[0]["status"] == "EXPIRED"
 
 
 def test_reconcile_recovers_durable_state(store):
@@ -242,9 +259,7 @@ def test_reconcile_expires_dead_intents(store):
     exe.admit(buy_intent())
     report = exe.reconcile(now=NOW + timedelta(seconds=6))
     assert report["pending"] == []
-    assert store.orders(USER, now=NOW + timedelta(seconds=6))[0][
-        "status"
-    ] == "EXPIRED"
+    assert store.orders(USER, now=NOW + timedelta(seconds=6))[0]["status"] == "EXPIRED"
 
 
 def test_accounts_isolated_per_user(store):

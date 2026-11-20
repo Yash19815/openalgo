@@ -13,6 +13,8 @@ def aggregate(bars, minutes, now, session_open=None):
         raise ValueError("Unsupported candle timeframe")
     if len({bar.token for bar in bars}) > 1 or any(bar.timeframe != 1 for bar in bars):
         raise ValueError("Aggregation requires one instrument's minute bars")
+    if any(left.start >= right.start for left, right in zip(bars, bars[1:], strict=False)):
+        raise ValueError("Duplicate or out-of-order minute bars")
     groups = {}
     for bar in bars:
         if not bar.complete or bar.end > now:
@@ -65,6 +67,8 @@ class CandleBuilder:
         self.valid_start = {}
 
     def push(self, quote, instrument):
+        if quote.ltp is None:
+            return None
         old = self.previous.get(quote.token)
         if old and (
             quote.source_time < old.source_time

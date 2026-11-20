@@ -789,6 +789,7 @@ class AngelWebSocketAdapter(BaseBrokerWebSocketAdapter):
                 "ltp": price("last_traded_price"),
                 "ltt": message.get("exchange_timestamp", 0),
                 "volume": message.get("volume_trade_for_the_day", 0),
+                "source_volume": message.get("volume_trade_for_the_day"),
                 "open": price("open_price_of_the_day"),
                 "high": price("high_price_of_the_day"),
                 "low": price("low_price_of_the_day"),
@@ -806,6 +807,7 @@ class AngelWebSocketAdapter(BaseBrokerWebSocketAdapter):
             result.update(
                 {
                     "oi": message.get("open_interest", 0),
+                    "source_oi": message.get("open_interest"),
                     "upper_circuit": price("upper_circuit_limit"),
                     "lower_circuit": price("lower_circuit_limit"),
                 }

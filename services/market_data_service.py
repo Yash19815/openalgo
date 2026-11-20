@@ -428,6 +428,28 @@ class MarketDataService:
 
                 cache_entry = self.market_data_cache[symbol_key]
 
+                # Preserve source provenance separately from display fallbacks.
+                # Missing source/OI/volume stays missing for execution consumers.
+                observed = {
+                    key: market_data.get(key)
+                    for key in ("ltp", "ltt", "volume", "oi", "sequence_number", "depth", "bids", "asks")
+                }
+                observed["received_time"] = time.time()
+                if "source_volume" in market_data:
+                    observed["volume"] = market_data["source_volume"]
+                if "source_oi" in market_data:
+                    observed["oi"] = market_data["source_oi"]
+                observed["symbol"] = symbol
+                observed["exchange"] = exchange
+                observations = dict(cache_entry.get("source_observations", {}))
+                previous = observations.get(str(mode), {})
+                source = observed.get("ltt")
+                prior_source = previous.get("ltt")
+                # Do not replace a source snapshot with an out-of-order packet.
+                if not (isinstance(source, (int, float)) and isinstance(prior_source, (int, float)) and source < prior_source):
+                    observations[str(mode)] = observed
+                    cache_entry["source_observations"] = observations
+
                 # Update based on mode
                 if mode == 1:  # LTP
                     cache_entry["ltp"] = {

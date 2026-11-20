@@ -1,25 +1,61 @@
 # NIFTY ALGO architecture
 
-The existing Flask process serves the NIFTY browser blueprint. OpenAlgo’s signed session and CSRF middleware protect feature mutations. Feature tables share the configured main SQLAlchemy database, with NullPool for SQLite and context-managed transactions. Creating tables is additive and idempotent.
+The authenticated Flask blueprint and existing `/nifty-algo` React workspace
+share OpenAlgo's application, database engine, signed sessions and CSRF rules.
+NIFTY uses its own feature ledger, not the shared Sandbox or Analyzer routing.
 
 ```mermaid
 flowchart TD
-  A[Angel native read-only data services] --> B[NIFTY normalization and quality gates]
-  B --> C[Complete futures candles and scoped PCR]
-  C --> D[Versioned deterministic rules]
-  D --> E[Persistent decisions and risk approval]
-  E --> F[Paper execution readiness guard]
-  F --> G[Native Sandbox only]
-  G --> H[Confirmed fills and reconciliation]
-  H --> E
-  I[Native Python host and scheduler] --> B
-  J[Authenticated React workspace] --> K[NIFTY Flask blueprint]
-  K --> E
-  K --> H
+  A[Existing Angel connection and native source cache] --> B[Fresh dated master and full expiry scope]
+  C[Native futures minute history and NFO calendar] --> D[Completed 5m and 15m candles]
+  B --> E[Verified OI or volume PCR]
+  D --> F[Five mandatory indicator gates]
+  E --> F
+  F --> G[Deterministic strength and bounded target]
+  G --> H[Atomic account reservation and paper intent]
+  H --> I[Observed ask depth and confirmed entry fill]
+  I --> J[Durable position and Decimal protection]
+  J --> K[Independent protective monitor]
+  K --> L[Durable exit intent and observed bid fill]
+  L --> M[Trade journal and ledger analytics]
 ```
 
-The diagram describes the target integration. Implementation status and unresolved edges are tracked per phase. Readiness must identify unimplemented execution prerequisites explicitly.
+`services/nifty_algo/runner.py` reuses the native Python strategy host's existing
+IST APScheduler. It does not upload a generic SDK trading script: that template
+routes orders according to Analyzer mode and conflicts with this feature's
+PAPER_ONLY boundary. Explicit monitor attachment creates two identifiable jobs
+per user: protection every second and entry work every five seconds. Feed/authentication checks run every five seconds; entry
+history is requested once per completed five-minute boundary. Protection does
+not wait for history downloads. The native scheduler owns job execution; this
+feature creates no scheduler, broker session, private thread or polling loop.
 
-Use native Socket.IO and event subscriptions for completed decisions and fills. Every subscription needs teardown. Use bounded data windows and paginated database queries. No per-request threads, schedulers, HTTP pools or broker connections belong in the NIFTY module.
+A durable 30-second owner lease fences competing application instances. Jobs
+coalesce missed runs and permit one invocation per job. Entry configuration and
+startup/reconnect/rollover time establish a causal floor; missed old signals
+are not entered on restart. Source subscriptions are acknowledged and reused;
+pre-existing subscriptions are borrowed. Added obsolete subscriptions are
+released on rollover. Cache callbacks are removed on replacement/shutdown.
 
-The Python host copies one strategy script into its managed scripts directory. The eventual runner must use the host interpreter, injected key and URL, cooperative SIGTERM handling and the existing holiday/session scheduler. Import paths and request authentication need validation under the actual host before registration is reported complete.
+The source cache preserves exchange timestamps and receipt times separately
+from display defaults. Angel's optional raw OI/volume fields remain missing
+when absent. Native master status must be dated today and match the connected
+broker. PCR uses every valid CE/PE in the selected dated master expiry, with
+paired strikes, no duplicate identities, no missing values, and bounded source
+age/skew. A malformed current master cannot silently reduce the universe.
+
+`nifty_algo_protection`, `nifty_algo_runner`, and `nifty_algo_depth_use` are
+additive tables. Existing ledger tables and configuration history are retained.
+All account-sensitive writers take a database write/row lock before reading
+mutable state. Pending BUY intents reserve the single permitted position;
+competing intents cannot independently pass account checks. Final fills repeat
+risk, state, tick, source-time, displayed-size and fee validation atomically.
+A consumed displayed snapshot cannot supply the same side's quantity twice.
+
+Entry orders and protection retain configuration, confidence, signal context,
+trigger levels and observations. Exit orders retain final protection. Trade
+views join those immutable contexts to fees and gross/net results. Socket.IO
+updates use `emit_from_any_thread` and signed-session user rooms on the main
+application socket. The workspace subscribes, rejoins after reconnect and
+unsubscribes on unmount. HTTP polling remains a fallback.
+
+Input decisions remain immutable pre-admission assessments. Atomic admitted intents carry the actual risk approval and emit a durable `paper_intent_admitted` event. Recovery validates fill/quantity/cash invariants using bounded results and SQL aggregates. Journal performance aggregates all trades, while the display query remains paginated to recent records.

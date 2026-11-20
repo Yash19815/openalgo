@@ -6,8 +6,8 @@ paper ledger keeps funds, order intents, positions and closed trades inside
 this feature only; it never shares the shared Sandbox balance.
 """
 
-from datetime import UTC, datetime
-from decimal import Decimal
+from datetime import UTC, datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import (
@@ -136,6 +136,32 @@ class NiftyTrade(Base):
     closed_at = Column(DateTime(timezone=True), nullable=False)
 
 
+class NiftyProtection(Base):
+    """Additive protection state; avoids destructive changes to existing ledgers."""
+
+    __tablename__ = "nifty_algo_protection"
+    user_id = Column(String(255), primary_key=True)
+    token = Column(String(32), primary_key=True)
+    payload = Column(JSON, nullable=False)
+
+
+class NiftyRunnerLease(Base):
+    __tablename__ = "nifty_algo_runner"
+    user_id = Column(String(255), primary_key=True)
+    owner = Column(String(64), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    payload = Column(JSON, nullable=False)
+
+
+class NiftyDepthUse(Base):
+    """A displayed snapshot cannot supply the same side's quantity twice."""
+
+    __tablename__ = "nifty_algo_depth_use"
+    user_id = Column(String(255), primary_key=True)
+    snapshot_id = Column(String(128), primary_key=True)
+    quantity = Column(Integer, nullable=False)
+
+
 class StateConflict(ValueError):
     """The caller used an obsolete state revision."""
 
@@ -160,7 +186,71 @@ class NiftyStore:
         now = datetime.now(UTC)
         try:
             with self.sessions.begin() as db:
-                if db.get(NiftyState, user_id) is not None:
+                existing = db.get(NiftyState, user_id)
+                if existing is not None:
+                    if existing.configuration.get("strategy_version", "1.0.0") == "1.0.0":
+                        from services.nifty_algo.config import migrate_configuration
+
+                        self._lock(db, user_id)
+                        db.refresh(existing)
+                        if existing.configuration.get("strategy_version", "1.0.0") == "1.0.0":
+                            try:
+                                migrated = migrate_configuration(existing.configuration)
+                            except ValueError:
+                                if existing.state not in ("PAUSED", "KILLED"):
+                                    existing.state = "KILLED" if existing.killed else "PAUSED"
+                                    existing.revision += 1
+                                    db.add(
+                                        NiftyEvent(
+                                            user_id=user_id,
+                                            kind="configuration_incompatible",
+                                            payload={"reason": "VALIDATION_REQUIRED"},
+                                            created_at=now,
+                                        )
+                                    )
+                                return
+                            existing.revision += 1
+                            existing.configuration = migrated.model_dump(mode="json")
+                            existing.configuration_id = migrated.version_id
+                            existing.state = "KILLED" if existing.killed else "PAUSED"
+                            existing.updated_at = now
+                            db.add(
+                                NiftyConfiguration(
+                                    user_id=user_id,
+                                    revision=existing.revision,
+                                    configuration_id=migrated.version_id,
+                                    configuration=existing.configuration,
+                                    created_at=now,
+                                )
+                            )
+                            db.add(
+                                NiftyEvent(
+                                    user_id=user_id,
+                                    kind="configuration_migration",
+                                    payload={
+                                        "from": "1.0.0",
+                                        "to": "2.0.0",
+                                        "revision": existing.revision,
+                                    },
+                                    created_at=now,
+                                )
+                            )
+                    else:
+                        try:
+                            StrategyConfig.model_validate(existing.configuration)
+                        except ValueError:
+                            self._lock(db, user_id)
+                            if existing.state not in ("PAUSED", "KILLED"):
+                                existing.state = "KILLED" if existing.killed else "PAUSED"
+                                existing.revision += 1
+                                db.add(
+                                    NiftyEvent(
+                                        user_id=user_id,
+                                        kind="configuration_incompatible",
+                                        payload={"reason": "VALIDATION_REQUIRED"},
+                                        created_at=now,
+                                    )
+                                )
                     return
                 values = config.model_dump(mode="json")
                 db.add(
@@ -214,11 +304,28 @@ class NiftyStore:
             values["state"] = "PAUSED" if action == "pause" else "STOPPED"
         elif action == "kill-switch":
             values.update(state="KILLED", killed=1)
+        elif action == "start":
+            values["state"] = "RUNNING"
         elif action is not None:
             raise ValueError("Unsupported control")
         with self.sessions.begin() as db:
+            self._lock(db, user_id)
             # Killing is monotonic. Configuration and pause cannot clear it.
             row = db.get(NiftyState, user_id)
+            if action == "start":
+                lease = db.get(NiftyRunnerLease, user_id)
+                account = db.get(NiftyAccount, user_id)
+                if (
+                    row.killed
+                    or row.daily_locked
+                    or lease is None
+                    or account is None
+                    or not account.reconciled
+                    or datetime.fromisoformat(_instant(lease.expires_at)) <= now
+                    or not lease.payload.get("entries_ready")
+                    or lease.payload.get("configuration_id") != row.configuration_id
+                ):
+                    raise StateConflict("Start prerequisites changed. Reload readiness.")
             if row.killed:
                 values["state"] = "KILLED"
             changed = db.execute(
@@ -247,6 +354,56 @@ class NiftyStore:
                 )
             )
         return self.read(user_id)
+
+    @staticmethod
+    def _lock(db, user_id):
+        # UPDATE acquires a write lock on SQLite and a row lock on PostgreSQL.
+        # All ledger writers take this lock before reading mutable account state.
+        db.execute(
+            update(NiftyState)
+            .where(NiftyState.user_id == user_id)
+            .values(updated_at=NiftyState.updated_at)
+        )
+
+    def claim_runner(self, user_id, owner, now, seconds=30, payload=None):
+        self.ensure_user(user_id)
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            row = db.get(NiftyRunnerLease, user_id)
+            if (
+                row is not None
+                and row.owner != owner
+                and datetime.fromisoformat(_instant(row.expires_at)) > now
+            ):
+                return False
+            if row is None:
+                row = NiftyRunnerLease(user_id=user_id)
+                db.add(row)
+            expiry = now + timedelta(seconds=seconds)
+            if row.owner == owner and row.expires_at is not None:
+                expiry = max(expiry, datetime.fromisoformat(_instant(row.expires_at)))
+            row.owner, row.expires_at = owner, expiry
+            row.payload = payload or {}
+            return True
+
+    def release_runner(self, user_id, owner):
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            row = db.get(NiftyRunnerLease, user_id)
+            if row is not None and row.owner == owner:
+                db.delete(row)
+
+    def runner_status(self, user_id, now=None):
+        with self.sessions() as db:
+            row = db.get(NiftyRunnerLease, user_id)
+            if row is None:
+                return {"operational": False, "reason": "RUNNER_NOT_ATTACHED"}
+            return {
+                **row.payload,
+                "operational": datetime.fromisoformat(_instant(row.expires_at))
+                > (now or datetime.now(UTC)),
+                "expires_at": _instant(row.expires_at),
+            }
 
     def decisions(self, user_id, decision_id=None):
         with self.sessions() as db:
@@ -293,6 +450,10 @@ class NiftyStore:
                 for row in rows
             ]
 
+    def record_event(self, user_id, kind, payload, now):
+        with self.sessions.begin() as db:
+            db.add(NiftyEvent(user_id=user_id, kind=kind, payload=payload, created_at=now))
+
     # Isolated paper ledger -------------------------------------------------
 
     @staticmethod
@@ -333,11 +494,10 @@ class NiftyStore:
         now = now or datetime.now(UTC)
         today = now.astimezone(ZoneInfo("Asia/Kolkata")).date().isoformat()
         with self.sessions.begin() as db:
+            self._lock(db, user_id)
             row = db.get(NiftyAccount, user_id)
             if row is None:
-                capital = Decimal(
-                    str(db.get(NiftyState, user_id).configuration["virtual_capital"])
-                )
+                capital = Decimal(str(db.get(NiftyState, user_id).configuration["virtual_capital"]))
                 row = NiftyAccount(
                     user_id=user_id,
                     equity=capital,
@@ -356,19 +516,350 @@ class NiftyStore:
                 row.daily_entries = 0
                 row.day = today
                 row.updated_at = now
+                db.get(NiftyState, user_id).daily_locked = 0
             return self._account_dict(row)
 
     def mark_reconciled(self, user_id, now=None):
-        self.account(user_id)
+        self.account(user_id, now)
         with self.sessions.begin() as db:
+            self._lock(db, user_id)
             row = db.get(NiftyAccount, user_id)
             row.reconciled = 1
             row.updated_at = now or datetime.now(UTC)
+
+    def reconciliation_issues(self, user_id):
+        """Check durable fill/position/cash invariants without inventing repairs.
+
+        Historical quantities are aggregated in SQL; startup does not load an
+        unbounded order/trade history into the long-lived application worker.
+        """
+        from sqlalchemy import and_, func, or_
+
+        from services.nifty_algo.models import Instrument
+
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            account = db.get(NiftyAccount, user_id)
+            positions = list(
+                db.scalars(select(NiftyPosition).where(NiftyPosition.user_id == user_id).limit(2))
+            )
+            position_count = db.scalar(
+                select(func.count())
+                .select_from(NiftyPosition)
+                .where(NiftyPosition.user_id == user_id)
+            )
+            position_cost = db.scalar(
+                select(func.sum(NiftyPosition.entry_price * NiftyPosition.quantity)).where(
+                    NiftyPosition.user_id == user_id
+                )
+            ) or Decimal("0")
+            issues = []
+            if account is None or any(
+                not Decimal(str(value)).is_finite() or value < 0
+                for value in (account.equity, account.available)
+            ):
+                issues.append("ACCOUNT_BALANCE_INVALID")
+            elif account.equity != account.available + position_cost:
+                issues.append("ACCOUNT_POSITION_BALANCE_MISMATCH")
+            if position_count > 1:
+                issues.append("POSITION_LIMIT_INCONSISTENT")
+            for position in positions:
+                entry = db.get(NiftyOrder, (user_id, position.entry_order_id))
+                if (
+                    position.quantity <= 0
+                    or entry is None
+                    or entry.status != "FILLED"
+                    or entry.side != "BUY"
+                    or entry.token != position.token
+                    or entry.symbol != position.symbol
+                    or entry.price != position.entry_price
+                ):
+                    issues.append("POSITION_ENTRY_FILL_MISMATCH")
+                try:
+                    instrument = Instrument.model_validate(position.instrument)
+                    if instrument.token != position.token or instrument.kind not in ("CE", "PE"):
+                        raise ValueError("Position identity mismatch")
+                except ValueError:
+                    issues.append("POSITION_IDENTITY_INVALID")
+            invalid_exits = db.scalar(
+                select(func.count())
+                .select_from(NiftyTrade)
+                .outerjoin(
+                    NiftyOrder,
+                    and_(
+                        NiftyOrder.user_id == NiftyTrade.user_id,
+                        NiftyOrder.order_id == NiftyTrade.exit_order_id,
+                    ),
+                )
+                .where(
+                    NiftyTrade.user_id == user_id,
+                    or_(
+                        NiftyOrder.order_id.is_(None),
+                        NiftyOrder.status != "FILLED",
+                        NiftyOrder.side != "SELL",
+                        NiftyOrder.quantity != NiftyTrade.quantity,
+                    ),
+                )
+            )
+            if invalid_exits:
+                issues.append("JOURNAL_EXIT_FILL_MISSING")
+            closed = (
+                select(
+                    NiftyTrade.entry_order_id.label("entry_id"),
+                    func.sum(NiftyTrade.quantity).label("quantity"),
+                )
+                .where(NiftyTrade.user_id == user_id)
+                .group_by(NiftyTrade.entry_order_id)
+                .subquery()
+            )
+            held = (
+                select(
+                    NiftyPosition.entry_order_id.label("entry_id"),
+                    func.sum(NiftyPosition.quantity).label("quantity"),
+                )
+                .where(NiftyPosition.user_id == user_id)
+                .group_by(NiftyPosition.entry_order_id)
+                .subquery()
+            )
+            mismatched_entries = db.scalar(
+                select(func.count())
+                .select_from(NiftyOrder)
+                .outerjoin(closed, closed.c.entry_id == NiftyOrder.order_id)
+                .outerjoin(held, held.c.entry_id == NiftyOrder.order_id)
+                .where(
+                    NiftyOrder.user_id == user_id,
+                    NiftyOrder.side == "BUY",
+                    NiftyOrder.status == "FILLED",
+                    NiftyOrder.quantity
+                    != func.coalesce(closed.c.quantity, 0) + func.coalesce(held.c.quantity, 0),
+                )
+            )
+            if mismatched_entries:
+                issues.append("ENTRY_QUANTITY_NOT_RECONCILED")
+            pending_buys = db.scalar(
+                select(func.count())
+                .select_from(NiftyOrder)
+                .where(
+                    NiftyOrder.user_id == user_id,
+                    NiftyOrder.side == "BUY",
+                    NiftyOrder.status == "PENDING",
+                )
+            )
+            if pending_buys > 1 or (pending_buys and position_count):
+                issues.append("ENTRY_RESERVATION_INCONSISTENT")
+            pending_exits = (
+                select(
+                    NiftyOrder.token.label("token"), func.sum(NiftyOrder.quantity).label("quantity")
+                )
+                .where(
+                    NiftyOrder.user_id == user_id,
+                    NiftyOrder.side == "SELL",
+                    NiftyOrder.status == "PENDING",
+                )
+                .group_by(NiftyOrder.token)
+                .subquery()
+            )
+            uncovered_exits = db.scalar(
+                select(func.count())
+                .select_from(pending_exits)
+                .outerjoin(
+                    NiftyPosition,
+                    and_(
+                        NiftyPosition.user_id == user_id,
+                        NiftyPosition.token == pending_exits.c.token,
+                    ),
+                )
+                .where(pending_exits.c.quantity > func.coalesce(NiftyPosition.quantity, 0))
+            )
+            if uncovered_exits:
+                issues.append("EXIT_RESERVATION_INCONSISTENT")
+            return sorted(set(issues))
+
+    def block_reconciliation(self, user_id, now, reason):
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            db.get(NiftyAccount, user_id).reconciled = 0
+            state = db.get(NiftyState, user_id)
+            if not state.killed:
+                state.state = "PAUSED"
+            db.add(
+                NiftyEvent(
+                    user_id=user_id,
+                    kind="reconciliation_blocked",
+                    payload={"reason": reason},
+                    created_at=now,
+                )
+            )
+
+    def recover_legacy(self, user_id, now):
+        """Cancel pre-v2 buys and protect recorded exposure without inventing confidence.
+
+        Unknown legacy targets stay unavailable. Emergency stops may tighten to
+        8%, and entries stay paused until these legacy positions are closed.
+        """
+        from services.nifty_algo.config import StrategyConfig
+        from services.nifty_algo.protection import ceiling_tick
+
+        self.account(user_id, now)
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            state = db.get(NiftyState, user_id)
+            try:
+                config = StrategyConfig.model_validate(state.configuration)
+            except ValueError:
+                config = StrategyConfig()  # Exit-only emergency profile.
+            for order in db.scalars(
+                select(NiftyOrder).where(
+                    NiftyOrder.user_id == user_id, NiftyOrder.status == "PENDING"
+                )
+            ):
+                if "configuration" not in order.payload:
+                    if order.side == "BUY":
+                        order.status, order.reason, order.resolved_at = (
+                            "CANCELED",
+                            "LEGACY_CONFIGURATION",
+                            now,
+                        )
+                    else:
+                        order.payload = {
+                            **order.payload,
+                            "configuration": config.model_dump(mode="json"),
+                        }
+            for position in db.scalars(
+                select(NiftyPosition).where(NiftyPosition.user_id == user_id)
+            ):
+                if db.get(NiftyProtection, (user_id, position.token)) is not None:
+                    continue
+                stop = ceiling_tick(
+                    position.entry_price * (1 - config.premium_stop),
+                    position.instrument["tick_size"],
+                )
+                # V1 stored a peak but no protective stop or entry configuration.
+                # Never restart such a profitable legacy position at a looser
+                # initial stop. Preserve its recorded peak as a conservative
+                # protective floor and request an observed-depth closure.
+                legacy_peak = position.highest if position.highest > position.entry_price else None
+                active_stop = (
+                    max(stop, ceiling_tick(legacy_peak, position.instrument["tick_size"]))
+                    if legacy_peak is not None
+                    else stop
+                )
+                db.add(
+                    NiftyProtection(
+                        user_id=user_id,
+                        token=position.token,
+                        payload={
+                            "configuration": config.model_dump(mode="json"),
+                            "configuration_id": config.version_id,
+                            "confidence": None,
+                            "target_fraction": None,
+                            "target_price": None,
+                            "initial_stop": str(stop),
+                            "stop_price": str(active_stop),
+                            "highest_bid": None,
+                            "trailing_active": False,
+                            "last_source_time": None,
+                            "exit_reason": "LEGACY_PROTECTION_REVIEW"
+                            if legacy_peak is not None
+                            else None,
+                            "legacy_recorded_peak": str(legacy_peak)
+                            if legacy_peak is not None
+                            else None,
+                            "point_unit": "OPTION_PREMIUM",
+                            "trailing_distance_points": str(config.trailing_distance_points),
+                            "legacy": True,
+                            "reason": "ENTRY_CONFIDENCE_NOT_RECORDED",
+                        },
+                    )
+                )
+                if not state.killed:
+                    state.state = "PAUSED"
+                db.add(
+                    NiftyEvent(
+                        user_id=user_id,
+                        kind="legacy_protection",
+                        payload={
+                            "token": position.token,
+                            "reason": "ENTRY_CONFIDENCE_NOT_RECORDED",
+                        },
+                        created_at=now,
+                    )
+                )
 
     def admit_order(self, user_id, order):
         """Persist a pending intent exactly once; a retry reads the original."""
         try:
             with self.sessions.begin() as db:
+                from services.nifty_algo.config import StrategyConfig
+                from services.nifty_algo.paper_executor import OrderRefused
+
+                self._lock(db, user_id)
+                existing = db.scalar(
+                    select(NiftyOrder).where(
+                        NiftyOrder.user_id == user_id, NiftyOrder.intent_id == order["intent_id"]
+                    )
+                )
+                if existing is not None:
+                    return self._order_dict(existing), False
+                state = db.get(NiftyState, user_id)
+                account = db.get(NiftyAccount, user_id)
+                positions = list(
+                    db.scalars(select(NiftyPosition).where(NiftyPosition.user_id == user_id))
+                )
+                pending = list(
+                    db.scalars(
+                        select(NiftyOrder).where(
+                            NiftyOrder.user_id == user_id, NiftyOrder.status == "PENDING"
+                        )
+                    )
+                )
+                if order["side"] == "BUY":
+                    config = StrategyConfig.model_validate(order["payload"]["configuration"])
+                    reasons = []
+                    owner = order["payload"].get("runner_owner")
+                    lease = db.get(NiftyRunnerLease, user_id)
+                    if owner and (
+                        lease is None
+                        or lease.owner != owner
+                        or datetime.fromisoformat(_instant(lease.expires_at)) <= order["created_at"]
+                    ):
+                        reasons.append("RUNNER_LEASE_LOST")
+                    if state.state != "RUNNING" or state.killed or state.daily_locked:
+                        reasons.append("ENTRIES_DISABLED")
+                    if state.configuration_id != config.version_id:
+                        reasons.append("CONFIGURATION_CHANGED")
+                    if positions or any(row.side == "BUY" for row in pending):
+                        reasons.append("POSITION_OR_RESERVATION_LIMIT")
+                    if not account.reconciled:
+                        reasons.append("RECONCILIATION_REQUIRED")
+                    if account.daily_entries >= config.max_daily_entries:
+                        reasons.append("DAILY_ENTRY_LIMIT")
+                    if account.equity <= account.starting_day_equity * (
+                        1 - config.daily_loss_fraction
+                    ):
+                        reasons.append("DAILY_LOSS_LIMIT")
+                    # Pending intent is the durable reservation. One-position policy
+                    # excludes distinct admissions under this same transaction lock.
+                    if Decimal(order["payload"]["reserved_capital"]) > account.available:
+                        reasons.append("INSUFFICIENT_FUNDS")
+                    if (
+                        Decimal(order["payload"]["reserved_risk"])
+                        > account.equity * config.risk_fraction
+                    ):
+                        reasons.append("RISK_BUDGET")
+                    if reasons:
+                        raise OrderRefused(reasons)
+                else:
+                    held = next((p for p in positions if p.token == order["token"]), None)
+                    reserved = sum(
+                        p.quantity
+                        for p in pending
+                        if p.side == "SELL" and p.token == order["token"]
+                    )
+                    if held is None or order["quantity"] + reserved > min(
+                        held.quantity, self._remaining_quantity(db, user_id, held)
+                    ):
+                        raise OrderRefused(["EXIT_ALREADY_PENDING_OR_UNCOVERED"])
                 db.add(
                     NiftyOrder(
                         user_id=user_id,
@@ -385,6 +876,22 @@ class NiftyStore:
                         created_at=order["created_at"],
                     )
                 )
+                db.add(
+                    NiftyEvent(
+                        user_id=user_id,
+                        kind="paper_intent_admitted",
+                        payload={
+                            "order_id": order["order_id"],
+                            "intent_id": order["intent_id"],
+                            "decision_id": order["payload"].get("decision_id"),
+                            "side": order["side"],
+                            "token": order["token"],
+                            "quantity": order["quantity"],
+                            "risk_approval": order["payload"].get("risk_approval"),
+                        },
+                        created_at=order["created_at"],
+                    )
+                )
         except IntegrityError:
             with self.sessions() as db:
                 existing = db.scalars(
@@ -397,6 +904,38 @@ class NiftyStore:
                     raise
                 return self._order_dict(existing), False
         return order, True
+
+    @staticmethod
+    def _remaining_quantity(db, user_id, position):
+        """Sell coverage comes from confirmed fills, not only a position counter."""
+        from sqlalchemy import func, or_
+
+        entry = db.get(NiftyOrder, (user_id, position.entry_order_id))
+        if (
+            entry is None
+            or entry.status != "FILLED"
+            or entry.side != "BUY"
+            or entry.token != position.token
+        ):
+            return 0
+        legacy_exits = select(NiftyTrade.exit_order_id).where(
+            NiftyTrade.user_id == user_id, NiftyTrade.entry_order_id == entry.order_id
+        )
+        closed = (
+            db.scalar(
+                select(func.sum(NiftyOrder.quantity)).where(
+                    NiftyOrder.user_id == user_id,
+                    NiftyOrder.side == "SELL",
+                    NiftyOrder.status == "FILLED",
+                    or_(
+                        NiftyOrder.payload["entry_order_id"].as_string() == entry.order_id,
+                        NiftyOrder.order_id.in_(legacy_exits),
+                    ),
+                )
+            )
+            or 0
+        )
+        return max(0, entry.quantity - closed)
 
     def order_by_intent(self, user_id, intent_id):
         with self.sessions() as db:
@@ -417,13 +956,28 @@ class NiftyStore:
             )
             return [self._order_dict(row) for row in rows]
 
+    def exit_attempt_count(self, user_id, entry_order_id):
+        from sqlalchemy import func
+
+        with self.sessions() as db:
+            return db.scalar(
+                select(func.count())
+                .select_from(NiftyOrder)
+                .where(
+                    NiftyOrder.user_id == user_id,
+                    NiftyOrder.side == "SELL",
+                    NiftyOrder.payload["entry_order_id"].as_string() == entry_order_id,
+                )
+            )
+
     def expire_pending(self, user_id, now):
         with self.sessions.begin() as db:
+            self._lock(db, user_id)
             rows = db.scalars(
                 select(NiftyOrder).where(
                     NiftyOrder.user_id == user_id,
                     NiftyOrder.status == "PENDING",
-                    NiftyOrder.expires_at < now,
+                    NiftyOrder.expires_at <= now,
                 )
             )
             for row in rows:
@@ -442,7 +996,18 @@ class NiftyStore:
             )
             return [self._order_dict(row) for row in rows]
 
-    def fill(self, user_id, order_id, price, fees, now):
+    def fill(
+        self,
+        user_id,
+        order_id,
+        price,
+        fees,
+        now,
+        *,
+        snapshot_id=None,
+        displayed_size=None,
+        observation=None,
+    ):
         """Resolve a pending order and move money atomically.
 
         Idempotent: an already-resolved order returns its stored row without a
@@ -450,15 +1015,114 @@ class NiftyStore:
         SELL without a held position resolves REJECTED instead of filling.
         """
         price, fees = Decimal(str(price)), Decimal(str(fees))
+        if not price.is_finite() or price <= 0 or not fees.is_finite() or fees < 0:
+            raise ValueError("Invalid fill price or costs")
         with self.sessions.begin() as db:
+            from services.nifty_algo.config import StrategyConfig
+            from services.nifty_algo.protection import initial_protection
+
+            self._lock(db, user_id)
             order = db.get(NiftyOrder, (user_id, order_id))
             if order.status != "PENDING":
                 return self._order_dict(order)
             account = db.get(NiftyAccount, user_id)
             quantity = order.quantity
+            if now < datetime.fromisoformat(_instant(order.eligible_at)):
+                return self._order_dict(order)
+            if now >= datetime.fromisoformat(_instant(order.expires_at)):
+                order.status, order.reason, order.resolved_at = "EXPIRED", "ORDER_TTL", now
+                return self._order_dict(order)
+            if snapshot_id is None or displayed_size is None:
+                raise ValueError("Observed depth proof required")
+            from hashlib import sha256
+
+            from services.nifty_algo.models import Instrument, Quote
+
+            config = StrategyConfig.model_validate(order.payload["configuration"])
+            quote = Quote.model_validate(observation)
+            instrument = Instrument.model_validate(order.payload["instrument"])
+            level, size = (
+                (quote.ask, quote.ask_size) if order.side == "BUY" else (quote.bid, quote.bid_size)
+            )
+            expected = (
+                None
+                if level is None
+                else level
+                + instrument.tick_size * config.slippage_ticks * (1 if order.side == "BUY" else -1)
+            )
+            expected_id = sha256(
+                f"{quote.token}:{quote.source_time.isoformat()}:{order.side}".encode()
+            ).hexdigest()
+            from services.nifty_algo.paper_executor import _charges
+
+            if fees != _charges(order.side, price, quantity, config):
+                raise ValueError("Fill costs do not match frozen configuration")
+            if (
+                quote.token != order.token
+                or not quote.source_time <= quote.received_time <= now
+                or not 0 <= (now - quote.source_time).total_seconds() <= config.quote_max_age
+                or level is None
+                or size < quantity
+                or displayed_size != size
+                or price != expected
+                or price % instrument.tick_size
+                or snapshot_id != expected_id
+            ):
+                raise ValueError("Final execution observation failed validation")
+            use = db.get(NiftyDepthUse, (user_id, snapshot_id))
+            consumed = use.quantity if use else 0
+            if quantity + consumed > displayed_size:
+                return self._order_dict(order)
             if order.side == "BUY":
                 cost = price * quantity + fees
-                if cost > account.available:
+                state = db.get(NiftyState, user_id)
+                existing = db.scalar(select(NiftyPosition).where(NiftyPosition.user_id == user_id))
+                try:
+                    protection = initial_protection(
+                        price, instrument.tick_size, config, order.payload["confidence"]
+                    )
+                    protection["signal_context"] = order.payload.get("signal_context")
+                    protection["entry_fees_remaining"] = str(fees)
+                except ValueError:
+                    order.status, order.reason, order.resolved_at = (
+                        "REJECTED",
+                        "PROTECTION_TICK_INVALID",
+                        now,
+                    )
+                    return self._order_dict(order)
+                from services.nifty_algo.paper_executor import _charges
+
+                planned = (
+                    price
+                    - Decimal(protection["initial_stop"])
+                    + Decimal(order.payload["instrument"]["tick_size"]) * config.slippage_ticks
+                ) * quantity
+                planned += fees + _charges("SELL", price, quantity, config)
+                if (
+                    state.killed
+                    or state.daily_locked
+                    or state.state != "RUNNING"
+                    or state.configuration_id != config.version_id
+                ):
+                    order.status, order.reason = "CANCELED", "ENTRIES_DISABLED"
+                elif existing is not None:
+                    order.status, order.reason = "REJECTED", "POSITION_LIMIT"
+                elif (
+                    instrument.master_date != now.astimezone(ZoneInfo("Asia/Kolkata")).date()
+                    or instrument.expiry < now.astimezone(ZoneInfo("Asia/Kolkata")).date()
+                ):
+                    order.status, order.reason = "REJECTED", "METADATA_INVALID"
+                elif planned > account.equity * config.risk_fraction or planned > Decimal(
+                    order.payload["reserved_risk"]
+                ):
+                    order.status, order.reason = "REJECTED", "FILL_RISK_BUDGET"
+                elif (
+                    account.daily_entries >= config.max_daily_entries
+                    or account.equity
+                    <= account.starting_day_equity * (1 - config.daily_loss_fraction)
+                ):
+                    order.status, order.reason = "REJECTED", "DAILY_RISK_LIMIT"
+                elif cost > account.available or cost > Decimal(order.payload["reserved_capital"]):
                     order.status, order.reason = "REJECTED", "INSUFFICIENT_FUNDS"
                 else:
                     account.available -= cost
@@ -466,6 +1130,9 @@ class NiftyStore:
                     account.daily_entries += 1
                     existing = db.get(NiftyPosition, (user_id, order.token))
                     if existing is None:
+                        db.add(
+                            NiftyProtection(user_id=user_id, token=order.token, payload=protection)
+                        )
                         db.add(
                             NiftyPosition(
                                 user_id=user_id,
@@ -479,23 +1146,43 @@ class NiftyStore:
                                 opened_at=now,
                             )
                         )
-                    else:
-                        total = existing.quantity + quantity
-                        existing.entry_price = (
-                            existing.entry_price * existing.quantity + price * quantity
-                        ) / total
-                        existing.quantity = total
                     order.status = "FILLED"
             else:
                 position = db.get(NiftyPosition, (user_id, order.token))
-                if position is None or position.quantity < quantity:
+                if (
+                    position is None
+                    or min(position.quantity, self._remaining_quantity(db, user_id, position))
+                    < quantity
+                ):
                     order.status, order.reason = "REJECTED", "UNCOVERED_SELL"
                 else:
                     proceeds = price * quantity - fees
                     account.available += proceeds
                     gross = (price - position.entry_price) * quantity
                     entry = db.get(NiftyOrder, (user_id, position.entry_order_id))
-                    entry_fees = Decimal("0") if entry is None else Decimal(entry.fees)
+                    protection_row = db.get(NiftyProtection, (user_id, order.token))
+                    remaining_fees = Decimal(
+                        (protection_row.payload if protection_row else {}).get(
+                            "entry_fees_remaining",
+                            str(
+                                (Decimal("0") if entry is None else Decimal(entry.fees))
+                                * Decimal(position.quantity)
+                                / Decimal(entry.quantity if entry else position.quantity)
+                            ),
+                        )
+                    )
+                    entry_fees = (
+                        remaining_fees
+                        if quantity == position.quantity
+                        else (
+                            remaining_fees * Decimal(quantity) / Decimal(position.quantity)
+                        ).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+                    )
+                    if protection_row is not None:
+                        protection_row.payload = {
+                            **protection_row.payload,
+                            "entry_fees_remaining": str(remaining_fees - entry_fees),
+                        }
                     net = gross - fees - entry_fees
                     account.equity += gross - fees
                     account.realized_day += net
@@ -519,19 +1206,35 @@ class NiftyStore:
                     position.quantity -= quantity
                     if position.quantity == 0:
                         db.delete(position)
+                        protection = db.get(NiftyProtection, (user_id, order.token))
+                        if protection is not None:
+                            # Keep the immutable entry and final protection in the
+                            # exit order, which outlives the open position.
+                            order.payload = {**order.payload, "protection": protection.payload}
+                            db.delete(protection)
                     order.status = "FILLED"
             if order.status == "FILLED":
                 order.price, order.fees = price, fees
+                order.payload = {**order.payload, "fill_observation": observation}
+                if use is None:
+                    db.add(
+                        NiftyDepthUse(user_id=user_id, snapshot_id=snapshot_id, quantity=quantity)
+                    )
+                else:
+                    use.quantity += quantity
+                state = db.get(NiftyState, user_id)
+                if account.equity <= account.starting_day_equity * (1 - config.daily_loss_fraction):
+                    state.daily_locked = 1
+                    if not state.killed:
+                        state.state = "PAUSED"
             order.resolved_at = now
             account.updated_at = now
             return self._order_dict(order)
 
     def positions(self, user_id):
         with self.sessions() as db:
-            rows = db.scalars(
-                select(NiftyPosition).where(NiftyPosition.user_id == user_id)
-            )
-            return [
+            rows = db.scalars(select(NiftyPosition).where(NiftyPosition.user_id == user_id))
+            result = [
                 {
                     "symbol": row.symbol,
                     "token": row.token,
@@ -540,15 +1243,98 @@ class NiftyStore:
                     "entry_price": str(row.entry_price),
                     "highest": str(row.highest),
                     "opened_at": _instant(row.opened_at),
+                    "entry_order_id": row.entry_order_id,
+                    "protection": (
+                        db.get(NiftyProtection, (user_id, row.token)).payload
+                        if db.get(NiftyProtection, (user_id, row.token))
+                        else None
+                    ),
                 }
                 for row in rows
             ]
+            pending = list(
+                db.scalars(
+                    select(NiftyOrder).where(
+                        NiftyOrder.user_id == user_id,
+                        NiftyOrder.side == "SELL",
+                        NiftyOrder.status == "PENDING",
+                    )
+                )
+            )
+            for row in result:
+                protection = row.get("protection") or {}
+                row.update(
+                    {
+                        key: protection.get(key)
+                        for key in (
+                            "initial_stop",
+                            "stop_price",
+                            "target_price",
+                            "target_fraction",
+                            "highest_bid",
+                            "trailing_active",
+                            "trailing_distance_points",
+                            "point_unit",
+                            "exit_reason",
+                            "configuration_id",
+                        )
+                    }
+                )
+                row["confidence_score"] = (protection.get("confidence") or {}).get("score")
+                row["exit_state"] = (
+                    "EXITING"
+                    if any(o.token == row["token"] for o in pending)
+                    else "EXIT_REQUIRED"
+                    if protection.get("exit_reason")
+                    else "OPEN"
+                )
+            return result
 
     def mark_highest(self, user_id, token, price):
         with self.sessions.begin() as db:
+            self._lock(db, user_id)
             row = db.get(NiftyPosition, (user_id, token))
             if row is not None and price > row.highest:
                 row.highest = price
+
+    def observe_position(self, user_id, token, quote, now, forced_reason=None):
+        """Serialize monotonic protection and reject stale/reordered observations."""
+        from services.nifty_algo.config import StrategyConfig
+        from services.nifty_algo.protection import observe_bid
+
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            position = db.get(NiftyPosition, (user_id, token))
+            row = db.get(NiftyProtection, (user_id, token))
+            if row is None or position is None:
+                return None
+            config = StrategyConfig.model_validate(row.payload["configuration"])
+            previous = row.payload.get("last_source_time")
+            valid = (
+                quote is not None
+                and quote.token == token
+                and quote.bid is not None
+                and quote.bid_size > 0
+                and quote.source_time <= quote.received_time <= now
+                and 0 <= (now - quote.source_time).total_seconds() <= config.quote_max_age
+                and quote.source_time >= datetime.fromisoformat(_instant(position.opened_at))
+                and (previous is None or quote.source_time > datetime.fromisoformat(previous))
+            )
+            payload = dict(row.payload)
+            if valid:
+                payload = observe_bid(
+                    payload,
+                    position.entry_price,
+                    quote.bid,
+                    position.instrument["tick_size"],
+                    config,
+                )
+                payload["last_source_time"] = quote.source_time.isoformat()
+                position.highest = max(position.highest, Decimal(payload["highest_bid"]))
+            if forced_reason and not payload.get("exit_reason"):
+                payload["exit_reason"] = forced_reason
+            row.payload = payload
+            return payload
 
     def trades(self, user_id, limit=200):
         with self.sessions() as db:
@@ -570,22 +1356,43 @@ class NiftyStore:
                     "reason": row.reason,
                     "opened_at": _instant(row.opened_at),
                     "closed_at": _instant(row.closed_at),
+                    "entry_context": (
+                        db.get(NiftyOrder, (user_id, row.entry_order_id)).payload
+                        if db.get(NiftyOrder, (user_id, row.entry_order_id))
+                        else None
+                    ),
+                    "exit_context": (
+                        db.get(NiftyOrder, (user_id, row.exit_order_id)).payload
+                        if db.get(NiftyOrder, (user_id, row.exit_order_id))
+                        else None
+                    ),
                 }
                 for row in rows
             ]
 
     def performance(self, user_id):
+        from sqlalchemy import case, func
+
         account = self.account(user_id)
-        trades = self.trades(user_id)
-        nets = [Decimal(row["net"]) for row in trades]
-        wins = [row for row in nets if row > 0]
+        with self.sessions() as db:
+            count, wins, total, best, worst = db.execute(
+                select(
+                    func.count(NiftyTrade.id),
+                    func.sum(case((NiftyTrade.net > 0, 1), else_=0)),
+                    func.sum(NiftyTrade.net),
+                    func.max(NiftyTrade.net),
+                    func.min(NiftyTrade.net),
+                ).where(NiftyTrade.user_id == user_id)
+            ).one()
+        wins = wins or 0
         return {
             "account": account,
-            "trades": len(nets),
-            "wins": len(wins),
-            "win_rate": round(len(wins) / len(nets), 4) if nets else None,
-            "realized_total": str(sum(nets, Decimal("0"))),
+            "equity_basis": "BOOK_COST_NOT_MARK_TO_MARKET",
+            "trades": count,
+            "wins": wins,
+            "win_rate": round(wins / count, 4) if count else None,
+            "realized_total": str(total or Decimal("0")),
             "realized_day": account["realized_day"],
-            "best": str(max(nets)) if nets else None,
-            "worst": str(min(nets)) if nets else None,
+            "best": str(best) if count else None,
+            "worst": str(worst) if count else None,
         }

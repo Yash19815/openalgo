@@ -1,38 +1,71 @@
 # Strategy assumptions and rule provenance
 
-Version 0.1.0, reviewed 19 November 2026. This register defines the initial research hypothesis. Runtime implementation and active settings are recorded in `IMPLEMENTATION_PLAN.md`. A value in this document does not claim a completed capability or measured profitability.
+Version 2.0.0, 19 November 2026. The strategy is a research hypothesis, not a
+calibrated probability model or a claim of historical profitability.
 
-## Classification
+## Explicit user requirements
 
-`VERIFIED_FROM_VIDEO` requires direct footage or subtitle evidence. None is currently available. `VERIFIED_FROM_DOCUMENTATION` identifies a formula or service behavior established by the installed OpenAlgo documentation and code. `RESEARCH_ASSUMPTION` identifies an automation policy chosen for testing. `USER_CONFIGURATION` identifies an explicit saved override. Preserve source classification, configuration version and strategy version in each decision snapshot.
+- Maximum initial stop distance: 8% of the confirmed simulated option fill; tighter is allowed.
+- Trailing candidates: [1.5, 2.0]; effective distance: minimum, 1.5 option-premium price units.
+- Profit target: a deterministic strength-sensitive percentage between 10% and 15% of entry premium.
+- Five mandatory gates, completed 5-minute entries and 15-minute confirmation, independent risk approval, long NIFTY CE/PE only, isolated paper execution.
 
-## Initial hypothesis
+## Research defaults retained or introduced
 
-| Rule | Initial research setting | Classification |
-| --- | --- | --- |
-| Analysis identity | Nearest eligible NIFTY future supplies all price indicators and genuine traded volume. NIFTY spot remains separately labeled and supplies strike-selection reference. Reset warm-up on a futures roll. | RESEARCH_ASSUMPTION |
-| R-ST | ATR 10 and multiplier 3. Completed close agrees with established SuperTrend direction. | RESEARCH_ASSUMPTION |
-| R-MACD | EMA 12/26/9, recent directional crossover within three completed entry bars, aligned histogram. Zero-line and DI gates are optional. | RESEARCH_ASSUMPTION |
-| R-ADX | Wilder period 14, minimum strength 25. Direction comes from other rules. | RESEARCH_ASSUMPTION |
-| R-VWAP | Session typical-price VWAP of the same future. Maximum absolute extension 80 basis points. Missing genuine volume invalidates the session reading. | RESEARCH_ASSUMPTION |
-| R-PCR | OI default, with separately selectable volume definition. Complete CE/PE coverage for an explicitly identified expiry. Bullish-supportive at or above 1.5, bearish-supportive below 1.0. Middle range blocks strict confluence. Maximum observation age 90 seconds. | RESEARCH_ASSUMPTION |
-| R-MTF | Completed 5m entry and 15m trend confirmation. At least 80 completed bars in both series, with indicator seed checks. | RESEARCH_ASSUMPTION |
-| R-FRESH | Entry evaluation within 30 seconds after bar close. Selected option quote age at most five seconds, measured from source time. | RESEARCH_ASSUMPTION |
-| R-CONTRACT | Earliest eligible listed expiry, ATM default. Optional one listed strike ITM/OTM. Delta mode requires reliable synchronized Greeks. Avoid expiry-day entries initially. | RESEARCH_ASSUMPTION |
-| R-LIQUIDITY | Positive uncrossed bid/ask, current contract metadata, size sufficient for permitted fill, configured volume and spread bounds. Initial max spread 150 basis points and minimum volume 1,000 units subject to verified feed units. | RESEARCH_ASSUMPTION |
-| R-RISK | Virtual capital ₹1,00,000, per-trade planned risk 0.5% of equity, daily loss 1.5% of starting-day equity, one position, one lot per entry, three entries per session. Include conservative costs in sizing. Skip if one lot exceeds capital or budget. | RESEARCH_ASSUMPTION |
-| R-EXIT | Premium stop 15%, target 30%, trail 10%, maximum holding 45 minutes. Optional confirmed SuperTrend reversal and underlying ATR invalidation at two entry ATRs. | RESEARCH_ASSUMPTION |
-| R-TIME | New entries 09:30–14:45 IST. Exit requests from 15:10 IST, always bounded by effective NFO contract sessions and holidays. | RESEARCH_ASSUMPTION |
-| R-EXECUTION | Ask-side buys, bid-side exits, configurable adverse ticks, latency, fees and pending expiry. Native Sandbox fill behavior must meet the documented execution contract before readiness. | RESEARCH_ASSUMPTION |
+Analysis uses the nearest eligible NIFTY future's actual OHLCV. Spot is a
+separate strike reference. SuperTrend uses ATR 10 and multiplier 3; MACD uses
+12/26/9 and a crossover within three completed entry bars; ADX uses Wilder 14
+and minimum 25. Zero-line and DI confirmation remain configurable. Session
+VWAP uses the same future's completed entry-candle typical price and volume;
+missing session opening data or volume blocks execution. Maximum VWAP
+extension is 80 basis points. At least 80 entry and higher-timeframe bars are
+required. Histories never combine futures identities across rollover.
 
-## Required invariants
+PCR defaults to OI, with volume explicitly selectable. Scope is one dated
+expiry's full native master strike universe, not the 47-strike tracker window.
+An optional `pcr_expiry` preserves a selected expiry; otherwise the nearest
+eligible expiry is chosen. CE and PE must cover identical strikes. Maximum
+source age is 90 seconds and maximum cross-leg skew is five seconds. Bullish
+support starts at 1.5; bearish support is below 1.0. The midpoint does not pass.
+The exact complete-market coverage and subscription entitlement require real
+broker verification. Unknown master freshness or missing source fields block.
 
-PAPER_ONLY execution, NFO NIFTY CE/PE validation, long-only exposure, no averaging, no martingale, causal inputs, independent risk approval and confirmed-fill position state are user requirements. Configurations cannot enable live routing, uncovered sales or a bypass around these requirements.
+Default risk is 0.5% of equity including entry/exit costs and adverse ticks.
+One position, one lot, three daily entries, 1.5% daily loss threshold and a
+45-minute holding limit remain. Default entry window is 09:30–14:45 IST, with
+exit requests from 15:10 or five minutes before an earlier native NFO close.
+Special sessions and holidays come from OpenAlgo's calendar.
 
-Missing PCR scope, missing quote source time, stale data or unavailable indicators produce explicit unavailable checks. Do not substitute response creation time for exchange observation time or missing volume for zero. No signal-strength label authorizes an order by itself.
+## Strength method: five-indicator-v1
 
-Use native `services/risk/` for shared price stop, target and trail evaluation. Underlying invalidation uses the underlying’s own points and ATR. Option stops use premium prices. A stop request cannot guarantee a fill during gaps or outages.
+Scoring runs only after every mandatory gate passes. Each component is clipped
+to [0,1], receives weight 0.2 and contributes at most 20 points:
 
-Research must label directional candle studies, option-premium replay and observed forward paper trading separately. Option-premium replay requires dated contracts and causal quotes or trades with explicit fill assumptions. Costs are effective-dated estimates. Record both realized and marked equity definitions. Completed test fixtures provide local verification only.
+| Component | Normalized strength |
+| --- | --- |
+| SuperTrend | Half confirmed duration / 10, half absolute trend distance / (3 ATR) |
+| MACD | Half crossover recency `1 - age/(freshness+1)`, half directional histogram / ATR |
+| VWAP | `1 - abs(extension_bps)/configured_limit`; passing directional alignment is mandatory |
+| ADX | `(ADX - minimum)/max(1,100-minimum)` |
+| PCR | Directional margin beyond the qualifying threshold divided by that threshold |
 
-Restart recovery retains kill and daily lockout state, reconciles pending orders and confirmed Sandbox positions, and pauses entries until recovery succeeds. Changed configuration versions pause new entries and retain the entry configuration for existing exposure. Exits remain visibly pending until confirmed simulated fills reduce quantity to zero.
+Contributions retain normalized values, weights, points and explanations.
+The sum, rounded to six decimals, is a strength score from 0 to 100.
+Nominal target fraction is `target_min + (target_max-target_min)*score/100`.
+Higher strength cannot increase size or relax risk. Invalid scoring rejects
+entry. Tick rounding preserves target bounds; if no valid tick exists inside
+them, entry is rejected. Both nominal and tick-adjusted target fractions are
+retained with the trade.
+
+Trailing activation at entry +1.5 premium points is an implementation
+assumption, independently configurable. Entry 100 produces initial stop 92;
+bid 101.50 arms the trail; eligible peak 106 gives stop 104.50; peak 110 gives
+108.50. A falling bid never lowers protection. Thresholds round upward to
+valid contract ticks. Gaps, latency, stale data and insufficient depth can
+produce worse realized results or leave an exit unfilled.
+
+Configured fees are deterministic research estimates, not a statement of
+current statutory rates. Brokerage and transaction, GST, STT, stamp and SEBI
+rates are versioned. Verify their applicable effective rates before forwarding
+a real-market paper study. Costs are included in sizing, final admission and
+journal P&L. No historical accuracy is inferred from synthetic fixtures.

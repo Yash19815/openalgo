@@ -876,6 +876,10 @@ def setup_environment(app):
             # Initialize schedulers AFTER database initialization
             try:
                 init_python_strategy()
+                from blueprints.python_strategy import SCHEDULER as nifty_scheduler
+                from services.nifty_algo.runner import restore_runners
+
+                restore_runners(app, nifty_scheduler)
                 logger.debug("Python strategy scheduler initialized")
             except Exception as e:
                 logger.error(f"Failed to initialize Python strategy scheduler: {e}")

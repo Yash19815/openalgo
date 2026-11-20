@@ -1,11 +1,8 @@
-"""NIFTY sizing and entry gates, with exits evaluated by OpenAlgo's shared RMS."""
+"""NIFTY sizing, entry gates and Decimal option-premium protection adapters."""
 
 from dataclasses import dataclass
 from decimal import Decimal
 from zoneinfo import ZoneInfo
-
-from services.risk.models import PositionRisk
-from services.risk.position import evaluate_position
 
 from .contract_resolver import liquid
 
@@ -41,7 +38,7 @@ def size_quantity(account, instrument, quote, config, round_trip_cost_per_lot):
     money = (account.equity, account.available, round_trip_cost_per_lot)
     if any(not value.is_finite() or value < 0 for value in money) or not quote.ask:
         return 0
-    premium = quote.ask
+    premium = quote.ask + instrument.tick_size * config.slippage_ticks
     loss_per_unit = premium * config.premium_stop + instrument.tick_size * config.slippage_ticks
     for lots in range(config.max_lots, 0, -1):
         quantity = lots * instrument.lot_size
@@ -55,7 +52,7 @@ def size_quantity(account, instrument, quote, config, round_trip_cost_per_lot):
 
 
 def entry_reasons(account, instrument, quote, now, config, *, session_open, data_healthy):
-    """Caller supplies native calendar and reconciled Sandbox account observations."""
+    """Caller supplies native calendar and reconciled feature-ledger observations."""
     local = now.astimezone(ZoneInfo("Asia/Kolkata"))
     reasons = []
     checks = (
@@ -100,24 +97,33 @@ def entry_reasons(account, instrument, quote, now, config, *, session_open, data
 
 
 def evaluate_premium_exit(
-    entry_price, quantity, bid, config, *, highest_price=None, stop_price=None
+    entry_price,
+    quantity,
+    bid,
+    config,
+    *,
+    confidence,
+    tick_size,
+    highest_price=None,
+    stop_price=None,
 ):
-    """Translate percentage settings once and defer price-exit decisions to shared RMS."""
-    entry = float(entry_price)
-    high = max(entry, float(highest_price or entry), float(bid or entry))
-    initial_stop = entry * (1 - float(config.premium_stop))
-    # The shared continuous trail accepts an absolute distance. Recompute that
-    # distance from the observed peak to retain the configured percentage trail.
-    risk = PositionRisk(
-        side="BUY",
-        entry_price=entry,
-        quantity=quantity,
-        initial_stop_price=initial_stop,
-        stop_price=stop_price,
-        target_price=entry * (1 + float(config.target)),
-        trailing_enabled=high > entry,
-        highest_price=highest_price,
-        trail_step=high * float(config.trailing),
-        trail_trigger=0,
+    """Pure Decimal adapter. Durable monitoring uses the same protection functions."""
+    from types import SimpleNamespace
+
+    from .protection import initial_protection, observe_bid
+
+    protection = initial_protection(entry_price, tick_size, config, confidence)
+    if highest_price is not None:
+        protection = observe_bid(protection, entry_price, highest_price, tick_size, config)
+        protection["exit_reason"] = None
+    if stop_price is not None:
+        protection["stop_price"] = str(
+            max(Decimal(str(stop_price)), Decimal(protection["stop_price"]))
+        )
+    result = observe_bid(protection, entry_price, bid, tick_size, config)
+    return SimpleNamespace(
+        breached=bool(result["exit_reason"]),
+        stop_price=Decimal(result["stop_price"]),
+        target_price=Decimal(result["target_price"]),
+        reason=result["exit_reason"],
     )
-    return evaluate_position(risk, bid)

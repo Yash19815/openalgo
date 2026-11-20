@@ -12,6 +12,7 @@ export interface NiftyStatus {
   mode: 'PAPER_ONLY'
   state: string
   revision: number
+  ready: boolean
   readiness: (string | { code: string; ready: boolean; detail?: string })[]
   [key: string]: unknown
 }
@@ -51,5 +52,10 @@ export async function saveConfiguration(configuration: ConfigurationResponse) {
 
 export async function assessNativeHistory() {
   const response = await webClient.post(`${base}/assessment`, {})
+  return response.data
+}
+
+export async function preparePaperMonitor() {
+  const response = await webClient.post(`${base}/runner`, {})
   return response.data
 }

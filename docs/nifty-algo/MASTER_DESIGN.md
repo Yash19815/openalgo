@@ -4,7 +4,9 @@ Audit baseline is local branch `main`, commit `de8456ab38d722fd1fd3b83b8c97ed689
 
 ## Scope and ownership
 
-This feature extends the existing Flask application, React 19 client, native Python strategy host and Sandbox. `services/nifty_algo/` owns pure rules and feature orchestration. `database/nifty_algo_db.py` owns configuration versions, decisions and persistent controls within the existing main database. `blueprints/nifty_algo.py` provides authenticated, CSRF-protected browser endpoints. The frontend resides in `frontend/src/features/nifty-algo/`.
+This document preserves the original design proposal. Its shared-Sandbox execution plan is superseded by the isolated feature ledger described in [ARCHITECTURE.md](ARCHITECTURE.md) and [SAFETY_MODEL.md](SAFETY_MODEL.md). Current rules and implementation evidence are in [STRATEGY_ASSUMPTIONS.md](STRATEGY_ASSUMPTIONS.md) and [TESTING.md](TESTING.md).
+
+The feature extends the existing Flask application, React 19 client and native Python strategy scheduler. `services/nifty_algo/` owns pure rules and feature orchestration. `database/nifty_algo_db.py` owns feature state and the isolated paper ledger within the existing main database. `blueprints/nifty_algo.py` provides authenticated, CSRF-protected browser endpoints. The frontend remains in `frontend/src/features/nifty-algo/`.
 
 Orders require a server-side validated NIFTY NFO option, current risk approval, reconciliation and an execution profile that satisfies the requested simulation rules. All account-changing calls must use native Sandbox capabilities. The feature must fail closed while strict fills and isolated account accounting remain unavailable.
 

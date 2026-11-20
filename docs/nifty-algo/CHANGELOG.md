@@ -1,5 +1,20 @@
 # NIFTY ALGO changelog
 
+## 0.3.0 — 2026-11-19
+
+### Fix
+
+- Replaced legacy 15% stop/30% target/percentage trail settings with immutable v2 migration, an 8% maximum filled-premium stop, a 1.5-premium-point trail and deterministic 10–15% targets.
+- Removed execution receipt-time fallback, hardcoded ticks, invented depth quantity and non-atomic distinct admission. Added final fill validation, durable reservation, monotonic protection, retry/recovery and proportional entry-fee accounting.
+
+- Added fill/cash/quantity reconciliation, confirmed-fill exit coverage, conservative legacy-peak recovery, risk-admission events, and full-ledger performance aggregation.
+
+### Feature
+
+- Added explainable five-indicator research strength, full dated native PCR integration, source-preserving cache fields and named native scheduler jobs for isolated paper automation.
+- Exposed readiness-gated controls, indicator contributions, protection, exit state and journal context in the existing workspace/API. Added signed-session Socket.IO subscriptions and reconnect/listener cleanup.
+- Added deterministic offline lifecycle, concurrency, migration and failure regressions. Real-market and Linux worker evidence remain pending.
+
 ## 0.2.0 — 2026-11-19
 
 ### Paper execution (Phase 6)

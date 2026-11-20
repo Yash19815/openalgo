@@ -196,7 +196,7 @@ def test_risk_whole_lot_budget_includes_costs_and_blocks_pending():
     )
     config = StrategyConfig()
     assert size_quantity(account, instrument(), quote(), config, Decimal("100")) == 25
-    assert size_quantity(account, instrument(), quote(), config, Decimal("200")) == 0
+    assert size_quantity(account, instrument(), quote(), config, Decimal("400")) == 0
     pending = AccountRisk(
         Decimal("100000"),
         Decimal("100000"),
@@ -226,9 +226,13 @@ def test_nan_bypassed_candle_model_cannot_enter():
 
 def test_shared_rms_stop_target_and_trailing():
     config = StrategyConfig()
-    assert not evaluate_premium_exit(100, 25, 89, config).breached
-    assert evaluate_premium_exit(100, 25, 84, config).breached
-    assert evaluate_premium_exit(100, 25, 131, config).breached
-    trailing = evaluate_premium_exit(100, 25, 105, config, highest_price=120)
+    kwargs = {
+        "confidence": {"score": 50, "method": config.confidence_method},
+        "tick_size": Decimal("0.05"),
+    }
+    assert not evaluate_premium_exit(100, 25, 93, config, **kwargs).breached
+    assert evaluate_premium_exit(100, 25, 92, config, **kwargs).breached
+    assert evaluate_premium_exit(100, 25, 113, config, **kwargs).breached
+    trailing = evaluate_premium_exit(100, 25, 105, config, highest_price=110, **kwargs)
     assert trailing.breached
-    assert trailing.stop_price == pytest.approx(108)
+    assert trailing.stop_price == Decimal("108.5")

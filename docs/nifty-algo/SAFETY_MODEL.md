@@ -1,23 +1,63 @@
-# Paper execution safety model
+# NIFTY paper execution safety model
 
-## Audited native hazards
+## Execution boundary
 
-`services/place_order_service.py` checks global Analyzer mode and can route to a broker when disabled. Its authenticated internal function accepts `force_live`. Smart, basket, options, cancel, modify, close and GTT service paths also require route auditing before use. `services/strategy_module/order_dispatch.py` has explicit live and sandbox branches. `services/strategy_module/signals.py` can select live mode from strategy configuration. The NIFTY feature must never select these live branches.
+`NiftyPaperExecutor` changes only NIFTY feature tables. Its generic `submit`
+method remains permanently closed. Automation imports no broker order module,
+shared Sandbox executor, smart-order service, or live fallback. Analyzer Mode
+has no authority over these orders. Only long NFO NIFTY CE/PE exposure is
+admitted; averaging, uncovered sells and quantity overrides are rejected.
 
-Analyzer transitions in `services/analyzer_service.py` also manage Sandbox background execution and square-off. Consequently an isolated direct Sandbox adapter still needs execution-engine readiness when Analyzer is disabled. A UI badge, environment flag or startup mode check provides insufficient protection.
+Buys require ask depth; sells require bid depth. LTP never supplies a fill.
+Missing exchange time cannot be replaced by local receipt time. Source age,
+receipt ordering, instrument identity, ticks, fees, latency, TTL, displayed
+quantity, capital and risk are checked at the execution boundary. Insufficient
+depth defers an entire order; partial fills are unsupported. Explicit partial
+exit orders preserve protection and allocate entry fees by exited quantity.
 
-## Required boundary
+## Protection and durable controls
 
-NIFTY order-changing code imports only specific `services.sandbox_service` capabilities. It has no generic SDK order client, broker order module, live-mode parameter or fallback dispatch. Every instrument is independently resolved against structured current metadata. Allowed exposure is long NIFTY CE/PE on NFO. Exits reconcile owned quantity before selling. Reject unknown or stale risk authorization.
+Initial stops use the confirmed fill and round upward to the contract tick,
+so rounding cannot loosen the maximum 8% planned stop. Trailing uses Decimal
+option-premium points. It arms only after the configured favorable bid move,
+tracks a monotonic bid peak, and never lowers the active stop. Targets retain
+the entry-time research strength and a tick-valid percentage within 10–15%.
+A trigger is not a guaranteed fill or a cap on realized loss.
 
-The current native fill engine permits LTP fallback, full-quantity fills and shared account balances. A strict NIFTY adapter must refuse automation until a compatible scoped native execution profile and isolated accounting are implemented and tested. Existing generic Sandbox simulation cannot be described as the requested strict execution model.
+Price protection precedes target, maximum hold, enabled technical invalidation,
+session exit and operator closure. Technical invalidation uses fresh completed
+SuperTrend reversal or adverse movement against the recorded entry ATR on the
+same futures identity. Forced time/session exits can create intents without a
+fresh bid; they still cannot fill without a fresh executable bid and a verified
+open NFO session. Failed exits remain visible and latched across restart and
+retry. A position becomes flat only after confirmed quantity reduction.
 
-## Durable state and concurrency
+Pause, stop and kill block entries while protective jobs remain attached.
+Kill is persistent and cannot be cleared by a configuration update. Daily loss
+lockout persists for the account's trading day and resets on IST day rollover.
+Configuration changes pause entries and do not alter held-position settings.
 
-Configuration updates create immutable revisions and pause entries. Kill switch is persistent. Starting requires reconciliation, healthy data, valid session, required warm-up, complete PCR and execution readiness. Stop and pause prevent entries. Closing positions is a separately acknowledged operation. Never claim that stopping a process closed its positions.
+Known v1 settings migrate into a new v2 revision with retained history and
+paused entries. Unknown or invalid settings stay blocked. Legacy pending buys
+are canceled. Legacy positions lacking recorded confidence receive emergency
+8%-or-tighter stop protection without an invented target or confidence. A recorded favorable legacy peak is preserved as a conservative protective
+floor and latches a review exit, rather than restarting at a looser stop. Such
+exposure keeps entries blocked until reviewed/closed; this is not retroactive
+proof that old trades used v2 targets.
 
-Before enabling order submission, atomically claim each decision intent and reserve risk. Duplicate or concurrent requests must resolve to the existing intent. After an ambiguous submission, reconcile native order and trade records before retrying. Confirm exit fills before declaring a position flat. Persist stop state and immutable entry configuration.
+## STRIDE review
 
-## Verification requirements
+| Threat | Control | Evidence/limit |
+| --- | --- | --- |
+| Spoofed observations | Native instrument identity, dated master and exchange/receipt timestamps | Offline missing-time, stale-chain and master rejection tests; live feed still unverified |
+| Tampered configuration | Strict validated units, immutable revisions, revision CAS and paused migration | Migration and racing-control tests |
+| Repudiated orders | Durable deterministic intent IDs, signal context, fill observations, fees and events | Restart, retry and journal assertions |
+| Information disclosure | Server-held keys; errors record type/reason codes, not credential-bearing broker bodies | No credential changes or browser key transport |
+| Denial of service | Separate entry/protection jobs, bounded history, subscription quota refusal, acknowledged reconnects | Production eventlet/gthread rehearsal pending |
+| Privilege or route escalation | Session/CSRF/user scoping; no generic/broker order imports or fallback | Import checks and runtime canaries with Analyzer states |
 
-Assert zero calls at final broker order-changing boundaries under Analyzer enabled, disabled and switching, expired credentials, restart, duplicate and concurrent signals, stale data, risk failure and rejected exits. Also verify native Sandbox failures never trigger another routing path. Readiness blocks remain visible until these checks pass.
+Windows fixtures do not certify Linux worker behavior, real exchange data,
+entitlements, or profitability. Durable decision/event/depth records require an
+operator retention policy before prolonged forward operation.
+
+Recovery verifies cash/held-cost equality, confirmed fill references, journal quantities and reservations. Inconsistent state blocks new entries. Exit coverage is independently bounded by confirmed buy quantity minus confirmed sells, even if a position counter is inconsistent.

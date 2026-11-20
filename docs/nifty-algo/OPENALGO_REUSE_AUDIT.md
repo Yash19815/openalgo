@@ -2,6 +2,16 @@
 
 Baseline `de8456ab38d722fd1fd3b83b8c97ed6895684945`. Detailed legacy disposition lives in [MIGRATION_ANALYSIS.md](MIGRATION_ANALYSIS.md).
 
+The table below records the original capability audit, not the active execution
+design. The implemented NIFTY path uses `NiftyPaperExecutor` and feature-owned
+accounts, orders, positions, protection and journals in the existing main
+database. It does not dispatch through shared Sandbox order/fund managers.
+Native broker data, calendar, authentication, scheduler, event transport,
+engine factory and frontend components are reused. The percentage-based shared
+RMS was reviewed; NIFTY uses a focused Decimal option-premium adapter for the
+requested point trail. See [ARCHITECTURE.md](ARCHITECTURE.md) and
+[TESTING.md](TESTING.md) for the current implementation and evidence.
+
 | Feature | Existing file or service | Reuse | Required change | Risk | Test plan |
 | --- | --- | --- | --- | --- | --- |
 | Flask API registration | `app.py`, `blueprints/` | Yes | Register scoped blueprint | Route regressions | Authenticated API and import tests |

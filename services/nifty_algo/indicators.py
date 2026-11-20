@@ -186,6 +186,15 @@ def pcr(contracts, quotes, kind, scope, now, max_age=90, verified=False):
         return None
     if len({i.token for i in contracts}) != len(contracts):
         return None
+    if len({(i.strike, i.kind) for i in contracts}) != len(contracts):
+        return None
+    if any(
+        i.master_date != now.astimezone(ZoneInfo("Asia/Kolkata")).date()
+        or not i.tradable
+        or i.expiry < now.astimezone(ZoneInfo("Asia/Kolkata")).date()
+        for i in contracts
+    ):
+        return None
     strikes = {i.strike for i in contracts}
     if any({i.kind for i in contracts if i.strike == strike} != {"CE", "PE"} for strike in strikes):
         return None

@@ -47,6 +47,7 @@ def _candles(rows, token, now, first_day, session_reader):
     bars = []
     windows = {}
     seen = set()
+    previous = None
     for row in rows:
         if not isinstance(row, dict):
             raise ValueError("History row requires named candle fields")
@@ -63,6 +64,9 @@ def _candles(rows, token, now, first_day, session_reader):
             raise ValueError("History OHLCV values must be numeric")
         if start in seen:
             raise ValueError("Duplicate historical candle timestamp")
+        if previous is not None and start < previous:
+            raise ValueError("Out-of-order historical candle timestamp")
+        previous = start
         seen.add(start)
         bar = Candle(
             token=token,
@@ -93,11 +97,15 @@ def assess_current(
     history_reader=None,
     instrument_loader=None,
     session_reader=None,
+    native=None,
+    pcr_reader=None,
+    observation_only=True,
 ):
     """Compute an explainable observation without creating an order intent.
 
-    Dependencies are injectable for offline fixtures. PCR remains unavailable
-    because native chain responses do not establish per-leg causal freshness.
+    Dependencies are injectable for offline fixtures. PCR comes from the full
+    dated native source-cache scope and remains unavailable when any required
+    observation, provenance, freshness or master check fails.
     """
     if not api_key:
         raise ValueError("Authenticated OpenAlgo API key required")
@@ -109,7 +117,7 @@ def assess_current(
     today = now.astimezone(IST).date()
     first_day = today - timedelta(days=9)
     session_reader = session_reader or _session
-    native = NativeDataAdapter(instrument_loader=instrument_loader, clock=lambda: now)
+    native = native or NativeDataAdapter(instrument_loader=instrument_loader, clock=lambda: now)
     futures = sorted(
         (row for row in native._instruments(now) if row["kind"] == "FUT"),
         key=lambda row: (row["expiry"], row["symbol"]),
@@ -144,10 +152,11 @@ def assess_current(
             session_bars = [bar for bar in bars if bar.start.astimezone(IST).date() == day]
             entry.extend(aggregate(session_bars, 5, now, session_open=window[0]))
             higher.extend(aggregate(session_bars, 15, now, session_open=window[0]))
+    pcr_result = (pcr_reader or native.get_pcr)(config, now)
     decision = Rules().evaluate(
         entry,
         higher,
-        None,
+        pcr_result["pcr"],
         now,
         config,
         config.version_id,
@@ -156,13 +165,28 @@ def assess_current(
     if issue:
         decision["checks"].append({"rule": "R-HISTORY", "state": "UNAVAILABLE", "detail": issue})
         decision["reasons"].append("R-HISTORY: " + issue)
+        decision["eligible"] = False
+    if instrument and instrument.get("master_freshness") != "VERIFIED":
+        decision["reasons"].append("MASTER_FRESHNESS_UNVERIFIED")
+        decision["eligible"] = False
+    today_window = windows.get(today)
+    today_bars = [b for b in bars if b.start.astimezone(IST).date() == today]
+    if not today_window or not today_bars or today_bars[0].start != today_window[0]:
+        decision["reasons"].append("SESSION_VWAP_INCOMPLETE")
+        decision["eligible"] = False
+    eligible = decision["eligible"] and not observation_only
+    reasons = (["OBSERVATION_ONLY"] if observation_only else []) + (
+        [pcr_result["reason"]] if pcr_result.get("reason") else []
+    )
     decision.update(
         {
-            "eligible": False,
-            "final_action": "NO_ORDER",
+            "eligible": eligible,
+            "final_action": "CANDIDATE" if eligible else "NO_ORDER",
+            "pcr_readiness": {key: val for key, val in pcr_result.items() if key != "pcr"},
             "risk": {
                 "approved": False,
-                "reasons": ["OBSERVATION_ONLY", "VERIFIED_PCR_UNAVAILABLE"],
+                "stage": "PRE_ADMISSION",
+                "reasons": reasons,
             },
             "source": "OBSERVED_BROKER_HISTORY",
             "analysis_instrument": instrument,

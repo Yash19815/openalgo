@@ -5,6 +5,7 @@ diagnostics but cannot pass a trading freshness check.
 """
 
 from datetime import UTC, date, datetime, timezone
+from decimal import Decimal
 from math import isfinite
 from zoneinfo import ZoneInfo
 
@@ -29,7 +30,7 @@ def _load_instruments():
         rows = (
             db_session.query(SymToken)
             .filter(
-            SymToken.name.in_(("NIFTY", "Nifty 50", "NIFTY 50")),
+                SymToken.name.in_(("NIFTY", "Nifty 50", "NIFTY 50")),
                 SymToken.exchange.in_(("NFO", "NSE_INDEX")),
             )
             .all()
@@ -37,6 +38,13 @@ def _load_instruments():
         return [{field: getattr(row, field) for field in FIELDS} for row in rows]
     finally:
         db_session.remove()
+
+
+def _master_status():
+    from database.master_contract_status_db import get_last_downloaded_broker, get_status
+
+    broker = get_last_downloaded_broker()
+    return get_status(broker) if broker else None
 
 
 def _timestamp(value):
@@ -126,20 +134,158 @@ def _metadata(row, today):
 class NativeDataAdapter:
     """Read cached observations without subscribing or creating broker sessions."""
 
-    def __init__(self, instrument_loader=None, market_data=None, clock=None, max_age=5):
+    def __init__(
+        self, instrument_loader=None, market_data=None, clock=None, max_age=5, master_reader=None
+    ):
         if max_age <= 0:
             raise ValueError("Positive maximum quote age required")
         self.instrument_loader = instrument_loader or _load_instruments
         self.market_data = market_data
         self.clock = clock or (lambda: datetime.now(UTC))
         self.max_age = max_age
+        self.master_reader = master_reader or (
+            _master_status if instrument_loader is None else lambda: None
+        )
 
     def _instruments(self, now):
-        return [
+        before = self.master_reader()
+        raw_rows = self.instrument_loader()
+        rows = [
             metadata
-            for row in self.instrument_loader()
+            for row in raw_rows
             if (metadata := _metadata(row, now.astimezone(IST).date())) is not None
         ]
+        master = self.master_reader()
+        today = now.astimezone(IST).date().isoformat()
+        verified = bool(
+            master
+            and before == master
+            and master.get("is_ready")
+            and master.get("download_date") == today
+        )
+        complete = not any(
+            row.get("exchange") == "NFO"
+            and row.get("name") == "NIFTY"
+            and (
+                _expiry(row.get("expiry")) is None
+                or _expiry(row.get("expiry")) >= now.astimezone(IST).date()
+            )
+            and _metadata(row, now.astimezone(IST).date()) is None
+            for row in raw_rows
+        )
+        for row in rows:
+            if row["kind"] != "SPOT" and verified:
+                row.update(
+                    master_date=today,
+                    master_freshness="VERIFIED",
+                    master_broker=master.get("broker"),
+                    master_complete=complete,
+                )
+        return rows
+
+    def instruments(self, now=None):
+        """Validated domain instruments only when master freshness is proven."""
+        from .models import Instrument
+
+        return [
+            Instrument.model_validate(
+                {
+                    key: value
+                    for key, value in row.items()
+                    if key not in ("master_freshness", "master_broker", "master_complete")
+                }
+            )
+            for row in self._instruments(now or self.clock())
+            if row["kind"] != "SPOT" and row.get("master_freshness") == "VERIFIED"
+        ]
+
+    def quote(self, instrument, now=None, max_age=None):
+        """Read causal source fields, never display defaults, for PCR and selection."""
+        from .models import Quote
+
+        now = now or self.clock()
+        if self.market_data is None:
+            from services.market_data_service import get_market_data_service
+
+            self.market_data = get_market_data_service()
+        cached = self.market_data.get_all_data(instrument.symbol, instrument.exchange)
+        sources = cached.get("source_observations", {})
+        raw = sources.get("3") or sources.get("2") or {}
+        source, received = _timestamp(raw.get("ltt")), _timestamp(raw.get("received_time"))
+        if (
+            source is None
+            or received is None
+            or not source <= received <= now
+            or not 0 <= (now - source).total_seconds() <= (max_age or self.max_age)
+        ):
+            return None
+        try:
+            price = _number(raw.get("ltp"), positive=True)
+            return Quote(
+                token=instrument.token,
+                source_time=source,
+                received_time=received,
+                ltp=Decimal(str(price)) if price is not None else None,
+                volume=raw.get("volume"),
+                oi=raw.get("oi"),
+                provider="OPENALGO_SOURCE_CACHE",
+            )
+        except (ValueError, TypeError, ArithmeticError):
+            return None
+
+    def get_pcr(self, config, now=None):
+        """Full listed strike universe for one expiry, never the tracker window."""
+        from .indicators import pcr
+
+        now = now or self.clock()
+        rows = self._instruments(now)
+        if not any(row.get("master_freshness") == "VERIFIED" for row in rows):
+            return {"pcr": None, "reason": "MASTER_FRESHNESS_UNVERIFIED", "scope": None}
+        if any(row.get("master_complete") is False for row in rows):
+            return {"pcr": None, "reason": "MASTER_UNIVERSE_INVALID", "scope": None}
+        from .models import Instrument
+
+        validated = [
+            Instrument.model_validate(
+                {
+                    key: value
+                    for key, value in row.items()
+                    if key not in ("master_freshness", "master_broker", "master_complete")
+                }
+            )
+            for row in rows
+            if row["kind"] != "SPOT" and row.get("master_freshness") == "VERIFIED"
+        ]
+        contracts = [
+            i
+            for i in validated
+            if i.kind in ("CE", "PE")
+            and (not config.avoid_expiry_day or i.expiry > now.astimezone(IST).date())
+        ]
+        expiry = config.pcr_expiry or min((i.expiry for i in contracts), default=None)
+        contracts = [i for i in contracts if i.expiry == expiry]
+        scope = f"NIFTY:NFO:{expiry}:ALL_LISTED_STRIKES"
+        quotes = {i.token: self.quote(i, now, config.pcr_max_age) for i in contracts}
+        value = pcr(
+            contracts, quotes, config.pcr_kind, scope, now, config.pcr_max_age, verified=True
+        )
+        times = [q.source_time for q in quotes.values() if q is not None]
+        skewed = bool(
+            times and (max(times) - min(times)).total_seconds() > config.pcr_max_skew_seconds
+        )
+        if skewed:
+            value = None
+        return {
+            "pcr": value,
+            "reason": None
+            if value
+            else "PCR_TIMESTAMP_SKEW"
+            if skewed
+            else "COMPLETE_TIMESTAMPED_CHAIN_UNAVAILABLE",
+            "scope": scope,
+            "expected_contracts": len(contracts),
+            "observed_contracts": sum(q is not None for q in quotes.values()),
+        }
 
     def get_contracts(self):
         now = self.clock()
@@ -152,10 +298,19 @@ class NativeDataAdapter:
 
             self.market_data = get_market_data_service()
         cached = self.market_data.get_all_data(instrument["symbol"], instrument["exchange"])
-        observation = cached.get("quote") or cached.get("depth") or cached.get("ltp") or {}
+        sources = cached.get("source_observations", {})
+        observation = (
+            sources.get("3")
+            or sources.get("2")
+            or sources.get("1")
+            or cached.get("quote")
+            or cached.get("depth")
+            or cached.get("ltp")
+            or {}
+        )
         source = _timestamp(observation.get("ltt"))
         transport = _timestamp(observation.get("timestamp"))
-        received = _timestamp(cached.get("last_update"))
+        received = _timestamp(observation.get("received_time") or cached.get("last_update"))
         price = _number(observation.get("ltp", observation.get("value")), positive=True)
         reasons = []
         if price is None:
@@ -201,7 +356,9 @@ class NativeDataAdapter:
             "spot": self._observation(spot, now) if spot else None,
             "future": self._observation(future, now) if future else None,
             "source": "OPENALGO_CACHE",
-            "master_freshness": "UNVERIFIED",
+            "master_freshness": future.get("master_freshness", "UNVERIFIED")
+            if future
+            else "UNVERIFIED",
         }
 
 

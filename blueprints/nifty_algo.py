@@ -1,14 +1,45 @@
 """Authenticated feature API. Order admission remains closed until ready."""
 
 from flask import Blueprint, current_app, jsonify, request, session
+from flask_socketio import join_room, leave_room
 from pydantic import ValidationError
 
 from database.nifty_algo_db import NiftyStore, StateConflict
+from extensions import socketio
 from services.nifty_algo.config import StrategyConfig
 from services.nifty_algo.paper_executor import NiftyPaperExecutor
 from utils.session import check_session_validity
 
 nifty_algo_bp = Blueprint("nifty_algo", __name__, url_prefix="/api/nifty-algo")
+
+
+def _socket_room():
+    from utils.session import is_session_valid
+
+    try:
+        user = session.get("user")
+        return f"nifty_algo:{user}" if user and is_session_valid() else None
+    except Exception:
+        return None
+
+
+@socketio.on("nifty_algo_subscribe")
+def subscribe_updates(data=None):
+    """The signed session determines ownership; caller-supplied users are ignored."""
+    room = _socket_room()
+    if room is None:
+        return {"status": "error", "message": "Not authenticated"}
+    join_room(room)
+    return {"status": "success"}
+
+
+@socketio.on("nifty_algo_unsubscribe")
+def unsubscribe_updates(data=None):
+    room = _socket_room()
+    if room is None:
+        return {"status": "error", "message": "Not authenticated"}
+    leave_room(room)
+    return {"status": "success"}
 
 
 def initialize_nifty(app, engine):
@@ -46,11 +77,20 @@ def invalid_configuration(error):
 def status():
     state = store().read(session["user"])
     state.pop("configuration")
+    runner = store().runner_status(session["user"])
+    ready = bool(
+        runner.get("operational")
+        and runner.get("entries_ready")
+        and runner.get("configuration_id") == state["configuration_id"]
+        and not state["killed"]
+        and not state["daily_locked"]
+    )
     return success(
         {
             **state,
             "mode": "PAPER_ONLY",
-            "ready": False,
+            "ready": ready,
+            "runner": runner,
             "readiness": NiftyPaperExecutor(store(), session["user"]).readiness(),
         }
     )
@@ -74,18 +114,44 @@ def configuration():
 @check_session_validity
 def control(action):
     if action == "start":
-        return jsonify(
-            status="error",
-            code="PAPER_NOT_READY",
-            message="Automation requires verified native paper execution and recovery.",
-            readiness=NiftyPaperExecutor(store(), session["user"]).readiness(),
-        ), 409
-    if action not in {"pause", "stop", "kill-switch"}:
+        state = store().read(session["user"])
+        runner = store().runner_status(session["user"])
+        if not (
+            runner.get("operational")
+            and runner.get("entries_ready")
+            and runner.get("configuration_id") == state["configuration_id"]
+            and not state["killed"]
+            and not state["daily_locked"]
+        ):
+            return jsonify(
+                status="error",
+                code="PAPER_NOT_READY",
+                message="Automation requires verified native paper execution and recovery.",
+                readiness=NiftyPaperExecutor(store(), session["user"]).readiness(),
+            ), 409
+    if action not in {"start", "pause", "stop", "kill-switch"}:
         return jsonify(status="error", message="Unknown strategy control"), 404
     body = request.get_json(silent=True)
     if not isinstance(body, dict) or set(body) != {"revision"} or type(body["revision"]) is not int:
         return jsonify(status="error", message="Integer revision required"), 400
     return success(store().change(session["user"], body["revision"], action=action))
+
+
+@nifty_algo_bp.route("/runner", methods=["POST"])
+@check_session_validity
+def prepare_runner():
+    from blueprints.python_strategy import SCHEDULER
+    from services.nifty_algo.runner import attach_runner
+
+    if SCHEDULER is None or not SCHEDULER.running:
+        return jsonify(
+            status="error",
+            code="SCHEDULER_UNAVAILABLE",
+            message="Native Python strategy scheduler is unavailable.",
+        ), 409
+    store().read(session["user"])
+    attach_runner(current_app._get_current_object(), SCHEDULER, session["user"])
+    return success({"state": "MONITOR_ATTACHED", "mode": "PAPER_ONLY"})
 
 
 @nifty_algo_bp.route("/signals")
@@ -142,6 +208,10 @@ def indicators():
             "snapshot": decisions[0].get("snapshot"),
             "timestamp": decisions[0].get("timestamp"),
             "pcr": decisions[0].get("pcr"),
+            "confidence": decisions[0].get("confidence"),
+            "indicator_states": decisions[0].get("indicator_states"),
+            "checks": decisions[0].get("checks"),
+            "pcr_readiness": decisions[0].get("pcr_readiness"),
         }
     )
 
@@ -190,6 +260,41 @@ def contracts():
 @check_session_validity
 def positions():
     return success(store().positions(session["user"]))
+
+
+@nifty_algo_bp.route("/positions/<token>/close", methods=["POST"])
+@check_session_validity
+def close_position(token):
+    from services.nifty_algo.paper_executor import OrderRefused
+
+    held = next((p for p in store().positions(session["user"]) if p["token"] == token), None)
+    if held is None:
+        return jsonify(status="error", message="Owned paper position not found"), 404
+    executor = NiftyPaperExecutor(store(), session["user"])
+    executor.reconcile()
+    from datetime import UTC, datetime
+
+    store().observe_position(session["user"], token, None, datetime.now(UTC), "OPERATOR_CLOSE")
+    try:
+        order, created = executor.admit(
+            {
+                "intent_id": "operator-close:" + held["entry_order_id"],
+                "side": "SELL",
+                "symbol": held["symbol"],
+                "token": token,
+                "instrument": held["instrument"],
+                "exit_reason": "OPERATOR_CLOSE",
+            }
+        )
+    except OrderRefused as error:
+        return jsonify(status="error", code="EXIT_NOT_ADMITTED", reasons=error.reasons), 409
+    return success(
+        {
+            "order": order,
+            "created": created,
+            "message": "Position remains open until a confirmed simulated fill.",
+        }
+    )
 
 
 @nifty_algo_bp.route("/orders")

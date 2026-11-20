@@ -12,7 +12,7 @@ import {
   Square,
   Zap,
 } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { useSocketContext } from '@/components/socket/SocketProvider'
 import { Button } from '@/components/ui/button'
@@ -26,13 +26,14 @@ import {
 } from '@/components/ui/dialog'
 import {
   assessNativeHistory,
-  controlNifty,
-  niftyKeys,
-  readNifty,
-  saveConfiguration,
   type ConfigurationResponse,
+  controlNifty,
   type DataRecord,
   type NiftyStatus,
+  niftyKeys,
+  preparePaperMonitor,
+  readNifty,
+  saveConfiguration,
 } from './api'
 import './workspace.css'
 
@@ -108,6 +109,47 @@ function Records({ data }: { data: unknown }) {
   )
 }
 
+function IndicatorObservation({ data }: { data: DataRecord | undefined }) {
+  const states = data?.indicator_states
+  const confidence = data?.confidence
+  if (!states || typeof states !== 'object' || Array.isArray(states)) return <Fields data={data} />
+  const rows = Object.entries(states).map(([name, value]) => ({
+    indicator: name,
+    ...(value && typeof value === 'object' && !Array.isArray(value) ? value : {}),
+    value: valueText(
+      value && typeof value === 'object' && !Array.isArray(value) ? value.value : null
+    ),
+  }))
+  const strength =
+    confidence && typeof confidence === 'object' && !Array.isArray(confidence) ? confidence : null
+  const contributions = strength?.contributions
+  return (
+    <>
+      <Records data={rows} />
+      {strength && (
+        <Fields
+          data={{
+            strength_score: strength.score,
+            target_fraction: strength.target_fraction,
+            method: strength.method,
+          }}
+        />
+      )}
+      {contributions && typeof contributions === 'object' && !Array.isArray(contributions) && (
+        <Records
+          data={Object.entries(contributions).map(([name, value]) => ({
+            indicator: name,
+            ...(value && typeof value === 'object' && !Array.isArray(value) ? value : {}),
+          }))}
+        />
+      )}
+      <p className="nifty-muted">
+        Research strength is not a calibrated win probability. Targets use option premium.
+      </p>
+    </>
+  )
+}
+
 function Resource({
   name,
   title,
@@ -125,11 +167,13 @@ function Resource({
   return (
     <Panel title={title}>
       {query.isPending ? (
-        <p role="status">Loading {title.toLowerCase()}…</p>
+        <output>Loading {title.toLowerCase()}…</output>
       ) : query.error ? (
         <p role="alert">{query.error.message}</p>
       ) : records ? (
         <Records data={query.data} />
+      ) : name === 'indicators' ? (
+        <IndicatorObservation data={query.data} />
       ) : (
         <Fields data={query.data} />
       )}
@@ -167,7 +211,7 @@ function Configuration() {
   return (
     <Panel title="Strategy configuration">
       {query.isPending ? (
-        <p role="status">Loading configuration…</p>
+        <output>Loading configuration…</output>
       ) : query.error ? (
         <p role="alert">{query.error.message}</p>
       ) : (
@@ -186,7 +230,7 @@ function Configuration() {
           <Button disabled={save.isPending} onClick={submit}>
             Save configuration
           </Button>
-          {save.isSuccess && <p role="status">Configuration saved.</p>}
+          {save.isSuccess && <output>Configuration saved.</output>}
         </>
       )}
       {(parseError || save.error) && <p role="alert">{parseError || save.error?.message}</p>}
@@ -203,7 +247,7 @@ export default function Workspace() {
   const status = useQuery({
     queryKey: [...niftyKeys.all, 'status'],
     queryFn: () => readNifty<NiftyStatus>('status'),
-    refetchInterval: 30_000,
+    refetchInterval: 5_000,
   })
   const action = useMutation({
     mutationFn: controlNifty,
@@ -216,13 +260,22 @@ export default function Workspace() {
     mutationFn: assessNativeHistory,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: niftyKeys.all }),
   })
+  const monitor = useMutation({
+    mutationFn: preparePaperMonitor,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: niftyKeys.all }),
+  })
   useEffect(() => {
     if (!socket) return
     const refresh = () => {
       queryClient.invalidateQueries({ queryKey: niftyKeys.all })
     }
+    const subscribe = () => socket.emit('nifty_algo_subscribe')
+    subscribe()
+    socket.on('connect', subscribe)
     socket.on('nifty_algo_update', refresh)
     return () => {
+      socket.emit('nifty_algo_unsubscribe')
+      socket.off('connect', subscribe)
       socket.off('nifty_algo_update', refresh)
     }
   }, [socket, queryClient])
@@ -273,13 +326,17 @@ export default function Workspace() {
           </span>
           <span className="nifty-state">{status.data?.state || 'Awaiting status'}</span>
         </header>
-        {status.isPending && <p role="status">Loading paper system status…</p>}
+        {status.isPending && <output>Loading paper system status…</output>}
         {status.error && <p role="alert">Status unavailable. {status.error.message}</p>}
         {action.error && <p role="alert">{action.error.message}</p>}
+        {monitor.error && <p role="alert">{monitor.error.message}</p>}
         {(page === 'overview' || page === 'terminal') && (
           <div className="nifty-controls">
+            <Button variant="outline" disabled={monitor.isPending} onClick={() => monitor.mutate()}>
+              Connect paper monitor
+            </Button>
             <Button
-              disabled={action.isPending || !status.data}
+              disabled={action.isPending || !status.data?.ready}
               onClick={() => action.mutate({ action: 'start', revision: status.data!.revision })}
             >
               <Play size={14} />
@@ -331,7 +388,7 @@ export default function Workspace() {
                 Records an assessment using available native history. This action submits no orders.
               </p>
               {assessment.error && <p role="alert">{assessment.error.message}</p>}
-              {assessment.isSuccess && <p role="status">Assessment recorded.</p>}
+              {assessment.isSuccess && <output>Assessment recorded.</output>}
             </div>
             <Resource name="indicators" title="Five-indicator state" />
             <Resource name="signals" title="Persisted decisions" records />
@@ -340,9 +397,9 @@ export default function Workspace() {
         {(page === 'positions' || page === 'terminal') && (
           <>
             <p className="nifty-muted">
-              Pause, stop and kill persist control state. Automation and paper exits remain
-              unavailable until execution integration is ready. Existing Sandbox exposure requires
-              separate review.
+              Pause, stop and kill disable new entries. The attached paper monitor keeps managing
+              protective exits. Triggers cannot guarantee fill prices. Readiness shows data or
+              connection blocks; exposure stays open until a confirmed bid-depth fill.
             </p>
             <Resource name="positions" title="Simulated positions" records />
             <Resource name="orders" title="Paper order lifecycle" records />
@@ -390,8 +447,8 @@ export default function Workspace() {
           <DialogHeader>
             <DialogTitle>Activate NIFTY paper kill switch?</DialogTitle>
             <DialogDescription>
-              This persists the NIFTY entry lockout. Automated paper exits require the execution
-              integration to be ready. Review existing Sandbox positions separately.
+              This persists the NIFTY entry lockout. The paper monitor continues protective exits.
+              Positions remain open until a simulated sell fill is confirmed.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -480,7 +480,7 @@ The AI Agent at `/agent` is deliberately LLM-agnostic. The agent loop and the pr
 
 ## NIFTY ALGO extension
 
-The authenticated `/nifty-algo` workspace and `/api/nifty-algo/` feature API are under development in this fork. Configuration revisions, persistent controls, deterministic research rules and read-only native data views are available. Automation start returns a readiness refusal until strict native Sandbox fills, isolated capital and recovery are implemented and verified. See the [implementation tracker](docs/nifty-algo/IMPLEMENTATION_PLAN.md) and [local setup and readiness guide](docs/nifty-algo/SETUP.md).
+The authenticated `/nifty-algo` workspace uses an isolated PAPER_ONLY ledger. The native strategy scheduler manages separate entry and protective jobs, with an 8% maximum filled-premium stop, a 1.5-option-premium-point trail and deterministic 10–15% targets. `POST /api/nifty-algo/runner` attaches the monitor; Start remains gated by backend data and recovery checks. `POST /api/nifty-algo/positions/<token>/close` requests an owned paper exit. Real Angel complete-expiry PCR and production-worker readiness remain unverified. See the [implementation tracker](docs/nifty-algo/IMPLEMENTATION_PLAN.md), [testing evidence](docs/nifty-algo/TESTING.md), and [setup guide](docs/nifty-algo/SETUP.md).
 
 The feature uses OpenAlgo's existing environment and authentication. It adds no broker credentials or deployment service. The initial milestone is paper-only.
 

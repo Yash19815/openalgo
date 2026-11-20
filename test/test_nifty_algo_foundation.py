@@ -156,6 +156,61 @@ def test_api_auth_csrf_validation_and_readiness(client):
     assert client.get("/api/nifty-algo/positions").json["data"] == []
 
 
+def test_api_start_requires_current_lease_config_and_reconciliation(client):
+    from datetime import UTC, datetime
+
+    with client.session_transaction() as browser:
+        browser["user"] = "alice"
+    state = client.application.extensions["nifty_algo_store"]
+    current = state.read("alice")
+    state.account("alice")
+    now = datetime.now(UTC)
+    state.claim_runner(
+        "alice",
+        "offline-lease",
+        now,
+        payload={"entries_ready": True, "configuration_id": current["configuration_id"]},
+    )
+    token = client.get("/fixture-csrf").json["token"]
+    response = client.post(
+        "/api/nifty-algo/strategy/start",
+        json={"revision": current["revision"]},
+        headers={"X-CSRFToken": token},
+    )
+    assert response.status_code == 200 and response.json["data"]["state"] == "RUNNING"
+    changed = state.change(
+        "alice", response.json["data"]["revision"], configuration=StrategyConfig(adx_min=35)
+    )
+    assert not client.get("/api/nifty-algo/status").json["data"]["ready"]
+    refused = client.post(
+        "/api/nifty-algo/strategy/start",
+        json={"revision": changed["revision"]},
+        headers={"X-CSRFToken": token},
+    )
+    assert refused.status_code == 409
+
+
+def test_socket_updates_use_valid_signed_session_ownership(client, monkeypatch):
+    import blueprints.nifty_algo as feature
+    import utils.session as sessions
+
+    join, leave = Mock(), Mock()
+    monkeypatch.setattr(feature, "join_room", join)
+    monkeypatch.setattr(feature, "leave_room", leave)
+    with client.application.test_request_context():
+        session["user"] = "alice"
+        monkeypatch.setattr(sessions, "is_session_valid", lambda: False)
+        assert feature.subscribe_updates({"user": "bob"})["status"] == "error"
+        join.assert_not_called()
+        monkeypatch.setattr(sessions, "is_session_valid", lambda: True)
+        assert feature.subscribe_updates({"user": "bob"})["status"] == "success"
+        join.assert_called_once_with("nifty_algo:alice")
+        assert feature.unsubscribe_updates()["status"] == "success"
+        leave.assert_called_once_with("nifty_algo:alice")
+        session.clear()
+        assert feature.subscribe_updates()["status"] == "error"
+
+
 def test_assessment_uses_server_key_and_persists_no_order_decision(client, monkeypatch):
     import sys
 

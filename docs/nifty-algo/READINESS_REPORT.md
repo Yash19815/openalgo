@@ -1,16 +1,30 @@
-# Paper-trading readiness report
+# NIFTY paper-trading readiness report
 
-Forward paper trading is **not ready**. No genuine market-data session or simulated order was executed during development.
+Status: implemented and tested offline; **real-market forward paper readiness
+has not been verified**. No live order capability was added or used.
 
-| Area | Measured state | Remaining gate |
+| Area | Implemented and offline evidence | External or remaining evidence |
 | --- | --- | --- |
-| System foundation | Feature blueprint, additive state tables, revisioned configuration and persistent control tests | Full locked-dependency OpenAlgo startup and worker regression checks |
-| Market data | Read-only native cache/master adapter with offline fixtures | Source timestamp retention, current master provenance, complete chain/PCR observations and real entitled feed |
-| Strategy | Five pure indicators, deterministic decisions and causal aggregation | Integrated native data loop, expanded confluence fixtures and forward observation |
-| Risk | Whole-lot fee-aware sizing, limits and shared RMS premium exits; durable daily accounting, atomic idempotent admission and protective position recovery verified in tests | Concurrent admission under the real runner and forward-session review |
-| Paper execution | Isolated per-user paper account: strict bid/ask depth fills, configured costs, latency and TTL, idempotent admission through shared RMS, durable recovery/reconciliation, day rollover and live read-model endpoints — 15 dedicated tests green | Forward session against an entitled real-time feed and full lifecycle review |
-| UI | Authenticated dark terminal workspace and typed API | Rich charts, full screen fidelity, trade drilldown, research form and measured browser review |
-| Research | Pure signal-only study and analytics on explicit inputs | Native historical dataset UI, persisted study jobs and validated option-depth replay |
-| Live isolation | No executable broker submission dependency in the feature boundary | Full final-broker-boundary scenario suite when native paper execution is enabled |
+| 8% stop and point trail | Filled-price stop, conservative ticks, delayed activation, monotonic durable peak/stop, gap and depth rejection tests | Live feed latency/liquidity behavior |
+| Dynamic target | Deterministic per-indicator contributions, bounded tick-valid 10–15% target, immutable entry settings | No calibrated win probability or profitability evidence |
+| Data and PCR | Native source cache and futures history connected; full dated master expiry, timestamp/coverage/definition checks | Genuine Angel complete-scope observations and entitlement |
+| Runner | Native IST scheduler, separate entry/protection jobs, lease, startup floor and restart reconciliation | Full application process lifecycle under Linux workers |
+| Paper ledger | Atomic reservation/fills, displayed quantity, costs, retries, partial exit accounting and isolated journal | Extended unattended forward observation |
+| Workspace | Existing route, readiness-gated Start, indicator contributions and protection state | Real-session UI observation |
 
-Original video rules remain unverified. Current source conflicts and entitlement limits are recorded in [RESEARCH_SOURCES.md](RESEARCH_SOURCES.md). The [phase tracker](IMPLEMENTATION_PLAN.md) is the authority for completion status.
+The offline end-to-end simulator runs actual five-indicator calculations and
+verified-fixture PCR, selects a contract, reserves risk, confirms ask fills,
+advances protection, exits on bid depth and checks fees/net P&L. Generic order
+transport canaries and import checks remain untouched under Analyzer enabled,
+disabled and changing. This is offline isolation evidence, not a real broker
+session test. Test totals, command failures and platform limits are in TESTING.md.
+
+Before a forward paper session, verify today's broker/master identity, full
+expiry coverage within subscription capacity, source-level exchange timestamps,
+actual futures volume, valid NFO calendar sessions, reconnect recovery, correct
+fee assumptions, and the production worker startup/shutdown behavior. If the
+broker cannot supply the full timestamped scope, entries must remain blocked.
+No real historical dataset was replayed and no live-market paper fill was
+observed during this implementation session. Database retention is not automated.
+
+Final focused evidence: 142 NIFTY backend tests, seven workspace tests, 98 isolated upstream recovery/risk tests and the earlier Angel/host regressions passed. The broader frontend run retained six test timeouts and two hook timeouts despite the storage compatibility flag; see TESTING.md. Production readiness remains unverified.
