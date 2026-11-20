@@ -14,8 +14,10 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from services.nifty_algo.models import Instrument, Quote
+from utils.logging import get_logger
 
 IST = ZoneInfo("Asia/Kolkata")
+logger = get_logger(__name__)
 
 
 class PaperExecutionUnavailable(ValueError):
@@ -256,6 +258,11 @@ class NiftyPaperExecutor:
             )
             if session["status"] == "CALENDAR_UNAPPROVED":
                 raise OrderRefused(["CALENDAR_UNAPPROVED"])
+            # Loss cooldown and monthly locks refuse before sizing or any intent.
+            # admit_order re-checks both under the user lock.
+            locks = self.entry_lock_reasons(now, config)
+            if locks:
+                raise OrderRefused(locks)
             entry_session_open = bool(
                 session["status"] == "TRADING"
                 and session["window"]
@@ -522,7 +529,19 @@ class NiftyPaperExecutor:
                     observation=quote.model_dump(mode="json"),
                 )
             )
+        if any(row["side"] == "SELL" and row["status"] == "FILLED" for row in resolved):
+            try:
+                self.store.resolve_cooldowns(self.user_id, now)
+            except Exception:
+                # Never let calendar lookups disturb exits. An unresolved
+                # cooldown keeps entries blocked until admission resolves it.
+                logger.exception("Cooldown resolution after exit fill failed")
         return resolved
+
+    def entry_lock_reasons(self, now, config):
+        """Resolve pending cooldowns, latch monthly locks, return refusals."""
+        self.store.resolve_cooldowns(self.user_id, now)
+        return self.store.entry_locks(self.user_id, now, config)
 
     def monitor_exits(
         self,

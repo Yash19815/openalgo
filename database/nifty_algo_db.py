@@ -183,6 +183,43 @@ class NiftyDepthUse(Base):
     quantity = Column(Integer, nullable=False)
 
 
+class NiftyCooldown(Base):
+    """A losing primary session blocks the next eligible approved NFO session.
+
+    ``cooldown_session`` stays NULL until the approved calendar resolves it;
+    admission treats an unresolved row as blocking (fail closed).
+    """
+
+    __tablename__ = "nifty_algo_cooldown"
+    user_id = Column(String(255), primary_key=True)
+    loss_session = Column(String(10), primary_key=True)
+    cooldown_session = Column(String(10))
+    loss_event_id = Column(Integer, nullable=False)
+    entry_order_id = Column(String(64), nullable=False)
+    realized_net = Column(Numeric(18, 4), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class NiftyMonth(Base):
+    """IST calendar-month realized net and latched monthly entry locks.
+
+    Independent of ``nifty_algo_account``: equity never resets on a new month,
+    and nothing that changes equity touches these counters.
+    """
+
+    __tablename__ = "nifty_algo_month"
+    user_id = Column(String(255), primary_key=True)
+    month = Column(String(7), primary_key=True)
+    realized_net = Column(Numeric(18, 4), nullable=False, default=0)
+    loss_locked_at = Column(DateTime(timezone=True))
+    profit_locked_at = Column(DateTime(timezone=True))
+    lock_detail = Column(JSON, nullable=False, default=dict)
+    milestone_report_ids = Column(JSON, nullable=False, default=list)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
 class StateConflict(ValueError):
     """The caller used an obsolete state revision."""
 
@@ -190,6 +227,24 @@ class StateConflict(ValueError):
 def _instant(value):
     # SQLite drops timezone metadata from UTC timestamps on read.
     return value.replace(tzinfo=UTC).isoformat() if value.tzinfo is None else value.isoformat()
+
+
+_IST = ZoneInfo("Asia/Kolkata")
+
+
+def _month_key(moment):
+    return moment.astimezone(_IST).strftime("%Y-%m")
+
+
+def _optional_amount(value):
+    return None if value is None else Decimal(str(value))
+
+
+def _month_bounds(key):
+    year, month = (int(part) for part in key.split("-"))
+    start = datetime(year, month, 1, tzinfo=_IST)
+    end = datetime(year + (month == 12), month % 12 + 1, 1, tzinfo=_IST)
+    return start.astimezone(UTC), end.astimezone(UTC)
 
 
 class NiftyStore:
@@ -306,7 +361,21 @@ class NiftyStore:
             result = self._calendar_dict(row)
         return result
 
-    def approve_calendar(self, user_id, version_id, *, confirmed_year, confirmed_segment, actor):
+    def approve_calendar(
+        self, user_id, version_id, *, confirmed_year, confirmed_segment, actor, now=None
+    ):
+        result = self._approve_calendar(
+            user_id,
+            version_id,
+            confirmed_year=confirmed_year,
+            confirmed_segment=confirmed_segment,
+            actor=actor,
+        )
+        # A revised calendar recomputes current and future cooldown sessions.
+        self.resolve_cooldowns(user_id, now or datetime.now(UTC), recompute=True)
+        return result
+
+    def _approve_calendar(self, user_id, version_id, *, confirmed_year, confirmed_segment, actor):
         self.ensure_user(user_id)
         with self.sessions.begin() as db:
             self._lock(db, user_id)
@@ -512,6 +581,9 @@ class NiftyStore:
                     raise StateConflict("Start prerequisites changed. Reload readiness.")
             if row.killed:
                 values["state"] = "KILLED"
+            previous_target = None
+            if configuration is not None:
+                previous_target = (row.configuration or {}).get("monthly_profit_target")
             changed = db.execute(
                 update(NiftyState)
                 .where(NiftyState.user_id == user_id, NiftyState.revision == revision)
@@ -529,6 +601,22 @@ class NiftyStore:
                         created_at=now,
                     )
                 )
+                new_target = values["configuration"].get("monthly_profit_target")
+                if _optional_amount(previous_target) != _optional_amount(new_target):
+                    # Audit only. A latched monthly lock is never cleared here.
+                    db.add(
+                        NiftyEvent(
+                            user_id=user_id,
+                            kind="monthly_profit_target_changed",
+                            payload={
+                                "previous": previous_target,
+                                "new": new_target,
+                                "at": now.isoformat(),
+                                "revision": revision + 1,
+                            },
+                            created_at=now,
+                        )
+                    )
             db.add(
                 NiftyEvent(
                     user_id=user_id,
@@ -1056,6 +1144,11 @@ class NiftyStore:
                         > config.max_planned_loss
                     ):
                         reasons.append("PLANNED_LOSS_LIMIT")
+                    # Phase 3b: loss cooldown and monthly locks, under the same lock.
+                    reasons.extend(self._cooldown_reasons(db, user_id, local_day.isoformat()))
+                    reasons.extend(
+                        self._month_lock_reasons(db, user_id, order["created_at"], config)
+                    )
                     if reasons:
                         raise OrderRefused(reasons)
                 else:
@@ -1323,6 +1416,13 @@ class NiftyStore:
                     or state.configuration_id != config.version_id
                 ):
                     order.status, order.reason = "CANCELED", "ENTRIES_DISABLED"
+                elif entry_locks := (
+                    self._cooldown_reasons(
+                        db, user_id, now.astimezone(_IST).date().isoformat()
+                    )
+                    + self._month_lock_reasons(db, user_id, now, config)
+                ):
+                    order.status, order.reason = "REJECTED", entry_locks[0]
                 elif existing is not None:
                     order.status, order.reason = "REJECTED", "POSITION_LIMIT"
                 elif (
@@ -1459,8 +1559,17 @@ class NiftyStore:
                             closed_at=now,
                         )
                     )
+                    self._record_month_net(
+                        db,
+                        user_id,
+                        now,
+                        net,
+                        self._limit_config(db.get(NiftyState, user_id), config),
+                    )
                     position.quantity -= quantity
                     if position.quantity == 0:
+                        # Session finalisation: the single primary entry is now flat.
+                        self._schedule_cooldown(db, user_id, position, entry, now)
                         db.delete(position)
                         protection = db.get(NiftyProtection, (user_id, order.token))
                         if protection is not None:
@@ -1714,3 +1823,322 @@ class NiftyStore:
             "best": str(best) if count else None,
             "worst": str(worst) if count else None,
         }
+
+    # Loss cooldown and monthly limits ------------------------------------
+    #
+    # Writers (fill, entry_locks, resolve_cooldowns) take the user lock. The
+    # reason helpers are read-only so admit_order can evaluate them inside its
+    # own locked transaction without persisting anything on a refusal.
+
+    @staticmethod
+    def _limit_config(state, fallback):
+        from services.nifty_algo.config import StrategyConfig
+
+        try:
+            return StrategyConfig.model_validate(state.configuration)
+        except (ValueError, AttributeError):
+            return fallback
+
+    @staticmethod
+    def _trade_month_sum(db, user_id, key):
+        from sqlalchemy import func
+
+        start, end = _month_bounds(key)
+        total = db.scalar(
+            select(func.sum(NiftyTrade.net)).where(
+                NiftyTrade.user_id == user_id,
+                NiftyTrade.closed_at >= start,
+                NiftyTrade.closed_at < end,
+            )
+        )
+        return Decimal(str(total or 0))
+
+    def _create_month(self, db, user_id, key, now):
+        # Backfill from the immutable journal so trades closed before this
+        # table existed (or before the row was created) still count.
+        db.flush()
+        row = NiftyMonth(
+            user_id=user_id,
+            month=key,
+            realized_net=self._trade_month_sum(db, user_id, key),
+            lock_detail={},
+            milestone_report_ids=[],
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(row)
+        db.flush()
+        return row
+
+    @staticmethod
+    def _month_breaches(net, config):
+        loss = net < 0 and -net >= config.monthly_loss_limit
+        profit = (
+            config.monthly_profit_target is not None and net >= config.monthly_profit_target
+        )
+        return loss, profit
+
+    def _latch_month_locks(self, db, user_id, row, config, now):
+        net = Decimal(str(row.realized_net))
+        loss, profit = self._month_breaches(net, config)
+        detail = dict(row.lock_detail or {})
+        latched = []
+        if loss and row.loss_locked_at is None:
+            row.loss_locked_at = now
+            detail["loss"] = {
+                "realized_net": str(net),
+                "limit": str(config.monthly_loss_limit),
+                "at": now.isoformat(),
+            }
+            latched.append(("MONTHLY_LOSS_LOCKED", detail["loss"]))
+        if profit and row.profit_locked_at is None:
+            row.profit_locked_at = now
+            detail["profit"] = {
+                "realized_net": str(net),
+                "target": str(config.monthly_profit_target),
+                "at": now.isoformat(),
+            }
+            latched.append(("MONTHLY_PROFIT_LOCKED", detail["profit"]))
+        if latched:
+            row.lock_detail = detail
+            row.updated_at = now
+            for kind, payload in latched:
+                db.add(
+                    NiftyEvent(
+                        user_id=user_id,
+                        kind=kind,
+                        payload={"month": row.month, **payload},
+                        created_at=now,
+                    )
+                )
+
+    def _record_month_net(self, db, user_id, now, net, config):
+        key = _month_key(now)
+        row = db.get(NiftyMonth, (user_id, key))
+        if row is None:
+            row = self._create_month(db, user_id, key, now)  # includes this trade
+        else:
+            row.realized_net = Decimal(str(row.realized_net)) + net
+            row.updated_at = now
+        self._latch_month_locks(db, user_id, row, config, now)
+
+    def _month_lock_reasons(self, db, user_id, moment, config):
+        """Read-only: latched locks plus a live threshold check for this IST month."""
+        key = _month_key(moment)
+        row = db.get(NiftyMonth, (user_id, key))
+        net = (
+            Decimal(str(row.realized_net))
+            if row is not None
+            else self._trade_month_sum(db, user_id, key)
+        )
+        loss, profit = self._month_breaches(net, config)
+        reasons = []
+        if loss or (row is not None and row.loss_locked_at is not None):
+            reasons.append("MONTHLY_LOSS_LOCK")
+        if profit or (row is not None and row.profit_locked_at is not None):
+            reasons.append("MONTHLY_PROFIT_LOCK")
+        return reasons
+
+    @staticmethod
+    def _cooldown_reasons(db, user_id, day):
+        """Read-only: ``day`` (IST ISO date) falls inside a scheduled cooldown."""
+        from sqlalchemy import or_
+
+        rows = db.scalars(
+            select(NiftyCooldown).where(
+                NiftyCooldown.user_id == user_id,
+                NiftyCooldown.loss_session < day,
+                or_(
+                    NiftyCooldown.cooldown_session.is_(None),
+                    NiftyCooldown.cooldown_session >= day,
+                ),
+            )
+        )
+        reasons = [
+            "COOLDOWN_UNRESOLVED" if row.cooldown_session is None else "COOLDOWN_ACTIVE"
+            for row in rows
+        ]
+        return list(dict.fromkeys(reasons))
+
+    def _schedule_cooldown(self, db, user_id, position, entry, now):
+        from sqlalchemy import func
+
+        db.flush()
+        total = db.scalar(
+            select(func.sum(NiftyTrade.net)).where(
+                NiftyTrade.user_id == user_id,
+                NiftyTrade.entry_order_id == position.entry_order_id,
+            )
+        )
+        total = Decimal(str(total or 0))
+        if total >= 0:
+            return
+        opened = entry.created_at if entry is not None else position.opened_at
+        loss_session = datetime.fromisoformat(_instant(opened)).astimezone(_IST).date()
+        if db.get(NiftyCooldown, (user_id, loss_session.isoformat())) is not None:
+            return
+        event = NiftyEvent(
+            user_id=user_id,
+            kind="SESSION_LOSS_COOLDOWN",
+            payload={
+                "loss_session": loss_session.isoformat(),
+                "entry_order_id": position.entry_order_id,
+                "realized_net": str(total),
+            },
+            created_at=now,
+        )
+        db.add(event)
+        db.flush()
+        db.add(
+            NiftyCooldown(
+                user_id=user_id,
+                loss_session=loss_session.isoformat(),
+                cooldown_session=None,  # Resolved outside the lock via the calendar.
+                loss_event_id=event.id,
+                entry_order_id=position.entry_order_id,
+                realized_net=total,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+
+    def resolve_cooldowns(self, user_id, now, *, recompute=False):
+        """Assign cooldown sessions from the approved calendar.
+
+        Calendar lookups run outside the user lock. An unresolvable session
+        stays NULL, which admission treats as blocking. ``recompute`` also
+        revisits current and future sessions after a calendar revision; a
+        recomputed date never moves before today (fail closed).
+        """
+        from datetime import date
+
+        from sqlalchemy import or_
+
+        from services.nifty_algo.calendar import next_eligible_session
+
+        today = now.astimezone(_IST).date()
+        with self.sessions() as db:
+            query = select(NiftyCooldown).where(NiftyCooldown.user_id == user_id)
+            if recompute:
+                query = query.where(
+                    or_(
+                        NiftyCooldown.cooldown_session.is_(None),
+                        NiftyCooldown.cooldown_session >= today.isoformat(),
+                    )
+                )
+            else:
+                query = query.where(NiftyCooldown.cooldown_session.is_(None))
+            pending = [(row.loss_session, row.cooldown_session) for row in db.scalars(query)]
+        if not pending:
+            return []
+        resolved = {}
+        for loss_session, current in pending:
+            try:
+                value = next_eligible_session(
+                    user_id, date.fromisoformat(loss_session), store=self
+                )
+                if current is not None and value < today:
+                    value = next_eligible_session(
+                        user_id, today - timedelta(days=1), store=self
+                    )
+                resolved[loss_session] = (current, value.isoformat())
+            except ValueError:
+                resolved[loss_session] = (current, None)
+        changes = []
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            for loss_session, (current, value) in resolved.items():
+                row = db.get(NiftyCooldown, (user_id, loss_session))
+                # Skip rows changed by a concurrent writer since the lookup.
+                if row is None or row.cooldown_session != current or value == current:
+                    continue
+                row.cooldown_session = value
+                row.updated_at = now
+                change = {
+                    "loss_session": loss_session,
+                    "previous": current,
+                    "cooldown_session": value,
+                    "loss_event_id": row.loss_event_id,
+                }
+                db.add(
+                    NiftyEvent(
+                        user_id=user_id,
+                        kind="COOLDOWN_SCHEDULED" if current is None else "COOLDOWN_RECOMPUTED",
+                        payload=change,
+                        created_at=now,
+                    )
+                )
+                changes.append(change)
+        return changes
+
+    def entry_locks(self, user_id, now, config):
+        """Latch monthly locks and return cooldown/monthly entry refusals."""
+        self.ensure_user(user_id)
+        day = now.astimezone(_IST).date().isoformat()
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            key = _month_key(now)
+            row = db.get(NiftyMonth, (user_id, key)) or self._create_month(
+                db, user_id, key, now
+            )
+            self._latch_month_locks(db, user_id, row, config, now)
+            return self._cooldown_reasons(db, user_id, day) + self._month_lock_reasons(
+                db, user_id, now, config
+            )
+
+    def risk_locks(self, user_id, now=None):
+        """Read-only status of the cooldown and the current IST month."""
+        from services.nifty_algo.config import StrategyConfig
+
+        now = now or datetime.now(UTC)
+        state = self.read(user_id)
+        try:
+            config = StrategyConfig.model_validate(state["configuration"])
+        except ValueError:
+            config = StrategyConfig()
+        day = now.astimezone(_IST).date().isoformat()
+        key = _month_key(now)
+        with self.sessions() as db:
+            cooldown_reasons = self._cooldown_reasons(db, user_id, day)
+            latest = db.scalar(
+                select(NiftyCooldown)
+                .where(NiftyCooldown.user_id == user_id)
+                .order_by(NiftyCooldown.loss_session.desc())
+                .limit(1)
+            )
+            month = db.get(NiftyMonth, (user_id, key))
+            net = (
+                Decimal(str(month.realized_net))
+                if month is not None
+                else self._trade_month_sum(db, user_id, key)
+            )
+            month_reasons = self._month_lock_reasons(db, user_id, now, config)
+            return {
+                "session": day,
+                "reasons": cooldown_reasons + month_reasons,
+                "cooldown": {
+                    "active": bool(cooldown_reasons),
+                    "loss_session": latest.loss_session if latest else None,
+                    "cooldown_session": latest.cooldown_session if latest else None,
+                },
+                "month": {
+                    "month": key,
+                    "realized_net": str(net),
+                    "loss_limit": str(config.monthly_loss_limit),
+                    "profit_target": (
+                        None
+                        if config.monthly_profit_target is None
+                        else str(config.monthly_profit_target)
+                    ),
+                    "loss_locked_at": (
+                        _instant(month.loss_locked_at)
+                        if month is not None and month.loss_locked_at
+                        else None
+                    ),
+                    "profit_locked_at": (
+                        _instant(month.profit_locked_at)
+                        if month is not None and month.profit_locked_at
+                        else None
+                    ),
+                },
+            }

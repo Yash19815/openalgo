@@ -30,7 +30,7 @@ def seed_market_timing():
     market_calendar_db.clear_market_calendar_cache()
 
 
-def seed_approved_nfo_calendar(store, user_id, year):
+def seed_approved_nfo_calendar(store, user_id, year, entries=()):
     store.ensure_user(user_id)
     calendar = store.approved_calendar_version(user_id, year)
     if calendar is not None:
@@ -44,7 +44,7 @@ def seed_approved_nfo_calendar(store, user_id, year):
         source_filename="fixture.csv",
         sha256=sha256(data).hexdigest(),
         uploader=user_id,
-        entries=[],
+        entries=[dict(entry) for entry in entries],
         issues=[],
         data=data,
         extension="csv",

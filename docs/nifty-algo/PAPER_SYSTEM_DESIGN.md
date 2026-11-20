@@ -148,6 +148,24 @@ Pure functions in `protection.py`:
 - `nifty_algo_month` (IST month, realized net, loss_locked_at, profit_locked_at,
   milestone report ids). Locks latch for the month, survive restarts, mode
   changes and target edits, and reset only on a new month. Equity never resets.
+- Implementation decisions (Phase 3b):
+  - A session is final when the single primary position is fully flat. It is a
+    loss when the summed net of that entry's trades is below zero (exactly zero
+    is not a loss). The loss date is the entry's IST date.
+  - Calendar lookups run outside the user lock. A new cooldown is stored with no
+    date and resolved after the SELL fill, at admission, or at calendar approval.
+    An undated cooldown refuses entries with `COOLDOWN_UNRESOLVED`.
+  - Days between the loss session and the cooldown session are blocked as well.
+    Recompute only touches today's and future cooldowns and never moves one
+    before today.
+  - The monthly loss lock sets when realized net is negative and the loss is at
+    least `monthly_loss_limit`. A trade counts in the IST month of its exit fill;
+    a new month row is first backfilled from the trade journal.
+  - Locks only refuse new entries; they never pause the strategy or block exits.
+  - Refusal codes: `COOLDOWN_ACTIVE`, `COOLDOWN_UNRESOLVED`, `MONTHLY_LOSS_LOCK`,
+    `MONTHLY_PROFIT_LOCK`. Checks run in the runner before contract resolution,
+    in the executor before sizing, and authoritatively in `admit_order` and at
+    BUY fill under the user lock.
 
 ### Phase 4: shadow and research
 

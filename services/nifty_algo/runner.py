@@ -249,6 +249,10 @@ class NiftyRunner:
                 return decision
             if self.store.read(self.user_id)["configuration_id"] != config.version_id:
                 raise OrderRefused(["CONFIGURATION_CHANGED"])
+            # Loss cooldown and monthly locks gate entry before contract resolution.
+            locks = self.executor.entry_lock_reasons(now, config)
+            if locks:
+                raise OrderRefused(locks)
             market = self.native.get_market()
             spot = market.get("spot")
             if not spot or spot["status"] != "AVAILABLE":

@@ -232,6 +232,7 @@ def risk():
             "configuration": state["configuration"],
             "account": store().account(session["user"]),
             "account_reconciled": store().account(session["user"])["reconciled"],
+            "entry_locks": store().risk_locks(session["user"]),
             "readiness": executor.readiness(),
         }
     )
