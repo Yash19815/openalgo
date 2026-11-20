@@ -15,7 +15,8 @@ from .assessment import assess_current
 from .config import StrategyConfig
 from .contract_resolver import Resolver
 from .native_data import NativeDataAdapter
-from .paper_executor import NiftyPaperExecutor, OrderRefused
+from .paper_executor import NiftyPaperExecutor, OrderRefused, _charges
+from .protection import early_booking_exit, momentum_weakening
 
 _ATTACH_LOCKS = KeyedLocks(name="nifty-paper-attach")
 
@@ -164,10 +165,13 @@ class NiftyRunner:
             self.publish({"kind": "decision", "decision_id": decision["decision_id"]})
             # Technical invalidation uses only fresh, completed indicator states.
             invalidated = set()
+            discretionary_exits = {}
             st = decision.get("snapshot", {}).get("supertrend")
             fresh = any(c["rule"] == "R-FRESH" and c["state"] == "PASS" for c in decision["checks"])
+            snapshot = decision.get("snapshot") or {}
             for held in self.store.positions(self.user_id):
                 direction = 1 if held["instrument"]["kind"] == "CE" else -1
+                protection = held.get("protection") or {}
                 entry_context = (held.get("protection") or {}).get("signal_context") or {}
                 same_future = decision.get("analysis_token") == entry_context.get("analysis_token")
                 entry_snapshot = entry_context.get("snapshot") or {}
@@ -187,7 +191,49 @@ class NiftyRunner:
                 )
                 if fresh and ((st and same_future and st["direction"] != direction) or atr_invalid):
                     invalidated.add(held["token"])
-            self.executor.monitor_exits(now, technical_invalidations=invalidated)
+                if fresh and snapshot.get("end") and protection:
+                    previous_snapshot = protection.get("last_snapshot")
+                    if previous_snapshot:
+                        source_time = protection.get("last_source_time")
+                        last_bid = protection.get("last_bid")
+                        try:
+                            quote_age = (
+                                now - datetime.fromisoformat(source_time)
+                            ).total_seconds()
+                            if (
+                                last_bid is not None
+                                and 0 <= quote_age <= entry_config.quote_max_age
+                                and momentum_weakening(previous_snapshot, snapshot, direction)
+                            ):
+                                reason = early_booking_exit(
+                                    protection,
+                                    held["entry_price"],
+                                    last_bid,
+                                    held["instrument"]["tick_size"],
+                                    entry_config,
+                                    quantity=held["quantity"],
+                                    entry_fees=protection.get("entry_fees_remaining", "0"),
+                                    charges=_charges,
+                                    momentum_weak=True,
+                                )
+                                if reason:
+                                    discretionary_exits[held["token"]] = reason
+                        except (TypeError, ValueError):
+                            pass
+                    self.store.update_position_snapshot(
+                        self.user_id,
+                        held["token"],
+                        {
+                            key: snapshot[key]
+                            for key in ("end", "price", "macd")
+                            if key in snapshot
+                        },
+                    )
+            self.executor.monitor_exits(
+                now,
+                technical_invalidations=invalidated,
+                discretionary_exits=discretionary_exits,
+            )
             end = decision.get("snapshot", {}).get("end")
             if (
                 state["state"] != "RUNNING"

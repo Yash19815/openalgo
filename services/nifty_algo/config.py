@@ -58,6 +58,12 @@ class StrategyConfig(Model):
     profit_lock_activation_net: Decimal = Field(default=Decimal("400"), ge=0)
     profit_lock_floor_net: Decimal = Field(default=Decimal("350"), ge=0)
     early_booking_min_net: Decimal = Field(default=Decimal("300"), ge=0)
+    early_booking_retrace_fraction: Decimal = Field(
+        default=Decimal("0.30"),
+        gt=0,
+        le=1,
+        description="Testable hypothesis for discretionary profit-booking retrace.",
+    )
     monthly_loss_limit: Decimal = Field(default=Decimal("2000"), ge=0)
     monthly_profit_target: Decimal | None = Field(default=None, gt=0)
     premium_stop: Decimal = Field(default=Decimal("0.08"), gt=0, le=Decimal("0.08"))

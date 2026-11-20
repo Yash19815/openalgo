@@ -1189,6 +1189,14 @@ class NiftyStore:
                     gross = (price - position.entry_price) * quantity
                     entry = db.get(NiftyOrder, (user_id, position.entry_order_id))
                     protection_row = db.get(NiftyProtection, (user_id, order.token))
+                    protection_payload = protection_row.payload if protection_row else {}
+                    profit_floor = protection_payload.get("profit_floor_stop")
+                    floor_net = Decimal(
+                        (protection_payload.get("profit_lock_activation") or {}).get(
+                            "floor_net",
+                            config.profit_lock_floor_net,
+                        )
+                    )
                     remaining_fees = Decimal(
                         (protection_row.payload if protection_row else {}).get(
                             "entry_fees_remaining",
@@ -1214,6 +1222,30 @@ class NiftyStore:
                     net = gross - fees - entry_fees
                     account.equity += gross - fees
                     account.realized_day += net
+                    floor_gap = (
+                        protection_payload.get("profit_lock_active", False)
+                        and profit_floor is not None
+                        and observation is not None
+                        and Decimal(str(observation.get("bid", 0))) < Decimal(profit_floor)
+                        and net < floor_net
+                    )
+                    if floor_gap:
+                        db.add(
+                            NiftyEvent(
+                                user_id=user_id,
+                                kind="PROFIT_FLOOR_GAP",
+                                payload={
+                                    "token": order.token,
+                                    "order_id": order.order_id,
+                                    "floor_stop": str(profit_floor),
+                                    "expected_floor_net": str(floor_net),
+                                    "realized_net": str(net),
+                                    "realized_quantity": quantity,
+                                    "realized_price": str(price),
+                                },
+                                created_at=now,
+                            )
+                        )
                     db.add(
                         NiftyTrade(
                             user_id=user_id,
@@ -1226,7 +1258,11 @@ class NiftyStore:
                             gross=gross,
                             fees=fees + entry_fees,
                             net=net,
-                            reason=order.payload.get("exit_reason", "SIGNAL_EXIT"),
+                            reason=(
+                                "PROFIT_FLOOR_GAP"
+                                if floor_gap
+                                else order.payload.get("exit_reason", "SIGNAL_EXIT")
+                            ),
                             opened_at=position.opened_at,
                             closed_at=now,
                         )
@@ -1328,6 +1364,7 @@ class NiftyStore:
     def observe_position(self, user_id, token, quote, now, forced_reason=None):
         """Serialize monotonic protection and reject stale/reordered observations."""
         from services.nifty_algo.config import StrategyConfig
+        from services.nifty_algo.paper_executor import _charges
         from services.nifty_algo.protection import observe_bid
 
         with self.sessions.begin() as db:
@@ -1350,19 +1387,80 @@ class NiftyStore:
             )
             payload = dict(row.payload)
             if valid:
+                previous_exit_reason = payload.get("exit_reason")
+                previous_stop = Decimal(
+                    payload.get("stop_price", payload["initial_stop"])
+                )
+                quantity = min(position.quantity, self._remaining_quantity(db, user_id, position))
                 payload = observe_bid(
                     payload,
                     position.entry_price,
                     quote.bid,
                     position.instrument["tick_size"],
                     config,
+                    quantity=quantity if quantity > 0 else None,
+                    entry_fees=payload.get("entry_fees_remaining", "0"),
+                    charges=_charges,
+                    bid_size=quote.bid_size,
+                    source_time=quote.source_time,
                 )
                 payload["last_source_time"] = quote.source_time.isoformat()
+                payload["last_bid"] = str(quote.bid)
+                payload["last_bid_size"] = quote.bid_size
+                if (
+                    payload.get("stop_price") is not None
+                    and Decimal(payload["stop_price"]) < previous_stop
+                ):
+                    raise ValueError("Persisted protection stop cannot decrease")
                 position.highest = max(position.highest, Decimal(payload["highest_bid"]))
-            if forced_reason and not payload.get("exit_reason"):
+                if previous_exit_reason == "EARLY_PROFIT_BOOKING":
+                    if payload.get("exit_reason") is None:
+                        payload["exit_reason"] = previous_exit_reason
+                    elif forced_reason:
+                        payload["exit_reason"] = forced_reason
+            if forced_reason and (
+                not payload.get("exit_reason")
+                or payload.get("exit_reason") == "EARLY_PROFIT_BOOKING"
+            ):
                 payload["exit_reason"] = forced_reason
+            for event in payload.pop("new_events", []):
+                kind = event.get("kind")
+                transitioned = (
+                    kind == "PROFIT_LOCK_ACTIVATED"
+                    and not row.payload.get("profit_lock_active", False)
+                    and payload.get("profit_lock_active", False)
+                ) or (
+                    kind == "PROFIT_FLOOR_UNREPRESENTABLE"
+                    and row.payload.get("exit_reason") != "PROFIT_FLOOR_UNREPRESENTABLE"
+                    and payload.get("exit_reason") == "PROFIT_FLOOR_UNREPRESENTABLE"
+                )
+                if transitioned:
+                    event_payload = {key: value for key, value in event.items() if key != "kind"}
+                    db.add(
+                        NiftyEvent(
+                            user_id=user_id,
+                            kind=kind,
+                            payload={"token": token, **event_payload},
+                            created_at=now,
+                        )
+                    )
             row.payload = payload
             return payload
+
+    def update_position_snapshot(self, user_id, token, snapshot):
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            row = db.get(NiftyProtection, (user_id, token))
+            if row is None:
+                return False
+            previous = row.payload.get("last_snapshot") or {}
+            previous_end = previous.get("end")
+            current_end = snapshot.get("end")
+            if previous_end and current_end:
+                if datetime.fromisoformat(current_end) <= datetime.fromisoformat(previous_end):
+                    return False
+            row.payload = {**row.payload, "last_snapshot": snapshot}
+            return True
 
     def trades(self, user_id, limit=200):
         with self.sessions() as db:

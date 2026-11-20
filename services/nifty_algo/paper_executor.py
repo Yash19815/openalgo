@@ -474,7 +474,13 @@ class NiftyPaperExecutor:
             )
         return resolved
 
-    def monitor_exits(self, now=None, technical_invalidations=None, operator_close=False):
+    def monitor_exits(
+        self,
+        now=None,
+        technical_invalidations=None,
+        operator_close=False,
+        discretionary_exits=None,
+    ):
         """Protect exposure independently of entry controls. Failed exits stay latched."""
         from .assessment import _session, _window
         from .config import StrategyConfig
@@ -510,6 +516,8 @@ class NiftyPaperExecutor:
                 forced = "SESSION_EXIT"
             elif operator_close:
                 forced = "OPERATOR_CLOSE"
+            elif discretionary_exits and held["token"] in discretionary_exits:
+                forced = discretionary_exits[held["token"]]
             protection = self.store.observe_position(
                 self.user_id, held["token"], quote, now, forced
             )

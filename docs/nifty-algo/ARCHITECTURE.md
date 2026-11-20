@@ -59,3 +59,30 @@ application socket. The workspace subscribes, rejoins after reconnect and
 unsubscribes on unmount. HTTP polling remains a fallback.
 
 Input decisions remain immutable pre-admission assessments. Atomic admitted intents carry the actual risk approval and emit a durable `paper_intent_admitted` event. Recovery validates fill/quantity/cash invariants using bounded results and SQL aggregates. Journal performance aggregates all trades, while the display query remains paginated to recent records.
+
+### Protection and profit booking
+
+`services/nifty_algo/protection.py` is the NIFTY paper system's intentionally
+isolated, pure Decimal evaluator. It models the exit fill after configured
+slippage and fees, then finds the lowest tick-aligned stop whose modeled net
+meets the configured floor. Consumers supply the cost function and translate
+the returned state; database, runner and frontend code do not re-derive these
+formulas. Shared consumers remain governed by `services/risk/`, and NIFTY
+formulas must not be copied into another evaluator.
+
+The initial premium stop and target remain unchanged. A separate 1.5-point
+trailing stop follows the best observed bid and continues after profit lock
+activation. At modeled net profit of at least ₹400, the evaluator activates a
+tick-aligned floor targeting at least ₹350 net. The effective stop is the
+maximum of the initial, persisted, trailing and floor stops and cannot move
+down. If the market gaps through the floor, the paper ledger records the actual
+simulated fill and realized net, emits `PROFIT_FLOOR_GAP`, and does not label a
+below-floor trade as locked.
+
+Early booking is discretionary: it requires at least ₹300 modeled net, a
+30-percent retrace of the premium run-up, and weakening direction-adjusted
+MACD momentum and close movement on consecutive completed decision bars. It is
+disabled once the profit lock is active. Mandatory stop, target, time, session,
+technical and operator exits take precedence. Live stop modification is not
+implemented; any future live path is gated to Phase 5 and must reconcile broker
+acknowledgements before updating protection state.
