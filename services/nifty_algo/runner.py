@@ -11,6 +11,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from utils.keyed_locks import KeyedLocks
+from utils.logging import get_logger
 
 from .assessment import assess_current
 from .calendar import IST
@@ -19,8 +20,11 @@ from .contract_resolver import Resolver, moneyness
 from .native_data import NativeDataAdapter
 from .paper_executor import NiftyPaperExecutor, OrderRefused, _charges
 from .protection import early_booking_exit, momentum_weakening
+from .research import opportunity_from_decision
+from .shadow import ShadowBook
 
 _ATTACH_LOCKS = KeyedLocks(name="nifty-paper-attach")
+logger = get_logger(__name__)
 
 
 class NiftyRunner:
@@ -42,6 +46,11 @@ class NiftyRunner:
             store, user_id, market_data=self.native.market_data
         )
         self.assessment = assessment
+        self.shadow = ShadowBook(
+            store,
+            user_id,
+            quote=lambda instrument, now, config: self.executor._depth(instrument, now, config),
+        )
         self.publish = publish or (lambda data: None)
         self.owner = uuid4().hex
         self.started_at = self.clock()
@@ -94,6 +103,7 @@ class NiftyRunner:
             self.recovery_complete = True
         self.executor.monitor_exits(now)
         fills = self.executor.process(now)
+        self._shadow_upkeep(now)
         if fills:
             self.publish({"kind": "paper_fills", "count": len(fills)})
         return fills
@@ -141,6 +151,7 @@ class NiftyRunner:
         if boundary == self.last_boundary:
             return None
         self.last_boundary = boundary
+        shadow_decision = None
         try:
             decision = (
                 self.assessment(config, now)
@@ -165,6 +176,9 @@ class NiftyRunner:
             self.last_issue = None if self.ready else "; ".join(decision["reasons"])
             decision = self.store.record_decision(self.user_id, decision)
             self.publish({"kind": "decision", "decision_id": decision["decision_id"]})
+            self._research(decision, config, now)
+            # Data readiness, not primary entry refusals, qualifies a shadow entry.
+            shadow_decision = decision if self.ready else None
             # Technical invalidation uses only fresh, completed indicator states.
             invalidated = set()
             discretionary_exits = {}
@@ -253,41 +267,7 @@ class NiftyRunner:
             locks = self.executor.entry_lock_reasons(now, config)
             if locks:
                 raise OrderRefused(locks)
-            market = self.native.get_market()
-            spot = market.get("spot")
-            if not spot or spot["status"] != "AVAILABLE":
-                raise OrderRefused(["SPOT_REFERENCE_UNAVAILABLE"])
-            spot_reference = Decimal(str(spot["ltp"]))
-            instruments = self.native.instruments(now)
-            if config.pcr_expiry:
-                instruments = [
-                    i for i in instruments if i.kind == "FUT" or i.expiry == config.pcr_expiry
-                ]
-            quotes = {
-                i.token: self.executor._depth(i, now)
-                for i in instruments
-                if i.kind == decision["side"]
-            }
-            session_day = now.astimezone(IST).date()
-            option_metadata = [
-                item
-                for item in instruments
-                if item.exchange == "NFO"
-                and item.underlying == "NIFTY"
-                and item.kind == decision["side"]
-                and item.tradable
-                and item.expiry >= session_day
-                and item.master_date == session_day
-                and (not config.avoid_expiry_day or item.expiry > session_day)
-            ]
-            active_expiry = min(item.expiry for item in option_metadata)
-            atm_strike = min(
-                (item.strike for item in option_metadata if item.expiry == active_expiry),
-                key=lambda strike: (abs(strike - spot_reference), strike),
-            )
-            candidates = Resolver().candidates(
-                instruments, quotes, spot_reference, decision["side"], now, config
-            )
+            candidates, candidate_metadata = self._entry_candidates(decision, config, now)
             instrument = candidates[0]
             self.executor.admit(
                 {
@@ -298,15 +278,7 @@ class NiftyRunner:
                     "token": instrument.token,
                     "instrument": instrument,
                     "candidates": candidates,
-                    "candidate_metadata": [
-                        {
-                            "token": candidate.token,
-                            "moneyness": moneyness(candidate, spot_reference, atm_strike),
-                            "spot_reference": str(spot_reference),
-                            "atm_strike": str(atm_strike),
-                        }
-                        for candidate in candidates
-                    ],
+                    "candidate_metadata": candidate_metadata,
                     "runner_owner": self.owner,
                 },
                 now,
@@ -322,8 +294,110 @@ class NiftyRunner:
             self.last_issue = "DATA_PIPELINE_UNAVAILABLE:" + type(exc).__name__
             self.store.record_event(self.user_id, "data_blocked", {"reason": self.last_issue}, now)
         finally:
+            # Shadows follow the primary attempt, so a pending primary BUY takes precedence.
+            if shadow_decision is not None:
+                self._shadow_entry(shadow_decision, config, now)
             self._lease(self.clock() if now is None else now)
         return None
+
+    def _entry_candidates(self, decision, config, now):
+        market = self.native.get_market()
+        spot = market.get("spot")
+        if not spot or spot["status"] != "AVAILABLE":
+            raise OrderRefused(["SPOT_REFERENCE_UNAVAILABLE"])
+        spot_reference = Decimal(str(spot["ltp"]))
+        instruments = self.native.instruments(now)
+        if config.pcr_expiry:
+            instruments = [
+                i for i in instruments if i.kind == "FUT" or i.expiry == config.pcr_expiry
+            ]
+        quotes = {
+            i.token: self.executor._depth(i, now)
+            for i in instruments
+            if i.kind == decision["side"]
+        }
+        session_day = now.astimezone(IST).date()
+        option_metadata = [
+            item
+            for item in instruments
+            if item.exchange == "NFO"
+            and item.underlying == "NIFTY"
+            and item.kind == decision["side"]
+            and item.tradable
+            and item.expiry >= session_day
+            and item.master_date == session_day
+            and (not config.avoid_expiry_day or item.expiry > session_day)
+        ]
+        active_expiry = min(item.expiry for item in option_metadata)
+        atm_strike = min(
+            (item.strike for item in option_metadata if item.expiry == active_expiry),
+            key=lambda strike: (abs(strike - spot_reference), strike),
+        )
+        candidates = Resolver().candidates(
+            instruments, quotes, spot_reference, decision["side"], now, config
+        )
+        return candidates, [
+            {
+                "token": candidate.token,
+                "moneyness": moneyness(candidate, spot_reference, atm_strike),
+                "spot_reference": str(spot_reference),
+                "atm_strike": str(atm_strike),
+            }
+            for candidate in candidates
+        ]
+
+    def _research(self, decision, config, now):
+        """Research-only observation step; never admits, fills or transmits orders."""
+        try:
+            snapshot = decision.get("snapshot") or {}
+            if snapshot.get("end") and snapshot.get("price") is not None:
+                self.store.observe_opportunities(
+                    self.user_id,
+                    {
+                        "token": decision.get("analysis_token"),
+                        "price": snapshot["price"],
+                        "at": snapshot["end"],
+                    },
+                    now,
+                )
+            opportunity = opportunity_from_decision(decision, config)
+            if opportunity is not None:
+                self.store.record_opportunity(self.user_id, opportunity, now)
+        except Exception as exc:
+            logger.warning("NIFTY research observation skipped: %s", type(exc).__name__)
+
+    def _shadow_entry(self, decision, config, now):
+        """Hypothetical independent entry; failures never reach the primary path."""
+        end = (decision.get("snapshot") or {}).get("end")
+        if (
+            self.closed
+            or not decision.get("eligible")
+            or not end
+            or datetime.fromisoformat(end) <= self.started_at
+        ):
+            return None
+        try:
+            if self.shadow.entry_blocks(now, config):
+                return None
+            row, _ = self.shadow.open_independent(
+                decision,
+                now,
+                config,
+                lambda: self._entry_candidates(decision, config, now)[0],
+            )
+            return row
+        except Exception as exc:
+            logger.warning("NIFTY shadow entry skipped: %s", type(exc).__name__)
+            return None
+
+    def _shadow_upkeep(self, now):
+        """Mirror the primary, protect the shadow and stop expired research steps."""
+        try:
+            self.shadow.sync_mirrors(now)
+            self.shadow.monitor(now)
+            self.store.expire_opportunities(self.user_id, now)
+        except Exception as exc:
+            logger.warning("NIFTY shadow upkeep skipped: %s", type(exc).__name__)
 
     def _native_feed(self, config, now):
         from database.auth_db import get_api_key_for_tradingview, get_broker_name

@@ -179,6 +179,40 @@ Pure functions in `protection.py`:
   configuration id. Observation steps run inside the existing scheduler tick and
   stop at the first terminal threshold, 45 minutes, or 15:10.
 - Shadow and research code never imports or calls any order placement API.
+- Implementation decisions (Phase 4):
+  - One active shadow is enforced twice: a check under the user lock and a
+    `UNIQUE(user_id, active_slot)` constraint, where `active_slot` is 1 while
+    active and NULL once ended (portable; NULLs never collide). `shadow_key`
+    (`independent:<decision_id>` or `mirror:<entry_order_id>`) makes each
+    signal and each primary entry open at most once.
+  - Independent entries need an eligible decision on verified data, an
+    approved `TRADING` session inside its window, 09:15 to before 14:45, no
+    cooldown, no active shadow, and no primary position or pending primary BUY.
+    They are not bound to the one-per-session primary allowance. Monthly locks
+    guard primary capital only and do not block shadows.
+  - The shadow entry runs after the primary attempt in the same tick, so a
+    primary BUY admitted that tick takes precedence and is mirrored instead.
+  - Shadow sizing is `plan_entry` against the hypothetical ledger: the
+    configured `virtual_capital` plus realized net of independent shadows only.
+    The hypothetical entry fills at ask plus slippage on the observed quote.
+  - Mirror sync runs in the 1-second protection job after primary fills. A
+    preempted shadow is valued at its last observed bid with the modeled exit;
+    without one its net is NULL (`UNAVAILABLE`). The mirror copies the primary
+    entry and protection, never evaluates exits itself, and closes from the
+    primary trade journal (`PRIMARY_JOURNAL`) with `additive = 0`.
+  - Shadow exits use `observe_bid`, `modeled_exit_net` and the shared
+    `mandatory_exit_reason` (max hold, 15:10 / session-end square-off), which
+    the primary `monitor_exits` now calls too. A latched exit closes on a bid
+    that covers the quantity; after the session ends without one, the shadow
+    closes at its last observed bid (`LAST_BID`).
+  - Opportunities are recorded for eligible decisions whose candle ends before
+    `exit_by` (15:10). Steps use completed 5-minute closes of the same analysis
+    future. Terminal thresholds are one entry-candle ATR favorable or adverse
+    (adverse checked first), a documented hypothesis in `research.py`. The
+    deadline is `min(candle end + 45 minutes, 15:10)`; the protection job
+    closes overdue rows even without a new candle.
+  - Read-only API: `GET /api/nifty-algo/shadow` and
+    `GET /api/nifty-algo/research/opportunities`.
 
 ### Phase 5: trading modes and broker settings
 

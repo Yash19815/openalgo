@@ -220,6 +220,76 @@ class NiftyMonth(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False)
 
 
+class NiftyShadowPosition(Base):
+    """Hypothetical position with its own ledger; never an order or primary exposure.
+
+    ``active_slot`` is 1 while active and NULL once ended. NULLs never collide,
+    so the unique constraint admits at most one active row per user, mirrors
+    included. ``shadow_key`` makes each signal or primary entry open once.
+    """
+
+    __tablename__ = "nifty_algo_shadow_position"
+    __table_args__ = (
+        UniqueConstraint("user_id", "shadow_key"),
+        UniqueConstraint("user_id", "active_slot"),
+    )
+    id = Column(Integer, primary_key=True)
+    user_id = Column(String(255), nullable=False, index=True)
+    shadow_key = Column(String(160), nullable=False)
+    kind = Column(String(12), nullable=False)
+    status = Column(String(32), nullable=False)
+    active_slot = Column(Integer)
+    additive = Column(Integer, nullable=False)
+    decision_id = Column(String(64))
+    primary_entry_order_id = Column(String(64))
+    token = Column(String(32), nullable=False)
+    symbol = Column(String(64), nullable=False)
+    instrument = Column(JSON, nullable=False)
+    quantity = Column(Integer, nullable=False)
+    entry_price = Column(Numeric(18, 4), nullable=False)
+    entry_fees = Column(Numeric(18, 4), nullable=False)
+    protection = Column(JSON, nullable=False)
+    exit_price = Column(Numeric(18, 4))
+    exit_fees = Column(Numeric(18, 4))
+    gross = Column(Numeric(18, 4))
+    net = Column(Numeric(18, 4))
+    exit_reason = Column(String(64))
+    valuation = Column(String(20))
+    session = Column(String(10), nullable=False)
+    opened_at = Column(DateTime(timezone=True), nullable=False)
+    closed_at = Column(DateTime(timezone=True))
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class NiftyShadowEvent(Base):
+    __tablename__ = "nifty_algo_shadow_event"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(String(255), nullable=False, index=True)
+    shadow_id = Column(Integer, nullable=False)
+    kind = Column(String(40), nullable=False)
+    payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class NiftyOpportunity(Base):
+    """Research-only signal observation keyed by candle end, side and configuration."""
+
+    __tablename__ = "nifty_algo_opportunity"
+    user_id = Column(String(255), primary_key=True)
+    opportunity_id = Column(String(64), primary_key=True)
+    candle_end = Column(DateTime(timezone=True), nullable=False)
+    direction = Column(String(2), nullable=False)
+    configuration_id = Column(String(64), nullable=False)
+    decision_id = Column(String(64))
+    status = Column(String(16), nullable=False)
+    outcome = Column(String(32))
+    deadline = Column(DateTime(timezone=True), nullable=False)
+    payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+    closed_at = Column(DateTime(timezone=True))
+
+
 class StateConflict(ValueError):
     """The caller used an obsolete state revision."""
 
@@ -1676,16 +1746,7 @@ class NiftyStore:
                 return None
             config = StrategyConfig.model_validate(row.payload["configuration"])
             previous = row.payload.get("last_source_time")
-            valid = (
-                quote is not None
-                and quote.token == token
-                and quote.bid is not None
-                and quote.bid_size > 0
-                and quote.source_time <= quote.received_time <= now
-                and 0 <= (now - quote.source_time).total_seconds() <= config.quote_max_age
-                and quote.source_time >= datetime.fromisoformat(_instant(position.opened_at))
-                and (previous is None or quote.source_time > datetime.fromisoformat(previous))
-            )
+            valid = self._observable(quote, token, now, config, position.opened_at, previous)
             payload = dict(row.payload)
             if valid:
                 previous_exit_reason = payload.get("exit_reason")
@@ -1724,29 +1785,49 @@ class NiftyStore:
                 or payload.get("exit_reason") == "EARLY_PROFIT_BOOKING"
             ):
                 payload["exit_reason"] = forced_reason
-            for event in payload.pop("new_events", []):
-                kind = event.get("kind")
-                transitioned = (
-                    kind == "PROFIT_LOCK_ACTIVATED"
-                    and not row.payload.get("profit_lock_active", False)
-                    and payload.get("profit_lock_active", False)
-                ) or (
-                    kind == "PROFIT_FLOOR_UNREPRESENTABLE"
-                    and row.payload.get("exit_reason") != "PROFIT_FLOOR_UNREPRESENTABLE"
-                    and payload.get("exit_reason") == "PROFIT_FLOOR_UNREPRESENTABLE"
-                )
-                if transitioned:
-                    event_payload = {key: value for key, value in event.items() if key != "kind"}
-                    db.add(
-                        NiftyEvent(
-                            user_id=user_id,
-                            kind=kind,
-                            payload={"token": token, **event_payload},
-                            created_at=now,
-                        )
+            events = payload.pop("new_events", [])
+            for kind, event_payload in self._protection_transitions(row.payload, payload, events):
+                db.add(
+                    NiftyEvent(
+                        user_id=user_id,
+                        kind=kind,
+                        payload={"token": token, **event_payload},
+                        created_at=now,
                     )
+                )
             row.payload = payload
             return payload
+
+    @staticmethod
+    def _observable(quote, token, now, config, opened_at, previous):
+        """A fresh, ordered, executable bid observed after the position opened."""
+        return (
+            quote is not None
+            and quote.token == token
+            and quote.bid is not None
+            and quote.bid_size > 0
+            and quote.source_time <= quote.received_time <= now
+            and 0 <= (now - quote.source_time).total_seconds() <= config.quote_max_age
+            and quote.source_time >= datetime.fromisoformat(_instant(opened_at))
+            and (previous is None or quote.source_time > datetime.fromisoformat(previous))
+        )
+
+    @staticmethod
+    def _protection_transitions(before, after, events):
+        """Protection events persisted once, on the observation that changes state."""
+        for event in events:
+            kind = event.get("kind")
+            transitioned = (
+                kind == "PROFIT_LOCK_ACTIVATED"
+                and not before.get("profit_lock_active", False)
+                and after.get("profit_lock_active", False)
+            ) or (
+                kind == "PROFIT_FLOOR_UNREPRESENTABLE"
+                and before.get("exit_reason") != "PROFIT_FLOOR_UNREPRESENTABLE"
+                and after.get("exit_reason") == "PROFIT_FLOOR_UNREPRESENTABLE"
+            )
+            if transitioned:
+                yield kind, {key: value for key, value in event.items() if key != "kind"}
 
     def update_position_snapshot(self, user_id, token, snapshot):
         with self.sessions.begin() as db:
@@ -2142,3 +2223,566 @@ class NiftyStore:
                     ),
                 },
             }
+
+    def cooldown_reasons(self, user_id, now):
+        """Read-only cooldown refusals for ``now``'s IST session."""
+        with self.sessions() as db:
+            return self._cooldown_reasons(db, user_id, now.astimezone(_IST).date().isoformat())
+
+    # Hypothetical shadow positions ---------------------------------------
+    #
+    # Shadows keep their own ledger in nifty_algo_shadow_position. They read
+    # primary exposure and cooldowns but never write the primary account,
+    # order, position, trade, month or cooldown tables.
+
+    @staticmethod
+    def _shadow_dict(row):
+        if row is None:
+            return None
+
+        def amount(value):
+            return None if value is None else str(value)
+
+        return {
+            "id": row.id,
+            "shadow_key": row.shadow_key,
+            "kind": row.kind,
+            "status": row.status,
+            "active": row.active_slot is not None,
+            "additive": bool(row.additive),
+            "decision_id": row.decision_id,
+            "primary_entry_order_id": row.primary_entry_order_id,
+            "token": row.token,
+            "symbol": row.symbol,
+            "instrument": row.instrument,
+            "quantity": row.quantity,
+            "entry_price": str(row.entry_price),
+            "entry_fees": str(row.entry_fees),
+            "protection": row.protection,
+            "exit_price": amount(row.exit_price),
+            "exit_fees": amount(row.exit_fees),
+            "gross": amount(row.gross),
+            "net": amount(row.net),
+            "exit_reason": row.exit_reason,
+            "valuation": row.valuation,
+            "session": row.session,
+            "opened_at": _instant(row.opened_at),
+            "closed_at": None if row.closed_at is None else _instant(row.closed_at),
+            "updated_at": _instant(row.updated_at),
+        }
+
+    @staticmethod
+    def _active_shadow(db, user_id):
+        return db.scalar(
+            select(NiftyShadowPosition).where(
+                NiftyShadowPosition.user_id == user_id,
+                NiftyShadowPosition.active_slot == 1,
+            )
+        )
+
+    @staticmethod
+    def _shadow_event(db, user_id, shadow_id, kind, payload, now):
+        db.add(
+            NiftyShadowEvent(
+                user_id=user_id, shadow_id=shadow_id, kind=kind, payload=payload, created_at=now
+            )
+        )
+
+    def _shadow_by_key(self, user_id, key):
+        with self.sessions() as db:
+            return self._shadow_dict(
+                db.scalar(
+                    select(NiftyShadowPosition).where(
+                        NiftyShadowPosition.user_id == user_id,
+                        NiftyShadowPosition.shadow_key == key,
+                    )
+                )
+            )
+
+    def active_shadow(self, user_id):
+        with self.sessions() as db:
+            return self._shadow_dict(self._active_shadow(db, user_id))
+
+    def open_shadow(self, user_id, shadow, config):
+        """Open one independent hypothetical position under the user lock.
+
+        Returns ``(row, reasons)``. A repeated signal returns its original row.
+        """
+        now = shadow["opened_at"]
+        local = now.astimezone(_IST)
+        key = "independent:" + shadow["decision_id"]
+        try:
+            with self.sessions.begin() as db:
+                self._lock(db, user_id)
+                existing = db.scalar(
+                    select(NiftyShadowPosition).where(
+                        NiftyShadowPosition.user_id == user_id,
+                        NiftyShadowPosition.shadow_key == key,
+                    )
+                )
+                if existing is not None:
+                    return self._shadow_dict(existing), []
+                reasons = []
+                if self._active_shadow(db, user_id) is not None:
+                    reasons.append("SHADOW_ACTIVE")
+                if db.scalar(
+                    select(NiftyPosition.token).where(NiftyPosition.user_id == user_id).limit(1)
+                ) is not None:
+                    reasons.append("PRIMARY_ACTIVE")
+                if db.scalar(
+                    select(NiftyOrder.order_id)
+                    .where(
+                        NiftyOrder.user_id == user_id,
+                        NiftyOrder.side == "BUY",
+                        NiftyOrder.status == "PENDING",
+                    )
+                    .limit(1)
+                ) is not None:
+                    reasons.append("PRIMARY_PENDING")
+                if not (
+                    config.shadow_entry_after
+                    <= local.time().replace(tzinfo=None)
+                    < config.entry_before
+                ):
+                    reasons.append("SHADOW_ENTRY_WINDOW")
+                reasons.extend(self._cooldown_reasons(db, user_id, local.date().isoformat()))
+                if reasons:
+                    return None, reasons
+                row = NiftyShadowPosition(
+                    user_id=user_id,
+                    shadow_key=key,
+                    kind="INDEPENDENT",
+                    status="ACTIVE",
+                    active_slot=1,
+                    additive=1,
+                    decision_id=shadow["decision_id"],
+                    token=shadow["token"],
+                    symbol=shadow["symbol"],
+                    instrument=shadow["instrument"],
+                    quantity=shadow["quantity"],
+                    entry_price=Decimal(str(shadow["entry_price"])),
+                    entry_fees=Decimal(str(shadow["entry_fees"])),
+                    protection=shadow["protection"],
+                    session=local.date().isoformat(),
+                    opened_at=now,
+                    updated_at=now,
+                )
+                db.add(row)
+                db.flush()
+                self._shadow_event(
+                    db,
+                    user_id,
+                    row.id,
+                    "SHADOW_OPENED",
+                    {
+                        "decision_id": row.decision_id,
+                        "token": row.token,
+                        "quantity": row.quantity,
+                        "entry_price": str(row.entry_price),
+                    },
+                    now,
+                )
+                result = self._shadow_dict(row)
+        except IntegrityError:
+            existing = self._shadow_by_key(user_id, key)
+            if existing is not None:
+                return existing, []
+            return None, ["SHADOW_ACTIVE"]
+        return result, []
+
+    def _close_shadow(self, db, row, bid, now, reason, valuation, config, status="CLOSED"):
+        """End a hypothetical position at the modeled exit of ``bid``."""
+        from services.nifty_algo.paper_executor import _charges
+        from services.nifty_algo.protection import modeled_exit_net
+
+        tick = Decimal(str(row.instrument["tick_size"]))
+        entry_fees = Decimal(str(row.protection.get("entry_fees_remaining", row.entry_fees)))
+        exit_fill = None if bid is None else Decimal(str(bid)) - tick * config.slippage_ticks
+        if exit_fill is not None and exit_fill > 0:
+            row.exit_price = exit_fill
+            row.exit_fees = _charges("SELL", exit_fill, row.quantity, config)
+            row.gross = (exit_fill - row.entry_price) * row.quantity
+            row.net = modeled_exit_net(
+                row.entry_price, row.quantity, bid, entry_fees, tick, config, _charges
+            )
+            row.valuation = valuation
+        else:
+            row.valuation = "UNAVAILABLE"
+        row.status, row.active_slot, row.exit_reason = status, None, reason
+        row.closed_at = row.updated_at = now
+        self._shadow_event(
+            db,
+            row.user_id,
+            row.id,
+            "SHADOW_PREEMPTED" if status == "PREEMPTED_BY_ACTUAL_MIRROR" else "SHADOW_CLOSED",
+            {
+                "reason": reason,
+                "valuation": row.valuation,
+                "net": None if row.net is None else str(row.net),
+                "primary_entry_order_id": row.primary_entry_order_id,
+            },
+            now,
+        )
+
+    def observe_shadow(
+        self, user_id, shadow_id, quote, now, forced_reason=None, *, market_closed=False
+    ):
+        """Hypothetical exits through the primary protection evaluator.
+
+        A latched exit closes on a fillable bid. After the session closes
+        without one, the shadow ends at its last observed bid.
+        """
+        from services.nifty_algo.config import StrategyConfig
+        from services.nifty_algo.paper_executor import _charges
+        from services.nifty_algo.protection import observe_bid
+
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            row = db.get(NiftyShadowPosition, shadow_id)
+            if row is None or row.user_id != user_id:
+                return None
+            if row.active_slot is None or row.kind != "INDEPENDENT":
+                return self._shadow_dict(row)
+            config = StrategyConfig.model_validate(row.protection["configuration"])
+            tick = Decimal(str(row.instrument["tick_size"]))
+            previous = row.protection.get("last_source_time")
+            valid = self._observable(quote, row.token, now, config, row.opened_at, previous)
+            payload = dict(row.protection)
+            if valid:
+                previous_stop = Decimal(payload.get("stop_price", payload["initial_stop"]))
+                payload = observe_bid(
+                    payload,
+                    row.entry_price,
+                    quote.bid,
+                    tick,
+                    config,
+                    quantity=row.quantity,
+                    entry_fees=payload.get("entry_fees_remaining", "0"),
+                    charges=_charges,
+                    bid_size=quote.bid_size,
+                    source_time=quote.source_time,
+                )
+                payload["last_source_time"] = quote.source_time.isoformat()
+                payload["last_bid"] = str(quote.bid)
+                payload["last_bid_size"] = quote.bid_size
+                if Decimal(payload["stop_price"]) < previous_stop:
+                    raise ValueError("Shadow protection stop cannot decrease")
+            if forced_reason and not payload.get("exit_reason"):
+                payload["exit_reason"] = forced_reason
+            events = payload.pop("new_events", [])
+            for kind, event_payload in self._protection_transitions(row.protection, payload, events):
+                self._shadow_event(
+                    db, user_id, row.id, kind, {"token": row.token, **event_payload}, now
+                )
+            row.protection = payload
+            row.updated_at = now
+            reason = payload.get("exit_reason")
+            if reason:
+                if (
+                    valid
+                    and quote.bid_size >= row.quantity
+                    and quote.bid - tick * config.slippage_ticks > 0
+                ):
+                    self._close_shadow(db, row, quote.bid, now, reason, "DEPTH_MODEL", config)
+                elif market_closed:
+                    self._close_shadow(
+                        db, row, payload.get("last_bid"), now, reason, "LAST_BID", config
+                    )
+            return self._shadow_dict(row)
+
+    def sync_shadow_mirrors(self, user_id, now):
+        """Follow the authoritative primary position.
+
+        A primary fill ends an active independent shadow as
+        ``PREEMPTED_BY_ACTUAL_MIRROR`` and opens a non-additive mirror linked
+        by the primary entry order id. The mirror closes from the primary
+        trade journal once the primary is flat.
+        """
+        from services.nifty_algo.config import StrategyConfig
+
+        with self.sessions() as db:
+            held = db.scalar(
+                select(NiftyPosition.entry_order_id)
+                .where(NiftyPosition.user_id == user_id)
+                .limit(1)
+            )
+            active = self._active_shadow(db, user_id)
+            wanted = None if held is None else "mirror:" + held
+            if wanted is None and (active is None or active.kind != "MIRROR"):
+                return None
+            if active is not None and active.shadow_key == wanted:
+                return None
+            if active is None and db.scalar(
+                select(NiftyShadowPosition.id).where(
+                    NiftyShadowPosition.user_id == user_id,
+                    NiftyShadowPosition.shadow_key == wanted,
+                )
+            ) is not None:
+                return None
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            position = db.scalar(
+                select(NiftyPosition).where(NiftyPosition.user_id == user_id).limit(1)
+            )
+            active = self._active_shadow(db, user_id)
+            if active is not None and active.kind == "MIRROR" and (
+                position is None or active.primary_entry_order_id != position.entry_order_id
+            ):
+                self._close_mirror(db, active, now)
+                active = None
+            if position is None:
+                return None
+            key = "mirror:" + position.entry_order_id
+            if active is not None and active.shadow_key == key:
+                return self._shadow_dict(active)
+            if db.scalar(
+                select(NiftyShadowPosition.id).where(
+                    NiftyShadowPosition.user_id == user_id,
+                    NiftyShadowPosition.shadow_key == key,
+                )
+            ) is not None:
+                return None
+            if active is not None:
+                active.primary_entry_order_id = position.entry_order_id
+                self._close_shadow(
+                    db,
+                    active,
+                    active.protection.get("last_bid"),
+                    now,
+                    "PREEMPTED_BY_ACTUAL_MIRROR",
+                    "LAST_BID",
+                    StrategyConfig.model_validate(active.protection["configuration"]),
+                    status="PREEMPTED_BY_ACTUAL_MIRROR",
+                )
+                db.flush()  # Release the active slot before the mirror claims it.
+            entry = db.get(NiftyOrder, (user_id, position.entry_order_id))
+            protection = db.get(NiftyProtection, (user_id, position.token))
+            opened = datetime.fromisoformat(_instant(position.opened_at))
+            mirror = NiftyShadowPosition(
+                user_id=user_id,
+                shadow_key=key,
+                kind="MIRROR",
+                status="ACTIVE",
+                active_slot=1,
+                additive=0,
+                decision_id=(entry.payload.get("decision_id") if entry is not None else None),
+                primary_entry_order_id=position.entry_order_id,
+                token=position.token,
+                symbol=position.symbol,
+                instrument=position.instrument,
+                quantity=entry.quantity if entry is not None else position.quantity,
+                entry_price=position.entry_price,
+                entry_fees=(
+                    Decimal(str(entry.fees))
+                    if entry is not None and entry.fees is not None
+                    else Decimal("0")
+                ),
+                protection=dict(protection.payload) if protection is not None else {},
+                session=opened.astimezone(_IST).date().isoformat(),
+                opened_at=opened,
+                updated_at=now,
+            )
+            db.add(mirror)
+            db.flush()
+            self._shadow_event(
+                db,
+                user_id,
+                mirror.id,
+                "SHADOW_MIRROR_OPENED",
+                {
+                    "primary_entry_order_id": position.entry_order_id,
+                    "preempted_shadow_id": None if active is None else active.id,
+                    "additive": False,
+                },
+                now,
+            )
+            return self._shadow_dict(mirror)
+
+    def _close_mirror(self, db, mirror, now):
+        trades = list(
+            db.scalars(
+                select(NiftyTrade)
+                .where(
+                    NiftyTrade.user_id == mirror.user_id,
+                    NiftyTrade.entry_order_id == mirror.primary_entry_order_id,
+                )
+                .order_by(NiftyTrade.closed_at, NiftyTrade.id)
+            )
+        )
+        if trades:
+            last = trades[-1]
+            fees = sum((Decimal(str(trade.fees)) for trade in trades), Decimal("0"))
+            mirror.gross = sum((Decimal(str(trade.gross)) for trade in trades), Decimal("0"))
+            mirror.net = sum((Decimal(str(trade.net)) for trade in trades), Decimal("0"))
+            mirror.exit_fees = fees - Decimal(str(mirror.entry_fees))
+            mirror.exit_price = last.exit_price
+            mirror.exit_reason = last.reason
+            mirror.valuation = "PRIMARY_JOURNAL"
+            mirror.closed_at = last.closed_at
+            exit_order = db.get(NiftyOrder, (mirror.user_id, last.exit_order_id))
+            if exit_order is not None and exit_order.payload.get("protection"):
+                mirror.protection = exit_order.payload["protection"]
+        else:
+            mirror.exit_reason = "PRIMARY_CLOSED"
+            mirror.valuation = "UNAVAILABLE"
+            mirror.closed_at = now
+        mirror.status, mirror.active_slot, mirror.updated_at = "CLOSED", None, now
+        self._shadow_event(
+            db,
+            mirror.user_id,
+            mirror.id,
+            "SHADOW_MIRROR_CLOSED",
+            {
+                "primary_entry_order_id": mirror.primary_entry_order_id,
+                "net": None if mirror.net is None else str(mirror.net),
+                "additive": False,
+            },
+            now,
+        )
+
+    def shadow_ledger(self, user_id):
+        """Hypothetical ledger: only independent (additive) shadow P&L compounds."""
+        from sqlalchemy import func
+
+        state = self.read(user_id)
+        capital = Decimal(str(state["configuration"].get("virtual_capital", "20000")))
+        with self.sessions() as db:
+            totals = dict(
+                db.execute(
+                    select(NiftyShadowPosition.additive, func.sum(NiftyShadowPosition.net))
+                    .where(
+                        NiftyShadowPosition.user_id == user_id,
+                        NiftyShadowPosition.net.is_not(None),
+                    )
+                    .group_by(NiftyShadowPosition.additive)
+                ).all()
+            )
+        realized = Decimal(str(totals.get(1) or 0))
+        return {
+            "capital": str(capital),
+            "realized_net": str(realized),
+            "equity": str(capital + realized),
+            "mirror_realized_net": str(Decimal(str(totals.get(0) or 0))),
+            "mirror_additive": False,
+            "basis": "HYPOTHETICAL_INDEPENDENT_SHADOWS_ONLY",
+        }
+
+    def shadow_status(self, user_id, limit=50):
+        with self.sessions() as db:
+            rows = db.scalars(
+                select(NiftyShadowPosition)
+                .where(NiftyShadowPosition.user_id == user_id)
+                .order_by(NiftyShadowPosition.id.desc())
+                .limit(limit)
+            )
+            positions = [self._shadow_dict(row) for row in rows]
+            events = [
+                {
+                    "id": row.id,
+                    "shadow_id": row.shadow_id,
+                    "kind": row.kind,
+                    "payload": row.payload,
+                    "created_at": _instant(row.created_at),
+                }
+                for row in db.scalars(
+                    select(NiftyShadowEvent)
+                    .where(NiftyShadowEvent.user_id == user_id)
+                    .order_by(NiftyShadowEvent.id.desc())
+                    .limit(limit)
+                )
+            ]
+        return {
+            "mode": "HYPOTHETICAL",
+            "active": next((row for row in positions if row["active"]), None),
+            "positions": positions,
+            "events": events,
+            "ledger": self.shadow_ledger(user_id),
+        }
+
+    # Research observations -------------------------------------------------
+
+    @staticmethod
+    def _opportunity_columns(row, payload, now):
+        row.payload = payload
+        row.status = payload["status"]
+        row.outcome = payload.get("outcome")
+        row.updated_at = now
+        row.closed_at = (
+            datetime.fromisoformat(payload["closed_at"]) if payload.get("closed_at") else None
+        )
+
+    def record_opportunity(self, user_id, opportunity, now):
+        """Idempotent: a repeated candle, side and configuration keeps the first row."""
+        key = (user_id, opportunity["opportunity_id"])
+        try:
+            with self.sessions.begin() as db:
+                existing = db.get(NiftyOpportunity, key)
+                if existing is not None:
+                    return dict(existing.payload), False
+                row = NiftyOpportunity(
+                    user_id=user_id,
+                    opportunity_id=opportunity["opportunity_id"],
+                    candle_end=datetime.fromisoformat(opportunity["candle_end"]),
+                    direction=opportunity["direction"],
+                    configuration_id=opportunity["configuration_id"],
+                    decision_id=opportunity.get("decision_id"),
+                    deadline=datetime.fromisoformat(opportunity["deadline"]),
+                    created_at=now,
+                )
+                self._opportunity_columns(row, opportunity, now)
+                db.add(row)
+        except IntegrityError:
+            with self.sessions() as db:
+                existing = db.get(NiftyOpportunity, key)
+                if existing is None:
+                    raise
+                return dict(existing.payload), False
+        return opportunity, True
+
+    def observe_opportunities(self, user_id, observation, now):
+        """Apply one completed-candle observation, then stop rows past deadline."""
+        from services.nifty_algo.research import expire_opportunity, observe_opportunity
+
+        changed = []
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            rows = db.scalars(
+                select(NiftyOpportunity).where(
+                    NiftyOpportunity.user_id == user_id,
+                    NiftyOpportunity.status == "OBSERVING",
+                )
+            ).all()
+            for row in rows:
+                payload = dict(row.payload)
+                if observation is not None:
+                    payload = observe_opportunity(payload, observation)
+                payload = expire_opportunity(payload, now)
+                if payload != row.payload:
+                    self._opportunity_columns(row, payload, now)
+                    changed.append(payload)
+        return changed
+
+    def expire_opportunities(self, user_id, now):
+        from sqlalchemy import func
+
+        with self.sessions() as db:
+            due = db.scalar(
+                select(func.count())
+                .select_from(NiftyOpportunity)
+                .where(
+                    NiftyOpportunity.user_id == user_id,
+                    NiftyOpportunity.status == "OBSERVING",
+                    NiftyOpportunity.deadline <= now,
+                )
+            )
+        return self.observe_opportunities(user_id, None, now) if due else []
+
+    def opportunities(self, user_id, limit=100):
+        with self.sessions() as db:
+            rows = db.scalars(
+                select(NiftyOpportunity)
+                .where(NiftyOpportunity.user_id == user_id)
+                .order_by(NiftyOpportunity.candle_end.desc())
+                .limit(limit)
+            )
+            return [dict(row.payload) for row in rows]

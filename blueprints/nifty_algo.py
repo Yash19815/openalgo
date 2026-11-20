@@ -238,6 +238,20 @@ def risk():
     )
 
 
+@nifty_algo_bp.route("/shadow")
+@check_session_validity
+def shadow():
+    """Hypothetical shadow state. Read-only; mirror P&L is never additive."""
+    return success(store().shadow_status(session["user"]))
+
+
+@nifty_algo_bp.route("/research/opportunities")
+@check_session_validity
+def opportunities():
+    """Research-only signal observations; never order authority."""
+    return success(store().opportunities(session["user"]))
+
+
 @nifty_algo_bp.route("/activity")
 @check_session_validity
 def activity():

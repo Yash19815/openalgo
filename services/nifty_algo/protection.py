@@ -1,10 +1,13 @@
 """Decimal option-premium protection. A trigger is not a guaranteed fill."""
 
+from datetime import timedelta
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
+from zoneinfo import ZoneInfo
 
 from .confidence import target_fraction
 
 D = Decimal
+IST = ZoneInfo("Asia/Kolkata")
 
 
 def ceiling_tick(price, tick):
@@ -237,6 +240,26 @@ def observe_bid(
         reason = "TARGET"
     result["exit_reason"] = result.get("exit_reason") or protection.get("exit_reason") or reason
     return result
+
+
+def mandatory_exit_reason(
+    opened_at, now, config, window, *, technical=False, operator=False, discretionary=None
+):
+    """Forced-exit precedence shared by primary and hypothetical shadow monitoring."""
+    local = now.astimezone(IST)
+    if (now - opened_at).total_seconds() >= config.max_hold_minutes * 60:
+        return "MAX_HOLD"
+    if config.technical_exit and technical:
+        return "TECHNICAL_INVALIDATION"
+    if (
+        local.time().replace(tzinfo=None) >= config.exit_by
+        or (window and now >= window[1] - timedelta(minutes=5))
+        or not window
+    ):
+        return "SESSION_EXIT"
+    if operator:
+        return "OPERATOR_CLOSE"
+    return discretionary
 
 
 def momentum_weakening(previous_snapshot, snapshot, direction):

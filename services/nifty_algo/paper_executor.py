@@ -553,6 +553,7 @@ class NiftyPaperExecutor:
         """Protect exposure independently of entry controls. Failed exits stay latched."""
         from .assessment import _session, _window
         from .config import StrategyConfig
+        from .protection import mandatory_exit_reason
 
         now = now or self.clock()
         intents = []
@@ -563,30 +564,22 @@ class NiftyPaperExecutor:
                 continue  # Reconciliation reports legacy exposure as blocked.
             config = StrategyConfig.model_validate(protection["configuration"])
             quote = self._depth(held["instrument"], now, config)
-            forced = None
             local = now.astimezone(IST)
             try:
                 window = _window(local.date(), self.session_reader or _session)
             except Exception:
                 window = None
-            if (now - _epoch(held["opened_at"])).total_seconds() >= config.max_hold_minutes * 60:
-                forced = "MAX_HOLD"
-            elif (
-                config.technical_exit
-                and technical_invalidations
-                and held["token"] in technical_invalidations
-            ):
-                forced = "TECHNICAL_INVALIDATION"
-            elif (
-                local.time().replace(tzinfo=None) >= config.exit_by
-                or (window and now >= window[1] - timedelta(minutes=5))
-                or not window
-            ):
-                forced = "SESSION_EXIT"
-            elif operator_close:
-                forced = "OPERATOR_CLOSE"
-            elif discretionary_exits and held["token"] in discretionary_exits:
-                forced = discretionary_exits[held["token"]]
+            forced = mandatory_exit_reason(
+                _epoch(held["opened_at"]),
+                now,
+                config,
+                window,
+                technical=bool(
+                    technical_invalidations and held["token"] in technical_invalidations
+                ),
+                operator=operator_close,
+                discretionary=(discretionary_exits or {}).get(held["token"]),
+            )
             protection = self.store.observe_position(
                 self.user_id, held["token"], quote, now, forced
             )
