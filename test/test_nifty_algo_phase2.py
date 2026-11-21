@@ -341,12 +341,12 @@ def test_restarted_store_recovers_lock_emits_once_and_reports_realized_gap(store
         )
 
     activated = store.observe_position(
-        USER, "token-ce", quote(first_time, D("105")), first_time
+        USER, "token-ce", quote(first_time, D("185")), first_time
     )
     assert activated["profit_lock_active"] is True
     floor = D(activated["profit_floor_stop"])
     repeated_time = first_time + timedelta(seconds=1)
-    store.observe_position(USER, "token-ce", quote(repeated_time, D("105")), repeated_time)
+    store.observe_position(USER, "token-ce", quote(repeated_time, D("185")), repeated_time)
     with store.sessions() as db:
         events = db.scalars(
             select(NiftyEvent).where(
@@ -359,7 +359,7 @@ def test_restarted_store_recovers_lock_emits_once_and_reports_realized_gap(store
     ignored = store.observe_position(
         USER,
         "token-ce",
-        quote(repeated_time, D("119")),
+        quote(repeated_time, D("190")),
         stale_time + timedelta(seconds=10),
     )
     assert ignored["last_source_time"] == repeated_time.isoformat()

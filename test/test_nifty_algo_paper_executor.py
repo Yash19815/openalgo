@@ -24,20 +24,10 @@ IST = ZoneInfo("Asia/Kolkata")
 
 
 def _paper_test_config(config=None):
-    config = config or StrategyConfig()
-    if (
-        config.max_planned_loss == Decimal("400")
-        and config.min_projected_net_reward == Decimal("350")
-        and config.planned_loss_buffer == Decimal("10")
-    ):
-        config = config.model_copy(
-            update={
-                "max_planned_loss": Decimal("10000"),
-                "min_projected_net_reward": Decimal("0"),
-                "planned_loss_buffer": Decimal("0"),
-            }
-        )
-    return config
+    # Persisted and payload-embedded configurations are revalidated at every
+    # boundary (ensure_user, admit_order, fill), so fixtures must stay inside
+    # the production bounds; the ~165 premium satisfies the real risk envelope.
+    return config or StrategyConfig()
 
 
 @pytest.fixture
@@ -57,15 +47,35 @@ def market_calendar():
 class FakeMarket:
     """Minimal stand-in for the cached market-data service."""
 
-    def __init__(self, bid="99", ask="100", ltp="99.5", volume=5000, size=100, stamp=None):
+    def __init__(
+        self,
+        bid="164",
+        ask="165",
+        ltp="164.5",
+        index_ltp="22000",
+        volume=5000,
+        size=100,
+        stamp=None,
+    ):
         self.bid = bid
         self.ask = ask
         self.ltp = ltp
+        self.index_ltp = index_ltp
         self.volume = volume
         self.size = size
         self.stamp = stamp if stamp is not None else NOW
 
     def get_all_data(self, symbol, exchange):
+        if symbol == "NIFTY" or exchange == "NSE_INDEX":
+            return {
+                "source_observations": {
+                    "2": {
+                        "ltp": float(self.index_ltp),
+                        "ltt": self.stamp,
+                        "received_time": self.stamp,
+                    }
+                }
+            }
         depth = {}
         if self.bid is not None:
             depth["buy"] = [{"price": float(self.bid), "quantity": self.size}]
@@ -208,7 +218,7 @@ def test_buy_fills_at_ask_plus_slippage(store):
     assert len(fills) == 1
     fill = fills[0]
     assert fill["status"] == "FILLED"
-    expected = Decimal("100") + exe._slippage(instrument())
+    expected = Decimal("165") + exe._slippage(instrument())
     assert Decimal(fill["price"]) == expected
 
     positions = store.positions(USER)
@@ -227,7 +237,7 @@ def test_fill_is_idempotent(store):
     exe.process(now=NOW + timedelta(seconds=1))
     available_after = Decimal(store.account(USER)["available"])
 
-    store.fill(USER, order["order_id"], Decimal("100"), Decimal("10"), NOW)
+    store.fill(USER, order["order_id"], Decimal("165"), Decimal("10"), NOW)
     assert Decimal(store.account(USER)["available"]) == available_after
     assert len(store.positions(USER)) == 1
 
@@ -242,7 +252,7 @@ def test_sell_fills_at_bid_and_journals_trade(store):
     fills = exe.process(now=NOW + timedelta(seconds=2))
     fill = fills[0]
     assert fill["status"] == "FILLED"
-    expected = Decimal("99") - exe._slippage(instrument())
+    expected = Decimal("164") - exe._slippage(instrument())
     assert Decimal(fill["price"]) == expected
 
     assert store.positions(USER) == []

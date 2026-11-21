@@ -339,8 +339,13 @@ fd-audit procedure, and documentation of the remaining external dependencies.
 
 ## 5. Implementation status (Phase 7 verification)
 
-Verified on this branch 21 November 2026. Commands, counts and platform notes
-are recorded in `TESTING.md`; this table is the authoritative phase ledger.
+The table records the earlier Phase 7 verification on 21 November 2026.
+The subsequent uncommitted gap remediation passes 317 Windows NIFTY tests,
+plus an 88-test focused/neighboring run after a test-only addition. Current
+commands and limits are in [TESTING.md](TESTING.md); findings are in
+[the gap audit](PHASES_1_TO_7_GAP_AUDIT.md). Mandatory Linux verification of
+this newer diff is blocked by the unavailable Docker Linux engine: **do not
+commit or push yet**. Earlier Linux evidence does not validate the newer diff.
 
 | Phase | Scope | Commit | Tests |
 | --- | --- | --- | --- |
@@ -360,7 +365,7 @@ Pre-existing coverage carried forward: `test_nifty_algo_v2.py` 47,
 `test_nifty_algo_pipeline.py` 15 (order-service canaries under every Analyzer
 state), `test_nifty_algo_paper_executor.py` 15, `test_nifty_algo_assessment.py`
 12, `test_nifty_algo_foundation.py` 11, `test_nifty_algo_research.py` 7.
-Final totals: **283 NIFTY backend tests, 26 workspace vitest tests** (7
+Earlier Phase 7 totals: **283 NIFTY backend tests, 26 workspace vitest tests** (7
 `Workspace` + 19 `Panels`), Ruff clean, TypeScript and production Vite build
 passed. Full commands, Windows failures and runtime limits are in `TESTING.md`.
 
@@ -412,7 +417,8 @@ number now governs.
   check replaces `LiveAdapterStub` — a code change, not a configuration flag.
 - The 8% premium stop plus ₹400 planned-loss cap admit only cheap premiums;
   deep ITM or high-IV contracts refuse `PLANNED_LOSS_EXCEEDS_400` by design.
-- The full Linux runtime gate passed (1,456 tests, three documentation skips).
+- The earlier Phase 7 Linux runtime gate passed (1,456 tests, three documentation skips).
+  The newer remediation has Windows evidence only; its Linux gate remains blocked.
   A full application rehearsal with genuine broker/feed startup remains
   acceptance work; the broader frontend suite also needs verification on a
   supported Node version (see `TESTING.md`).

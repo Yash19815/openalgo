@@ -467,6 +467,40 @@ class NiftyPaperExecutor:
         except (ValueError, TypeError, ArithmeticError):
             return None
 
+    def _spot(self, now, config=None):
+        """Current NIFTY index LTP for fill-time moneyness revalidation."""
+        if self.market_data is None:
+            from services.market_data_service import get_market_data_service
+
+            self.market_data = get_market_data_service()
+        try:
+            cached = self.market_data.get_all_data("NIFTY", "NSE_INDEX")
+        except Exception:
+            return None
+        if not isinstance(cached, dict):
+            return None
+        sources = cached.get("source_observations")
+        if not isinstance(sources, dict):
+            return None
+        raw = sources.get("3") or sources.get("2") or sources.get("1")
+        if not isinstance(raw, dict):
+            return None
+        source, received = _epoch(raw.get("ltt")), _epoch(raw.get("received_time"))
+        config = config or self.config
+        max_age = getattr(config, "quote_max_age", 5)
+        if (
+            source is None
+            or received is None
+            or not source <= received <= now
+            or not 0 <= (now - source).total_seconds() <= max_age
+        ):
+            return None
+        try:
+            spot = Decimal(str(raw.get("ltp")))
+        except (TypeError, ValueError, ArithmeticError):
+            return None
+        return spot if spot.is_finite() and spot > 0 else None
+
     def process(self, now=None):
         """Expire stale intents, then fill eligible pending orders on depth."""
         now = now or self.clock()
@@ -498,6 +532,7 @@ class NiftyPaperExecutor:
             elif not self._session_open(now):
                 continue
             tick = Decimal(str(order["payload"]["instrument"]["tick_size"]))
+            spot = None
             if order["side"] == "BUY":
                 instrument = Instrument.model_validate(order["payload"]["instrument"])
                 if (
@@ -506,6 +541,9 @@ class NiftyPaperExecutor:
                     or instrument.master_date != now.astimezone(IST).date()
                     or instrument.expiry < now.astimezone(IST).date()
                 ):
+                    continue
+                spot = self._spot(now, config)
+                if spot is None:
                     continue
                 price = quote.ask + tick * config.slippage_ticks
                 size = quote.ask_size
@@ -532,6 +570,7 @@ class NiftyPaperExecutor:
                     snapshot_id=snapshot_id,
                     displayed_size=size,
                     observation=quote.model_dump(mode="json"),
+                    spot=spot,
                 )
             )
         if any(row["side"] == "SELL" and row["status"] == "FILLED" for row in resolved):

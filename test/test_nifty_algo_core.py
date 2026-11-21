@@ -203,14 +203,10 @@ def test_risk_planner_sizes_lots_and_blocks_pending():
         reconciled=True,
         entries_enabled=True,
     )
-    config = StrategyConfig(
-        max_planned_loss=Decimal("1000"),
-        min_projected_net_reward=Decimal("0"),
-        planned_loss_buffer=Decimal("0"),
-    )
+    config = StrategyConfig()
     plan = plan_entry(
         account,
-        [(instrument(), quote())],
+        [(instrument(), quote().model_copy(update={"ask": Decimal("60"), "bid": Decimal("59")}))],
         config,
         50,
         lambda side, price, quantity, cfg: Decimal("0"),

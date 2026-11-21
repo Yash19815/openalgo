@@ -87,6 +87,9 @@ def plan_entry(account, candidates, config, confidence_score, charges):
         stop = Decimal(protection["initial_stop"])
         target = Decimal(protection["target_price"])
         stop_exit = stop - instrument.tick_size * config.slippage_ticks
+        if stop_exit <= 0:
+            rejected.append((token, permitted, "STOP_PRICE_INVALID"))
+            continue
         for lots in range(permitted, 0, -1):
             quantity = lots * instrument.lot_size
             buy_cost = charges("BUY", entry, quantity, config)

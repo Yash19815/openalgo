@@ -104,7 +104,7 @@ def test_loss_blocks_next_eligible_session_across_holiday(store, monkeypatch):
         "services.place_smart_order_service",
         SimpleNamespace(place_smart_order=spy),
     )
-    exe = round_trip(store, "99", holidays=FRIDAY_HOLIDAY)
+    exe = round_trip(store, "160", holidays=FRIDAY_HOLIDAY)
     assert realized_net(store) < 0
     # Friday is an approved holiday and the weekend follows: Monday is the cooldown.
     locks = store.risk_locks(USER, NOW + timedelta(seconds=3))
@@ -141,7 +141,7 @@ def test_loss_blocks_next_eligible_session_across_holiday(store, monkeypatch):
 
 
 def test_profit_session_schedules_no_cooldown(store):
-    round_trip(store, "110")
+    round_trip(store, "175")
     assert realized_net(store) > 0
     assert store.risk_locks(USER, FRIDAY)["cooldown"]["loss_session"] is None
     assert "SESSION_LOSS_COOLDOWN" not in kinds(store)
@@ -149,7 +149,7 @@ def test_profit_session_schedules_no_cooldown(store):
 
 
 def test_cooldown_survives_restart(store):
-    round_trip(store, "99", holidays=FRIDAY_HOLIDAY)
+    round_trip(store, "160", holidays=FRIDAY_HOLIDAY)
     engine = create_db_engine(str(store.engine.url))
     try:
         restored = NiftyStore(engine)
@@ -160,7 +160,7 @@ def test_cooldown_survives_restart(store):
 
 
 def test_revised_calendar_recomputes_future_cooldown(store):
-    round_trip(store, "99")
+    round_trip(store, "160")
     assert store.risk_locks(USER, NOW)["cooldown"]["cooldown_session"] == "2026-11-20"
     data = b"date,name\n2026-11-20,Fixture holiday\n"
     draft = store.create_calendar_draft(
@@ -210,7 +210,7 @@ def test_unresolved_cooldown_fails_closed_until_calendar_resolves_it(store):
 
 
 def test_monthly_loss_lock_blocks_until_next_month(store):
-    round_trip(store, "99", StrategyConfig(latency_ms=1, monthly_loss_limit=D("50")))
+    round_trip(store, "160", StrategyConfig(latency_ms=1, monthly_loss_limit=D("50")))
     assert realized_net(store) <= D("-50")
     month = store.risk_locks(USER, NOW)["month"]
     assert month["month"] == "2026-11" and month["loss_locked_at"] is not None
@@ -222,13 +222,13 @@ def test_monthly_loss_lock_blocks_until_next_month(store):
 
 
 def test_monthly_loss_lock_not_reached_below_limit(store):
-    round_trip(store, "99")  # Default 2000 rupee limit; a ~110 rupee loss.
+    round_trip(store, "160")  # Default 2000 rupee limit; a ~110 rupee loss.
     assert store.risk_locks(USER, NOW)["month"]["loss_locked_at"] is None
     admitted_on(store, TUESDAY, "below-limit")
 
 
 def test_monthly_profit_lock_latches_through_target_edit(store):
-    round_trip(store, "110", StrategyConfig(latency_ms=1, monthly_profit_target=D("100")))
+    round_trip(store, "175", StrategyConfig(latency_ms=1, monthly_profit_target=D("100")))
     assert realized_net(store) >= D("100")
     assert store.risk_locks(USER, NOW)["month"]["profit_locked_at"] is not None
     assert "MONTHLY_PROFIT_LOCKED" in kinds(store)
@@ -254,7 +254,7 @@ def test_monthly_profit_lock_latches_through_target_edit(store):
 
 
 def test_monthly_profit_lock_disabled_when_unset_and_latches_when_lowered(store):
-    round_trip(store, "110")
+    round_trip(store, "175")
     assert state_config(store).monthly_profit_target is None
     assert store.risk_locks(USER, NOW)["month"]["profit_locked_at"] is None
     admitted_on(store, FRIDAY, "goal-disabled")
@@ -264,7 +264,7 @@ def test_monthly_profit_lock_disabled_when_unset_and_latches_when_lowered(store)
 
 
 def test_month_rollover_resets_counters_and_keeps_equity(store):
-    round_trip(store, "99", StrategyConfig(latency_ms=1, monthly_loss_limit=D("50")))
+    round_trip(store, "160", StrategyConfig(latency_ms=1, monthly_loss_limit=D("50")))
     equity = store.account(USER, NOW + timedelta(seconds=3))["equity"]
     november = store.risk_locks(USER, NOW)["month"]
     assert store.entry_locks(USER, NEXT_MONTH, state_config(store)) == []
@@ -278,7 +278,7 @@ def test_month_rollover_resets_counters_and_keeps_equity(store):
 
 
 def test_equity_reset_does_not_clear_monthly_tracking(store):
-    round_trip(store, "99", StrategyConfig(latency_ms=1, monthly_loss_limit=D("50")))
+    round_trip(store, "160", StrategyConfig(latency_ms=1, monthly_loss_limit=D("50")))
     before = store.risk_locks(USER, NOW)["month"]
     with store.sessions.begin() as db:
         db.execute(delete(NiftyAccount).where(NiftyAccount.user_id == USER))

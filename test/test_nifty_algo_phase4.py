@@ -47,7 +47,9 @@ from test.test_nifty_algo_paper_executor import (
 from test.test_nifty_algo_phase1 import Phase1MarketCalendar
 
 D = Decimal
-CONFIG = _paper_test_config(StrategyConfig(latency_ms=1))
+CONFIG = _paper_test_config(
+    StrategyConfig(latency_ms=1, profit_lock_floor_net=D("380"))
+)
 
 
 def ist(hour, minute, day=19):
@@ -128,8 +130,8 @@ def test_independent_shadow_opens_inside_its_own_window(store, at):
     _, _, row, reasons = open_shadow(store, at)
     assert reasons == [] and row["kind"] == "INDEPENDENT" and row["active"]
     assert row["additive"] is True and row["status"] == "ACTIVE"
-    assert row["quantity"] == 50 and D(row["entry_price"]) == D("100.05")
-    assert D(row["entry_fees"]) == _charges("BUY", D("100.05"), 50, CONFIG)
+    assert row["quantity"] == 25 and D(row["entry_price"]) == D("165.05")
+    assert D(row["entry_fees"]) == _charges("BUY", D("165.05"), 25, CONFIG)
     # The hypothetical ledger never touches the primary account, orders or months.
     assert store.account(USER, at) == account
     assert store.orders(USER, now=at) == []
@@ -250,7 +252,7 @@ def test_single_active_shadow_row_is_enforced(store):
 def test_primary_fill_preempts_and_mirror_follows_primary(store):
     prepare(store)
     shadows, market, independent, _ = open_shadow(store, ist(9, 20))
-    quote(market, ist(9, 21), "101")
+    quote(market, ist(9, 21), "166")
     shadows.monitor(ist(9, 21))
     running(store)
     primary_market = FakeMarket()
@@ -262,14 +264,14 @@ def test_primary_fill_preempts_and_mirror_follows_primary(store):
     mirror = shadows.sync_mirrors(NOW + timedelta(seconds=2))
     assert mirror["kind"] == "MIRROR" and mirror["active"] and mirror["additive"] is False
     assert mirror["primary_entry_order_id"] == entry["order_id"]
-    assert mirror["entry_price"] == held["entry_price"] and mirror["quantity"] == 50
+    assert mirror["entry_price"] == held["entry_price"] and mirror["quantity"] == 25
     preempted = next(row for row in store.shadow_status(USER)["positions"] if row["id"] == independent["id"])
     assert preempted["status"] == "PREEMPTED_BY_ACTUAL_MIRROR" and not preempted["active"]
     assert preempted["exit_reason"] == "PREEMPTED_BY_ACTUAL_MIRROR"
     assert preempted["primary_entry_order_id"] == entry["order_id"]
     assert preempted["valuation"] == "LAST_BID"
     assert D(preempted["net"]) == modeled_exit_net(
-        D("100.05"), 50, D("101"), D(preempted["entry_fees"]), D("0.05"), CONFIG, _charges
+        D("165.05"), 25, D("166"), D(preempted["entry_fees"]), D("0.05"), CONFIG, _charges
     )
     assert active_rows(store) == 1
     # Repeat ticks and a restarted store never duplicate the mirror.
@@ -311,7 +313,7 @@ def test_shadow_initial_stop_exit(store):
     assert closed["status"] == "CLOSED" and closed["exit_reason"] == "INITIAL_STOP"
     assert closed["valuation"] == "DEPTH_MODEL" and D(closed["exit_price"]) == D("91.95")
     assert D(closed["net"]) == modeled_exit_net(
-        D("100.05"), 50, D("92"), D(row["entry_fees"]), D("0.05"), CONFIG, _charges
+        D("165.05"), 25, D("92"), D(row["entry_fees"]), D("0.05"), CONFIG, _charges
     )
     assert D(store.shadow_ledger(USER)["realized_net"]) == D(closed["net"]) < 0
 
@@ -319,26 +321,26 @@ def test_shadow_initial_stop_exit(store):
 def test_shadow_trailing_stop_exit_is_monotone(store):
     prepare(store)
     shadows, market, _, _ = open_shadow(store, ist(9, 20))
-    quote(market, ist(9, 21), "102")
+    quote(market, ist(9, 21), "172")
     trailing = shadows.monitor(ist(9, 21))
     assert trailing["protection"]["trailing_active"] is True
-    assert D(trailing["protection"]["stop_price"]) == D("100.5")
-    quote(market, ist(9, 22), "101")
-    assert D(shadows.monitor(ist(9, 22))["protection"]["stop_price"]) == D("100.5")
-    quote(market, ist(9, 23), "100.5")
+    assert D(trailing["protection"]["stop_price"]) == D("170.5")
+    quote(market, ist(9, 22), "171")
+    assert D(shadows.monitor(ist(9, 22))["protection"]["stop_price"]) == D("170.5")
+    quote(market, ist(9, 23), "170.5")
     closed = shadows.monitor(ist(9, 23))
-    assert closed["exit_reason"] == "TRAILING_STOP" and D(closed["exit_price"]) == D("100.45")
+    assert closed["exit_reason"] == "TRAILING_STOP" and D(closed["exit_price"]) == D("170.45")
 
 
 def test_shadow_profit_lock_floor_exit(store):
     prepare(store)
     shadows, market, _, _ = open_shadow(store, ist(9, 20))
-    quote(market, ist(9, 21), "109.5")
+    quote(market, ist(9, 21), "183.5")
     locked = shadows.monitor(ist(9, 21))["protection"]
     assert locked["profit_lock_active"] is True
     assert locked["stop_price"] == locked["profit_floor_stop"]
     assert D(locked["profit_floor_stop"]) > D(locked["trailing_stop"])
-    quote(market, ist(9, 22), "109")
+    quote(market, ist(9, 22), "183")
     assert shadows.monitor(ist(9, 22))["protection"]["stop_price"] == locked["stop_price"]
     quote(market, ist(9, 23), str(D(locked["profit_floor_stop"]) - D("0.05")))
     closed = shadows.monitor(ist(9, 23))
@@ -352,11 +354,11 @@ def test_shadow_profit_lock_floor_exit(store):
 def test_shadow_mandatory_exits(store):
     prepare(store)
     shadows, market, _, _ = open_shadow(store, ist(9, 20))
-    quote(market, ist(10, 5), "101")
+    quote(market, ist(10, 5), "166")
     assert shadows.monitor(ist(10, 5))["exit_reason"] == "MAX_HOLD"
 
     shadows, market, _, _ = open_shadow(store, ist(14, 40), "late")
-    quote(market, ist(15, 10), "101")
+    quote(market, ist(15, 10), "166")
     closed = shadows.monitor(ist(15, 10))
     assert closed["exit_reason"] == "SESSION_EXIT" and closed["valuation"] == "DEPTH_MODEL"
 
@@ -364,27 +366,27 @@ def test_shadow_mandatory_exits(store):
 def test_shadow_without_fillable_bid_ends_at_last_bid_after_close(store):
     prepare(store)
     shadows, market, _, _ = open_shadow(store, ist(14, 40))
-    quote(market, ist(14, 41), "101")
+    quote(market, ist(14, 41), "166")
     shadows.monitor(ist(14, 41))
     market.size = 10  # Displayed bid cannot absorb the hypothetical quantity.
-    quote(market, ist(15, 10), "102")
+    quote(market, ist(15, 10), "167")
     latched = shadows.monitor(ist(15, 10))
     assert latched["active"] and latched["protection"]["exit_reason"] == "SESSION_EXIT"
     closed = shadows.monitor(ist(15, 31))
     assert not closed["active"] and closed["valuation"] == "LAST_BID"
-    assert D(closed["exit_price"]) == D("101.95")
+    assert D(closed["exit_price"]) == D("166.95")
 
 
 def test_shadow_state_recovers_after_restart(store):
     prepare(store)
     shadows, market, row, _ = open_shadow(store, ist(9, 20))
-    quote(market, ist(9, 21), "102")
+    quote(market, ist(9, 21), "172")
     shadows.monitor(ist(9, 21))
     engine = create_db_engine(str(store.engine.url))
     try:
         restored = NiftyStore(engine)
         active = restored.active_shadow(USER)
-        assert active["id"] == row["id"] and D(active["protection"]["stop_price"]) == D("100.5")
+        assert active["id"] == row["id"] and D(active["protection"]["stop_price"]) == D("170.5")
         recovered = book(restored, market)
         assert recovered.open_independent(signal(ist(9, 20)), ist(9, 20), CONFIG, [instrument()])[
             0
@@ -392,9 +394,9 @@ def test_shadow_state_recovers_after_restart(store):
         assert recovered.open_independent(
             signal(ist(9, 25), "s-2"), ist(9, 25), CONFIG, [instrument()]
         ) == (None, ["SHADOW_ACTIVE"])
-        quote(market, ist(9, 22), "101")
-        assert D(recovered.monitor(ist(9, 22))["protection"]["stop_price"]) == D("100.5")
-        quote(market, ist(9, 23), "100.4")
+        quote(market, ist(9, 22), "171")
+        assert D(recovered.monitor(ist(9, 22))["protection"]["stop_price"]) == D("170.5")
+        quote(market, ist(9, 23), "170.4")
         assert recovered.monitor(ist(9, 23))["exit_reason"] == "TRAILING_STOP"
         assert active_rows(restored) == 0
     finally:
@@ -641,9 +643,9 @@ def test_shadow_and_research_runtime_never_call_order_services(store, monkeypatc
         monkeypatch.setattr(owner, name, spy)
     accounts_before = _primary_counts(store)
     shadows, market, _, _ = open_shadow(store, ist(9, 20))
-    quote(market, ist(9, 21), "102")
+    quote(market, ist(9, 21), "172")
     shadows.monitor(ist(9, 21))
-    quote(market, ist(9, 22), "100.5")
+    quote(market, ist(9, 22), "170.5")
     shadows.monitor(ist(9, 22))
     shadows.sync_mirrors(ist(9, 22))
     record(store, ist(10, 0))

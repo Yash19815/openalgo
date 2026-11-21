@@ -1572,6 +1572,7 @@ class NiftyStore:
         snapshot_id=None,
         displayed_size=None,
         observation=None,
+        spot=None,
     ):
         """Resolve a pending order and move money atomically.
 
@@ -1662,6 +1663,7 @@ class NiftyStore:
                         now,
                     )
                     return self._order_dict(order)
+                from services.nifty_algo.contract_resolver import moneyness
                 from services.nifty_algo.paper_executor import _charges
 
                 stop_exit = (
@@ -1671,6 +1673,23 @@ class NiftyStore:
                 planned = (price - stop_exit) * quantity + fees
                 planned += (
                     _charges("SELL", stop_exit, quantity, config) + config.planned_loss_buffer
+                )
+                target = Decimal(protection["target_price"])
+                reward = (target - price) * quantity - fees - _charges(
+                    "SELL", target, quantity, config
+                )
+                meta = next(
+                    (
+                        m
+                        for m in order.payload.get("candidate_metadata") or []
+                        if m.get("token") == order.token
+                    ),
+                    None,
+                )
+                atm_strike = (
+                    Decimal(str(meta["atm_strike"]))
+                    if meta and meta.get("atm_strike") is not None
+                    else None
                 )
                 if (
                     state.killed
@@ -1695,10 +1714,29 @@ class NiftyStore:
                     or instrument.expiry < now.astimezone(ZoneInfo("Asia/Kolkata")).date()
                 ):
                     order.status, order.reason = "REJECTED", "METADATA_INVALID"
+                elif stop_exit <= 0:
+                    order.status, order.reason = "REJECTED", "STOP_PRICE_INVALID"
+                elif (
+                    spot is not None
+                    and moneyness(instrument, spot, atm_strike) == "OTM"
+                ):
+                    order.status, order.reason = "REJECTED", "OTM_PROHIBITED"
+                elif (
+                    quote.bid is None
+                    or quote.bid <= 0
+                    or quote.bid >= quote.ask
+                    or quote.bid_size < instrument.lot_size
+                    or (quote.ask - quote.bid) / quote.ask * 10000 > config.max_spread_bps
+                    or quote.volume is None
+                    or quote.volume < config.min_volume
+                ):
+                    order.status, order.reason = "REJECTED", "LIQUIDITY_LOST"
                 elif planned > config.max_planned_loss:
                     order.status, order.reason = "REJECTED", "PLANNED_LOSS_LIMIT"
                 elif planned > Decimal(order.payload["reserved_risk"]):
                     order.status, order.reason = "REJECTED", "FILL_RISK_BUDGET"
+                elif reward < config.min_projected_net_reward:
+                    order.status, order.reason = "REJECTED", "NET_REWARD_BELOW_MINIMUM"
                 elif (
                     account.daily_entries >= config.max_daily_entries
                     or account.equity

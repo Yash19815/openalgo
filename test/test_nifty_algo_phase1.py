@@ -292,12 +292,9 @@ def test_v3_to_v31_migration_pauses_and_records_event(store):
 
 @pytest.mark.parametrize(("score", "lots"), [(39, 1), (40, 2), (70, 3)])
 def test_plan_entry_lot_thresholds_and_immutable_protection(score, lots):
-    config = StrategyConfig(
-        max_planned_loss=10000,
-        min_projected_net_reward=0,
-        planned_loss_buffer=0,
-    )
-    item, quote = candidate()
+    config = StrategyConfig().model_copy(update={"min_projected_net_reward": D("0")})
+    item, quote = candidate(lot_size=25)
+    quote = quote.model_copy(update={"ask": D("60"), "bid": D("59")})
     plan = plan_entry(account(), [(item, quote)], config, score, no_charges)
     assert plan.lots == lots
     assert plan.quantity == lots * item.lot_size
@@ -313,17 +310,14 @@ def test_plan_entry_lot_thresholds_and_immutable_protection(score, lots):
 def test_plan_entry_loss_and_reward_boundaries():
     config = StrategyConfig(
         max_lots=1,
-        lot_score_thresholds=(0,),
-        max_planned_loss=400,
-        min_projected_net_reward=0,
-        planned_loss_buffer=0,
+        lot_score_thresholds=(D("0"),),
         slippage_ticks=0,
     )
     item, quote = candidate(lot_size=50)
-    quote = quote.model_copy(update={"ask": D("100"), "bid": D("99")})
+    quote = quote.model_copy(update={"ask": D("90"), "bid": D("89")})
     exact_loss = plan_entry(account(), [(item, quote)], config, 100, no_charges)
-    assert exact_loss.quantity == 50 and exact_loss.planned_loss == D("400")
-    above_limit = config.model_copy(update={"planned_loss_buffer": D("0.0001")})
+    assert exact_loss.quantity == 50 and exact_loss.planned_loss == D("370")
+    above_limit = config.model_copy(update={"max_planned_loss": D("369")})
     rejected_loss = plan_entry(account(), [(item, quote)], above_limit, 100, no_charges)
     assert rejected_loss.quantity == 0
     assert ("candidate", 1, "PLANNED_LOSS_LIMIT") in rejected_loss.rejections
@@ -331,6 +325,7 @@ def test_plan_entry_loss_and_reward_boundaries():
     reward_config = config.model_copy(
         update={"max_planned_loss": D("10000"), "min_projected_net_reward": D("350")}
     )
+    reward_quote = quote.model_copy(update={"ask": D("100")})
     protection = initial_protection(
         100,
         item.tick_size,
@@ -343,11 +338,11 @@ def test_plan_entry_loss_and_reward_boundaries():
     def charges(side, price, quantity, cfg):
         return D("100") if side == "BUY" or price != target else gross - D("450")
 
-    exact_reward = plan_entry(account(), [(item, quote)], reward_config, 50, charges)
+    exact_reward = plan_entry(account(), [(item, reward_quote)], reward_config, 50, charges)
     assert exact_reward.quantity == 50
     assert exact_reward.projected_net_reward == D("350")
     below = reward_config.model_copy(update={"min_projected_net_reward": D("350.0001")})
-    rejected_reward = plan_entry(account(), [(item, quote)], below, 50, charges)
+    rejected_reward = plan_entry(account(), [(item, reward_quote)], below, 50, charges)
     assert rejected_reward.quantity == 0
     assert ("candidate", 1, "NET_REWARD_BELOW_MINIMUM") in rejected_reward.rejections
 
@@ -355,14 +350,11 @@ def test_plan_entry_loss_and_reward_boundaries():
 def test_plan_entry_rejections_fallback_and_zero():
     config = StrategyConfig(
         max_lots=1,
-        lot_score_thresholds=(0,),
-        min_projected_net_reward=0,
-        planned_loss_buffer=0,
+        lot_score_thresholds=(D("0"),),
         slippage_ticks=0,
-        max_planned_loss=10000,
     )
     item, quote = candidate(lot_size=50)
-    quote = quote.model_copy(update={"ask": D("100"), "bid": D("99")})
+    quote = quote.model_copy(update={"ask": D("90"), "bid": D("89")})
     no_funds = plan_entry(account(available="0"), [(item, quote)], config, 100, no_charges)
     assert ("candidate", 1, "INSUFFICIENT_FUNDS") in no_funds.rejections
 
@@ -370,16 +362,16 @@ def test_plan_entry_rejections_fallback_and_zero():
         return D("10") if side == "BUY" else D("20")
 
     affordable = plan_entry(
-        account(available="5030"),
+        account(available="4530"),
         [(item, quote)],
         config,
         100,
         reservation_charges,
     )
     assert affordable.quantity == 50
-    assert affordable.cash_required == D("5030")
+    assert affordable.cash_required == D("4530")
     short_by_one_cent = plan_entry(
-        account(available="5029.99"),
+        account(available="4529.99"),
         [(item, quote)],
         config,
         100,
@@ -395,7 +387,7 @@ def test_plan_entry_rejections_fallback_and_zero():
     expensive, expensive_quote = candidate("expensive", lot_size=50)
     expensive_quote = expensive_quote.model_copy(update={"ask": D("1000")})
     fallback, fallback_quote = candidate("fallback", lot_size=50)
-    fallback_quote = fallback_quote.model_copy(update={"ask": D("100"), "bid": D("99")})
+    fallback_quote = fallback_quote.model_copy(update={"ask": D("90"), "bid": D("89")})
     selected = plan_entry(
         account(),
         [(expensive, expensive_quote), (fallback, fallback_quote)],

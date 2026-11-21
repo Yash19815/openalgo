@@ -115,7 +115,7 @@ class DeterministicMarket:
         raw = {
             "ltt": source.timestamp() * 1000,
             "received_time": self.stamp.timestamp(),
-            "ltp": 25000 if symbol == "NIFTY" else 100,
+            "ltp": 25000 if symbol == "NIFTY" else getattr(self, "ltp", 100),
             "volume": 5000,
             "oi": (200 if symbol.endswith("PE") else 100),
             "depth": {
@@ -229,7 +229,7 @@ def test_offline_end_to_end_runner_never_calls_order_services(store, monkeypatch
         row = db.get(NiftyState, USER)
         row.configuration, row.configuration_id = config.model_dump(mode="json"), config.version_id
     market = DeterministicMarket()
-    market.bid, market.ask = 79, 80
+    market.bid, market.ask, market.ltp = 164, 165, 164.5
     native = pipeline(market)
     rows = minute_rows()
     history = rows[:-75]
@@ -270,17 +270,18 @@ def test_offline_end_to_end_runner_never_calls_order_services(store, monkeypatch
     assert len(store.positions(USER)) == 1
     if analyzer == "changed-mid-session":
         mode["enabled"] = True
-    market.bid, market.ask, market.stamp = 106, 106.5, NOW + timedelta(seconds=2)
+    market.bid, market.ask, market.stamp = 172, 172.5, NOW + timedelta(seconds=2)
     runner.protect(market.stamp)
-    assert Decimal(store.positions(USER)[0]["protection"]["stop_price"]) == Decimal("104.5")
+    assert Decimal(store.positions(USER)[0]["protection"]["stop_price"]) == Decimal("170.5")
     state = store.read(USER)
     store.change(USER, state["revision"], action="kill-switch")
     market.bid, market.ask, market.bid_size, market.stamp = (
-        114,
-        114.5,
-        0,
+        250,
+        250.5,
+        1,
         NOW + timedelta(seconds=3),
     )
+    # A positive but insufficient bid can trigger TARGET, never fill the exit.
     runner.protect(market.stamp)
     assert store.positions(USER) and store.pending_orders(USER)[0]["side"] == "SELL"
     market.bid_size = 100

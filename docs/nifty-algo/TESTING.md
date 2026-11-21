@@ -3,6 +3,57 @@
 All strategy market inputs used in this session are explicitly deterministic
 offline fixtures. No real historical or live-market evidence is claimed.
 
+## Post-audit remediation verification - 21 November 2026
+
+These results cover the uncommitted risk-bound, fill-revalidation and native
+spot-reader remediation, not the earlier Phase 7 revision:
+
+- Windows Python 3.12.11: **317 passed** in 733.24 s, exit 0:
+  `.venv/Scripts/python.exe -m pytest test/test_nifty_algo_*.py -o addopts="" -q --basetemp=tmp/nifty-full-spot-03 -p no:cacheprovider`.
+  Output: `tmp/nifty-full-spot-03.txt`.
+- After adding malformed-LTP coverage and making the imported store fixture an
+  explicit re-export, **88 passed** in 315.46 s, exit 0:
+  `.venv/Scripts/python.exe -m pytest test/test_nifty_algo_gap_p1.py test/test_nifty_algo_phase5.py test/test_email_functionality_pytest.py test/test_smtp_error_messages.py test/test_smtp_certificate_verification.py test/test_gthread_messaging_email.py -o addopts="" -q --basetemp=tmp/nifty-final-focused-04 -p no:cacheprovider`.
+  This includes the transport-trap self-test and PAPER/forced-LIVE full-cycle
+  canaries. Output: `tmp/nifty-final-focused-04.txt`. The full matrix was not
+  rerun after this test-only addition.
+- After a whitespace-only `ruff format` pass on `test_nifty_algo_gap_p1.py`,
+  the file was rerun standalone: **35 passed** in 141.37 s, exit 0
+  (`--basetemp=tmp/nifty-gap-final`). `ruff format --check` and `ruff check`
+  pass on all files changed in this diff.
+- The three Analyzer-state pipeline cases passed independently in 28.17 s,
+  exit 0, before the full matrix. A positive but insufficient bid triggers
+  TARGET without filling; a zero-sized bid cannot be treated as executable.
+- Ruff passed for `services/nifty_algo/`, `database/nifty_algo_db.py`,
+  `blueprints/nifty_algo.py` and `test/test_nifty_algo_*.py`; whitespace checks
+  passed. An order-API text scan of `services/nifty_algo/` found no matches.
+- Resource review was **static**, limited to the changed paths: fill checks
+  remain within the existing transaction/session context; engines still use
+  `create_db_engine`/NullPool; fixture teardown disposes its engine. The spot
+  reader borrows the shared market-data service and retains no quote history.
+  No new client, socket, subscription, thread, executor or module-level cache
+  was introduced. No measured descriptor/memory soak is claimed.
+
+Native spot regressions cover source modes 1/2/3, missing timestamps,
+stale/future/reversed timestamps, NaN/infinity/nonpositive prices, malformed
+records and LTP, and display-only data. Invalid data leaves BUY pending without
+creating a position; TTL expiry still removes the pending intent. Fixtures use
+valid persisted configurations and premiums near 165, without relaxing the
+400 planned-loss ceiling or 350 net-reward floor.
+
+**Linux gate blocked; no commit or push.** `docker info --format '{{.OSType}}'`
+cannot connect to `npipe:////./pipe/dockerDesktopLinuxEngine` (pipe not found).
+`wsl --list --quiet` lists only `docker-desktop`, not a usable independent Linux
+test distribution. The current diff has not passed the required Linux
+eventlet/gthread checks. Run the repository's Linux commands, including
+`test/test_gthread_*.py` with `--timeout=120 -rfs`, from a Linux-filesystem copy
+before committing/pushing. Prior Linux results below do not cover this diff.
+
+The existing Python-host closed-stream logging error still prints at interpreter
+shutdown after passing pytest results. Real broker/feed startup, forward paper
+observation, actual mailbox delivery, historical replay and a production-worker
+rehearsal remain unverified. Live stays hard-blocked.
+
 ## Phase 7 verification — 21 November 2026
 
 Final hardening checks against `4ff43de2c` plus the Phase 7 working diff:
