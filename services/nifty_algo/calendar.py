@@ -62,7 +62,7 @@ def nifty_session(user_id, day, *, store):
         if timing is None:
             timing = market.get_market_timing("NFO")
             if timing is None:
-                return {"status": "TRADING", "window": None}
+                return {"status": "SESSION_WINDOW_UNAVAILABLE", "window": None}
             start_ms = int(timing["start_offset"])
             end_ms = int(timing["end_offset"])
             midnight = datetime.combine(day, datetime.min.time(), tzinfo=IST)

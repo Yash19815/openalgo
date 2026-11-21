@@ -85,8 +85,11 @@ def test_profit_lock_bounds():
         profit_lock_floor_net=Decimal("400"),
         profit_lock_activation_net=Decimal("400"),
     )
-    StrategyConfig.model_validate({"profit_lock_floor_net": Decimal("349.99")})
+    _bad(profit_lock_floor_net=Decimal("349.99"))
+    StrategyConfig.model_validate({"profit_lock_floor_net": Decimal("350")})
     StrategyConfig.model_validate({"profit_lock_floor_net": Decimal("360")})
+    _bad(profit_lock_activation_net=Decimal("399.99"))
+    _bad(early_booking_min_net=Decimal("299.99"))
 
 
 def test_premium_stop_capped_at_8pct():

@@ -44,7 +44,7 @@ PERIOD_PATTERNS = {
     "MONTH_END": r"\d{4}-\d{2}",
 }
 REPORT_GRACE = timedelta(minutes=10)
-LOOKBACK_DAYS = 7
+SCAN_DAYS_PER_TICK = 14  # Durable backlog scan, bounded per scheduler tick
 MAX_GENERATION_ATTEMPTS = 3
 MAX_DELIVERY_ATTEMPTS = 5
 BACKOFF_BASE_SECONDS = 60
@@ -557,6 +557,8 @@ class ReportService:
         self.recipient = recipient or (lambda: _default_recipient(user_id))
         self.send = send or _default_send
         self._sessions = {}
+        self._scan_expected = None
+        self._scan_next = None
 
     # Triggers --------------------------------------------------------------
 
@@ -575,7 +577,11 @@ class ReportService:
         return close.astimezone(UTC) + REPORT_GRACE
 
     def eligible_sessions(self, month_key):
-        return [day for day in _month_days(month_key) if self._session(day)["status"] == "TRADING"]
+        return [
+            day for day in _month_days(month_key)
+            if self._session(day)["status"] == "TRADING"
+            and self._session(day).get("window") is not None
+        ]
 
     def _since(self):
         if self.since is not None:
@@ -585,27 +591,50 @@ class ReportService:
 
     def due_periods(self, now):
         since = self._since()
+        self._scan_expected = self._scan_next = None
         if since is None:
             return []
         today = now.astimezone(IST).date()
-        first = max(since, today - timedelta(days=LOOKBACK_DAYS))
+        if since > today:
+            return []
+        stored = self.store.report_scan_cursor(self.user_id, since)
+        first = max(since, date.fromisoformat(stored))
         due = []
-        day = first
-        while day <= today:
-            if self._session(day)["status"] == "TRADING" and now >= self._closes_at(day):
-                due.append(("DAILY", day.isoformat()))
-            day += timedelta(days=1)
-        for month in sorted({first.strftime("%Y-%m"), today.strftime("%Y-%m")}):
-            # An unapproved calendar leaves the month's last session undecidable.
+        months = {today.strftime("%Y-%m"),
+                  (today.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")}
+        if first <= today:
+            self._scan_expected = stored
+            last = min(today, first + timedelta(days=SCAN_DAYS_PER_TICK - 1))
+            day = first
+            while day <= last:
+                session = self._session(day)
+                if session["status"] in (
+                    "CALENDAR_UNAPPROVED", "SESSION_WINDOW_UNAVAILABLE", "UNAVAILABLE"
+                ):
+                    # Do not declare an undecidable historical day processed.
+                    break
+                if session["status"] == "TRADING":
+                    if not session.get("window") or now < self._closes_at(day):
+                        # Today's incomplete session must be reconsidered later.
+                        break
+                    due.append(("DAILY", day.isoformat()))
+                months.add(day.strftime("%Y-%m"))
+                day += timedelta(days=1)
+            self._scan_next = day.isoformat()
+
+        for month in sorted(months):
+            # Month-end requires a complete, approved/dated session authority.
             if self.store.approved_calendar_version(self.user_id, int(month[:4])) is None:
                 continue
+            sessions = [self._session(d) for d in _month_days(month)]
+            if any(row["status"] in (
+                "CALENDAR_UNAPPROVED", "SESSION_WINDOW_UNAVAILABLE", "UNAVAILABLE"
+            ) for row in sessions):
+                continue
             last = next(
-                (
-                    d
-                    for d in reversed(list(_month_days(month)))
-                    if self._session(d)["status"] == "TRADING"
-                ),
-                None,
+                (d for d in reversed(list(_month_days(month)))
+                 if self._session(d)["status"] == "TRADING"
+                 and self._session(d).get("window")), None,
             )
             if last is not None and last >= since and now >= self._closes_at(last):
                 due.append(("MONTH_END", month))
@@ -663,6 +692,11 @@ class ReportService:
     def generate_due(self, now):
         for kind, period_key in self.due_periods(now):
             self.store.ensure_report(self.user_id, kind, period_key, now)
+        # Only commit cursor progress after reserving every discovered period.
+        if self._scan_expected is not None and self._scan_next > self._scan_expected:
+            self.store.advance_report_scan_cursor(
+                self.user_id, self._scan_expected, self._scan_next
+            )
         generated = []
         for row in self.store.reports_needing_generation(self.user_id, MAX_GENERATION_ATTEMPTS):
             if len(generated) >= GENERATIONS_PER_TICK:

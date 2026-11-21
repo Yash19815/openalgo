@@ -133,6 +133,8 @@ def test_csv_parser_and_upload_rejections():
 
 def test_approval_revisions_audit_and_history(store):
     created = draft(store, "alice", [])
+    with pytest.raises(ValueError, match="reviewed dated NFO holidays"):
+        approve(store, created)
     ambiguous = store.update_draft_entries(
         "alice",
         created["id"],
@@ -148,7 +150,9 @@ def test_approval_revisions_audit_and_history(store):
         "alice",
     )
     approve(store, corrected)
-    second = approve(store, draft(store, "alice", []))
+    second = approve(store, draft(store, "alice", [
+        {"date": "2026-01-26", "name": "Republic Day"}
+    ]))
     assert second["status"] == "APPROVED"
     assert second["supersedes_id"] == corrected["id"]
     assert len(store.calendar_versions("alice", 2026)) == 2
@@ -189,7 +193,8 @@ class FakeMarketCalendar:
 
 
 def approved(store, entries=(), *, year=2026):
-    row = draft(store, "alice", list(entries), year)
+    values = list(entries) or [{"date": f"{year}-01-26", "name": "Republic Day"}]
+    row = draft(store, "alice", values, year)
     return approve(store, row)
 
 

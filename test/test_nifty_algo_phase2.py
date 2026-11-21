@@ -317,8 +317,8 @@ def test_mandatory_stop_is_not_gated_by_discretionary_booking():
 def test_restarted_store_recovers_lock_emits_once_and_reports_realized_gap(store):
     config = StrategyConfig(
         slippage_ticks=0,
-        profit_lock_floor_net=D("35"),
-        profit_lock_activation_net=D("50"),
+        profit_lock_floor_net=D("350"),
+        profit_lock_activation_net=D("400"),
     )
     running(store)
     market = FakeMarket()

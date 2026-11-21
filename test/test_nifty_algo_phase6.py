@@ -308,6 +308,39 @@ def test_no_daily_report_for_weekend_holiday_or_unapproved_year(tmp_path):
         store.engine.dispose()
 
 
+def test_report_backlog_scans_old_days_and_intermediate_months(tmp_path):
+    """A long outage cannot silently discard reports more than 7 days old."""
+    value = make_store(tmp_path, "long_outage", holidays=[MONTH_END_HOLIDAY])
+    try:
+        now = datetime(2026, 12, 15, 10, 20, tzinfo=UTC)
+        for _ in range(7):
+            service(value, Clock(now), since=date(2026, 10, 1), send=ok_send()).tick(now)
+        all_rows = rows(value)
+        month_keys = {row["period_key"] for row in all_rows if row["kind"] == "MONTH_END"}
+        day_keys = {row["period_key"] for row in all_rows if row["kind"] == "DAILY"}
+        assert {"2026-10", "2026-11"} <= month_keys
+        assert "2026-10-01" in day_keys
+        assert "2026-11-16" in day_keys
+        assert value.report_scan_cursor(USER, date(2026, 10, 1)) > "2026-12-15"
+    finally:
+        value.engine.dispose()
+
+
+def test_unknown_session_window_does_not_consume_report_scan_day(store, monkeypatch):
+    class MissingMarketHours(Phase1MarketCalendar):
+        @staticmethod
+        def get_market_timing(exchange):
+            return None
+
+    monkeypatch.setattr(session_calendar, "_legacy_calendar", lambda: MissingMarketHours())
+    assert session_calendar.nifty_session(USER, SESSION, store=store)["status"] == (
+        "SESSION_WINDOW_UNAVAILABLE"
+    )
+    service(store, Clock(AFTER_CLOSE), send=ok_send()).tick(AFTER_CLOSE)
+    assert not [item for item in rows(store) if item["kind"] == "DAILY"]
+    assert store.report_scan_cursor(USER, SESSION) == SESSION.isoformat()
+
+
 # Milestones ---------------------------------------------------------------------
 
 

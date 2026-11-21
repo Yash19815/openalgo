@@ -337,6 +337,19 @@ class NiftyReport(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False)
 
 
+class NiftyReportScan(Base):
+    """Durable position of bounded report-period discovery per user.
+
+    The cursor is an IST ISO date (next unexamined session); it does not
+    imply PDF generation or delivery succeeded. Those are separate rows.
+    """
+
+    __tablename__ = "nifty_algo_report_scan"
+    user_id = Column(String(255), primary_key=True)
+    next_day = Column(String(10), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
 MODE_HISTORY_LIMIT = 50
 
 
@@ -492,6 +505,8 @@ class NiftyStore:
             confirmed_segment=confirmed_segment,
             actor=actor,
         )
+        # A revised calendar can affect historical report eligibility as well.
+        self.rewind_report_scan_cursor(user_id, result["year"])
         # A revised calendar recomputes current and future cooldown sessions.
         self.resolve_cooldowns(user_id, now or datetime.now(UTC), recompute=True)
         return result
@@ -510,6 +525,12 @@ class NiftyStore:
                 raise ValueError("Calendar year and segment confirmation must match")
             if row.segment != "NFO" or any(item.get("ambiguous") for item in row.entries):
                 raise ValueError("Calendar has an unconfirmed segment or ambiguous entries")
+            # An empty/unparsed calendar would treat every ordinary weekday as tradable.
+            if not row.entries or not all(
+                isinstance(item, dict) and item.get("date")
+                for item in row.entries
+            ):
+                raise ValueError("Calendar must contain reviewed dated NFO holidays")
             prior = db.scalar(select(NiftyCalendarVersion).where(
                 NiftyCalendarVersion.user_id == user_id,
                 NiftyCalendarVersion.year == row.year,
@@ -3399,6 +3420,43 @@ class NiftyStore:
                 )
             )
         return self.report(user_id, report_id)
+
+    def report_scan_cursor(self, user_id, since):
+        """Create/read durable scan cursor using the established per-user lock."""
+        self.ensure_user(user_id)
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            row = db.get(NiftyReportScan, user_id)
+            if row is None:
+                row = NiftyReportScan(
+                    user_id=user_id, next_day=since.isoformat(), updated_at=datetime.now(UTC)
+                )
+                db.add(row)
+                db.flush()
+            return row.next_day
+
+    def advance_report_scan_cursor(self, user_id, expected, next_day):
+        """Advance only after all due periods in a bounded scan were reserved."""
+        if next_day <= expected:
+            return False
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            row = db.get(NiftyReportScan, user_id)
+            if row is None or row.next_day != expected:
+                return False
+            row.next_day = next_day
+            row.updated_at = datetime.now(UTC)
+            return True
+
+    def rewind_report_scan_cursor(self, user_id, year):
+        """Revisit affected session periods after an approved calendar amendment."""
+        candidate = f"{int(year):04d}-01-01"
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            row = db.get(NiftyReportScan, user_id)
+            if row is not None and row.next_day > candidate:
+                row.next_day = candidate
+                row.updated_at = datetime.now(UTC)
 
     def report_months(self, user_id):
         with self.sessions() as db:

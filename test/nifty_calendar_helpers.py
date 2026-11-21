@@ -36,7 +36,15 @@ def seed_approved_nfo_calendar(store, user_id, year, entries=()):
     if calendar is not None:
         return calendar
 
-    data = b"date,name\n"
+    # Use a genuine known holiday as the empty-fixture default; never
+    # approve a blank production calendar just to satisfy unit tests.
+    entries = list(entries) or [
+        {"date": f"{year}-01-26", "name": "Republic Day (test fixture)"}
+    ]
+    data = ("date,name\n" + "".join(
+        f"{entry['date']},{entry.get('name') or 'Test holiday'}\n"
+        for entry in entries
+    )).encode("utf-8")
     draft = store.create_calendar_draft(
         user_id,
         year=year,

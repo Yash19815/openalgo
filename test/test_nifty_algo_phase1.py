@@ -133,7 +133,7 @@ def _seed_approved_calendar(store, user):
     year = NOW.astimezone(IST).year
     if store.approved_calendar_version(user, year) is not None:
         return
-    data = b"date,name\n"
+    data = f"date,name\n{year}-01-26,Republic Day (fixture)\n".encode()
     draft = store.create_calendar_draft(
         user,
         year=year,
@@ -141,7 +141,7 @@ def _seed_approved_calendar(store, user):
         source_filename="fixture.csv",
         sha256=sha256(data).hexdigest(),
         uploader=user,
-        entries=[],
+        entries=[{"date": f"{year}-01-26", "name": "Republic Day (fixture)"}],
         issues=[],
         data=data,
         extension="csv",

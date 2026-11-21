@@ -57,9 +57,13 @@ class StrategyConfig(Model):
     max_planned_loss: Decimal = Field(default=Decimal("400"), ge=0, le=Decimal("400"))
     min_projected_net_reward: Decimal = Field(default=Decimal("350"), ge=Decimal("350"))
     planned_loss_buffer: Decimal = Field(default=Decimal("10"), ge=0)
-    profit_lock_activation_net: Decimal = Field(default=Decimal("400"), ge=0, le=Decimal("400"))
-    profit_lock_floor_net: Decimal = Field(default=Decimal("350"), ge=0)
-    early_booking_min_net: Decimal = Field(default=Decimal("300"), ge=0)
+    profit_lock_activation_net: Decimal = Field(
+        default=Decimal("400"), ge=Decimal("400"), le=Decimal("400")
+    )
+    profit_lock_floor_net: Decimal = Field(
+        default=Decimal("350"), ge=Decimal("350"), lt=Decimal("400")
+    )
+    early_booking_min_net: Decimal = Field(default=Decimal("300"), ge=Decimal("300"))
     early_booking_retrace_fraction: Decimal = Field(
         default=Decimal("0.30"),
         gt=0,
@@ -181,8 +185,10 @@ def migrate_configuration(values):
     _clamp("max_planned_loss", Decimal("0"), Decimal("400"))
     _clamp("min_projected_net_reward", Decimal("350"))
     _clamp("planned_loss_buffer", Decimal("0"))
-    _clamp("profit_lock_activation_net", Decimal("0"), Decimal("400"))
-    _clamp("profit_lock_floor_net", Decimal("0"))
+    # Existing v1/v2/v3 settings must migrate to the non-weakening guardrails.
+    changed["profit_lock_activation_net"] = "400"
+    _clamp("profit_lock_floor_net", Decimal("350"), Decimal("399.99"))
+    _clamp("early_booking_min_net", Decimal("300"))
     _clamp("monthly_loss_limit", Decimal("0"), Decimal("2000"))
     _clamp("daily_loss_fraction", Decimal("0.0001"), Decimal("0.1"))
     try:
