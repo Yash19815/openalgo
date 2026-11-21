@@ -175,3 +175,5 @@ ddgs>=9.16.0
 # greenlet>=1.0 with no upper bound.
 gunicorn>=25.0,<26
 eventlet==0.41.2
+reportlab==5.1.0
+pypdf==7.0.1
