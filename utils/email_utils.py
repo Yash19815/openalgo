@@ -5,9 +5,12 @@ This module provides email sending functionality for SMTP configuration testing
 and password reset notifications.
 """
 
+import os
 import smtplib
 import ssl
 from datetime import datetime
+from email import encoders
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -404,7 +407,60 @@ Sent by OpenAlgo
         return {"success": False, "message": error_msg}
 
 
-def send_email(recipient_email, subject, text_content, html_content=None, smtp_settings=None):
+#: Gmail's limit on attachments, applied to their base64-encoded size, which is
+#: what the mail server measures.
+MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
+
+
+class AttachmentTooLarge(ValueError):
+    """The encoded attachments exceed MAX_ATTACHMENT_BYTES."""
+
+
+def _encoded_size(data: bytes) -> int:
+    return 4 * ((len(data) + 2) // 3)
+
+
+def _attachment_parts(attachments):
+    """Validate ``(filename, bytes, mimetype)`` tuples and build their MIME parts.
+
+    Content is passed in memory; this module never opens a caller-supplied path.
+    """
+    checked = []
+    for filename, data, mimetype in attachments:
+        name = str(filename)
+        if (
+            not name
+            or name != os.path.basename(name)
+            or any(char in name for char in "\r\n\"\\/")
+            or not isinstance(data, bytes | bytearray)
+        ):
+            raise ValueError("Invalid attachment")
+        maintype, _, subtype = str(mimetype).partition("/")
+        if not maintype or not subtype:
+            raise ValueError("Invalid attachment type")
+        checked.append((name, bytes(data), maintype, subtype))
+    if sum(_encoded_size(data) for _, data, _, _ in checked) > MAX_ATTACHMENT_BYTES:
+        raise AttachmentTooLarge("Attachments exceed the 25 MB email limit")
+    parts = []
+    for name, data, maintype, subtype in checked:
+        part = MIMEBase(maintype, subtype)
+        part.set_payload(data)
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", "attachment", filename=name)
+        parts.append(part)
+    return parts
+
+
+def send_email(
+    recipient_email,
+    subject,
+    text_content,
+    html_content=None,
+    smtp_settings=None,
+    attachments=None,
+    timeout=None,
+    redact=False,
+):
     """
     Generic email sending function.
 
@@ -414,10 +470,29 @@ def send_email(recipient_email, subject, text_content, html_content=None, smtp_s
         text_content (str): Plain text content
         html_content (str, optional): HTML content
         smtp_settings (dict, optional): SMTP settings (fetched if not provided)
+        attachments (list, optional): ``(filename, bytes, mimetype)`` tuples. Their
+            base64 size must not exceed MAX_ATTACHMENT_BYTES; this is checked before
+            any connection is made.
+        timeout (float, optional): SMTP socket timeout. When omitted the existing
+            bound applies (SMTP_TIMEOUT_SECONDS under gthread, the socket default
+            elsewhere).
+        redact (bool): Background callers set this. Logs then carry exception types
+            only, never addresses or server text, and a failure result gains
+            ``error_type``.
 
     Returns:
         dict: Result dictionary with success status and message
     """
+
+    def failed(message, exc):
+        result = {"success": False, "message": message}
+        if redact:
+            result["error_type"] = type(exc).__name__
+        return result
+
+    def detail(exc):
+        return exc if not redact else type(exc).__name__
+
     server = None
     try:
         if not smtp_settings:
@@ -425,33 +500,43 @@ def send_email(recipient_email, subject, text_content, html_content=None, smtp_s
             if not smtp_settings:
                 return {"success": False, "message": "SMTP settings not configured"}
 
+        attachment_parts = _attachment_parts(attachments) if attachments else []
+
         # Create message
-        message = MIMEMultipart("alternative")
+        alternative = MIMEMultipart("alternative")
+        if attachment_parts:
+            message = MIMEMultipart("mixed")
+            message.attach(alternative)
+            for part in attachment_parts:
+                message.attach(part)
+        else:
+            message = alternative
         message["Subject"] = subject
         message["From"] = smtp_settings["smtp_from_email"]
         message["To"] = recipient_email
 
         # Add text content
         text_part = MIMEText(text_content, "plain")
-        message.attach(text_part)
+        alternative.attach(text_part)
 
         # Add HTML content if provided
         if html_content:
             html_part = MIMEText(html_content, "html")
-            message.attach(html_part)
+            alternative.attach(html_part)
 
         # Determine connection method based on port and settings
         smtp_port = smtp_settings["smtp_port"]
         use_tls = smtp_settings.get("smtp_use_tls", True)
 
         context = mail_tls_context()
+        bound = {"timeout": timeout} if timeout is not None else _smtp_timeout_kwargs()
 
         # Choose connection method based on port
         if smtp_port == 465:
             # Port 465 uses SSL from the start (SMTPS)
             logger.info(f"Using SMTP_SSL for port {smtp_port}")
             server = smtplib.SMTP_SSL(
-                smtp_settings["smtp_server"], smtp_port, context=context, **_smtp_timeout_kwargs()
+                smtp_settings["smtp_server"], smtp_port, context=context, **bound
             )
             # Send EHLO after SSL connection
             helo_hostname = smtp_settings.get("smtp_helo_hostname") or smtp_settings["smtp_server"]
@@ -459,7 +544,7 @@ def send_email(recipient_email, subject, text_content, html_content=None, smtp_s
         else:
             # Port 587 or others use SMTP with STARTTLS
             logger.info(f"Using SMTP with STARTTLS for port {smtp_port}")
-            server = smtplib.SMTP(smtp_settings["smtp_server"], smtp_port, **_smtp_timeout_kwargs())
+            server = smtplib.SMTP(smtp_settings["smtp_server"], smtp_port, **bound)
 
             # Send initial EHLO
             helo_hostname = smtp_settings.get("smtp_helo_hostname") or smtp_settings["smtp_server"]
@@ -479,20 +564,23 @@ def send_email(recipient_email, subject, text_content, html_content=None, smtp_s
         server.sendmail(smtp_settings["smtp_from_email"], recipient_email, message.as_string())
         server.quit()
 
-        logger.info(f"Email sent successfully to {recipient_email}")
+        if redact:
+            logger.info("Email sent successfully")
+        else:
+            logger.info(f"Email sent successfully to {recipient_email}")
         return {"success": True, "message": "Email sent successfully"}
 
     except smtplib.SMTPAuthenticationError as e:
         error_msg = "SMTP Authentication failed. Please check your username and password."
-        logger.error(f"SMTP Auth Error: {e}")
-        return {"success": False, "message": error_msg}
+        logger.error(f"SMTP Auth Error: {detail(e)}")
+        return failed(error_msg, e)
     except smtplib.SMTPServerDisconnected as e:
         error_msg = "SMTP Server disconnected. Please check your server settings."
-        logger.error(f"SMTP Disconnected: {e}")
-        return {"success": False, "message": error_msg}
+        logger.error(f"SMTP Disconnected: {detail(e)}")
+        return failed(error_msg, e)
     except smtplib.SMTPException as e:
         error_str = str(e)
-        logger.error(f"SMTP Exception: {e}")
+        logger.error(f"SMTP Exception: {detail(e)}")
 
         # Provide specific guidance for common Gmail errors
         if "Mail relay denied" in error_str and "smtp-relay.gmail.com" in smtp_settings.get(
@@ -504,14 +592,26 @@ def send_email(recipient_email, subject, text_content, html_content=None, smtp_s
         else:
             error_msg = f"SMTP Error: {error_str}"
 
-        return {"success": False, "message": error_msg}
+        return failed(error_msg, e)
     except ssl.SSLCertVerificationError as e:
-        logger.exception(f"Mail server certificate could not be verified: {e}")
-        return {"success": False, "message": CERTIFICATE_UNVERIFIED_MESSAGE}
+        if redact:
+            logger.error(f"Mail server certificate could not be verified: {detail(e)}")
+        else:
+            logger.exception(f"Mail server certificate could not be verified: {e}")
+        return failed(CERTIFICATE_UNVERIFIED_MESSAGE, e)
+    except AttachmentTooLarge as e:
+        logger.error(f"Email not sent: {detail(e)}")
+        return failed(str(e), e)
     except Exception as e:
+        if timeout is not None and isinstance(e, TimeoutError):
+            logger.error(f"Email sending timed out after {timeout}s: {detail(e)}")
+            return failed(MAIL_SERVER_UNREACHABLE_MESSAGE, e)
         if _timed_out(e):
-            logger.error(f"Email sending timed out after {SMTP_TIMEOUT_SECONDS}s: {e}")
-            return {"success": False, "message": MAIL_SERVER_UNREACHABLE_MESSAGE}
+            logger.error(f"Email sending timed out after {SMTP_TIMEOUT_SECONDS}s: {detail(e)}")
+            return failed(MAIL_SERVER_UNREACHABLE_MESSAGE, e)
+        if redact:
+            logger.error(f"Email sending failed: {detail(e)}")
+            return failed("Failed to send email", e)
         error_msg = f"Failed to send email: {str(e)}"
         logger.exception(f"Email sending failed: {e}")
         return {"success": False, "message": error_msg}

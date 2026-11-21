@@ -11,8 +11,10 @@ from extensions import socketio
 from services.nifty_algo import calendar as nifty_calendar
 from services.nifty_algo.config import StrategyConfig
 from services.nifty_algo.paper_executor import NiftyPaperExecutor
+from utils.logging import get_logger
 from utils.session import check_session_validity
 
+logger = get_logger(__name__)
 nifty_algo_bp = Blueprint("nifty_algo", __name__, url_prefix="/api/nifty-algo")
 
 
@@ -312,6 +314,87 @@ def shadow():
 def opportunities():
     """Research-only signal observations; never order authority."""
     return success(store().opportunities(session["user"]))
+
+
+_REPORT_FIELDS = (
+    "id", "kind", "variant", "period_key", "filename", "sha256", "size_bytes",
+    "generation_status", "generation_error_type", "delivery_status", "attempts",
+    "next_attempt_at", "last_error_type", "summary", "generated_at", "sent_at", "created_at",
+)
+
+
+def _masked_report(row):
+    """Only these fields leave the server: never the stored path or the claim token."""
+    return {key: row[key] for key in _REPORT_FIELDS}
+
+
+@nifty_algo_bp.route("/reports")
+@check_session_validity
+def reports():
+    from services.nifty_algo.reports import MAX_DELIVERY_ATTEMPTS, smtp_ready
+
+    try:
+        from database.settings_db import get_smtp_settings
+
+        smtp_configured = smtp_ready(get_smtp_settings())
+    except Exception as exc:
+        logger.warning("NIFTY report SMTP status unavailable: %s", type(exc).__name__)
+        smtp_configured = None
+    return success(
+        {
+            "reports": [_masked_report(row) for row in store().reports(session["user"])],
+            "smtp_configured": smtp_configured,
+            "max_attempts": MAX_DELIVERY_ATTEMPTS,
+        }
+    )
+
+
+@nifty_algo_bp.route("/reports/<int:report_id>/pdf")
+@check_session_validity
+def report_pdf(report_id):
+    from io import BytesIO
+
+    from flask import send_file
+
+    from services.nifty_algo.reports import resolve_report_path
+
+    row = store().report(session["user"], report_id)
+    if row is None or row["generation_status"] != "GENERATED" or not row["path"]:
+        return jsonify(status="error", code="REPORT_NOT_FOUND", message="Report not found"), 404
+    try:
+        # The path comes only from the owned row and must stay inside the reports root.
+        data = resolve_report_path(store().report_dir, row["path"]).read_bytes()
+    except (OSError, ValueError):
+        return jsonify(
+            status="error", code="REPORT_FILE_UNAVAILABLE", message="Report file unavailable"
+        ), 404
+    if sha256(data).hexdigest() != row["sha256"]:
+        return jsonify(
+            status="error", code="REPORT_FILE_MODIFIED", message="Report file does not match"
+        ), 409
+    return send_file(
+        BytesIO(data),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=row["filename"],
+    )
+
+
+@nifty_algo_bp.route("/reports/<int:report_id>/resend", methods=["POST"])
+@check_session_validity
+def resend_report(report_id):
+    from datetime import UTC, datetime
+
+    if store().report(session["user"], report_id) is None:
+        return jsonify(status="error", code="REPORT_NOT_FOUND", message="Report not found"), 404
+    row = store().resend_report(session["user"], report_id, datetime.now(UTC))
+    if row is None:
+        return jsonify(
+            status="error",
+            code="RESEND_REFUSED",
+            message="Only a failed or skipped delivery can be resent.",
+        ), 409
+    return success(_masked_report(row))
 
 
 @nifty_algo_bp.route("/activity")

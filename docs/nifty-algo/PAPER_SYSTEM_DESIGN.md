@@ -268,6 +268,66 @@ Pure functions in `protection.py`:
 - `nifty_algo_report` stores kind, period key (unique per kind), path, sha256,
   generation status and delivery attempts. Delivery is bounded, retried from the
   scheduler, and duplicate-safe by the unique period key.
+- Implementation decisions (Phase 6):
+  - Kinds and period keys (`services/nifty_algo/reports.py`): `DAILY`
+    (`YYYY-MM-DD`) for each approved `TRADING` session once its window has
+    closed plus 10 minutes; a session with no filled primary BUY and no closed
+    trade is the `ZERO_TRADE` variant of the same row and lists its reasons
+    (cooldown codes, monthly lock codes, `entry_rejected`/`data_blocked` codes,
+    `KILL_SWITCH`, `NO_ASSESSMENT_RECORDED`, `NO_ELIGIBLE_SIGNAL`,
+    `ENTRY_NOT_FILLED`, else `NO_ENTRY_ATTEMPTED`). `MILESTONE`
+    (`YYYY-MM-LOSS_LOCK` / `YYYY-MM-PROFIT_LOCK`) once a month row's lock is
+    latched; its id is appended to the reserved `milestone_report_ids`.
+    `MONTH_END` (`YYYY-MM`) after the close of the last approved `TRADING` day
+    of the IST month, so a month-end holiday moves it to the previous session.
+    Month-end and monthly are one report: same period, trigger and content.
+  - Triggers read only the approved calendar: weekends, holidays, special
+    sessions and years without an approved NFO calendar produce no daily or
+    month-end report. Lookback is 7 days, floored at the user's first
+    configuration revision, so a restart fills gaps without back-filling history.
+  - PDFs are ReportLab with `invariant=1`: the only time in the body is the
+    row's `created_at`, so the same period's inputs always give the same bytes
+    and sha256. Files live at `db/nifty_reports/<slug>-<sha256(user)[:12]>/<kind>/<period>.pdf`,
+    written to a temp file and `os.replace`d. The row stores the path relative
+    to the root; it is re-resolved and confined to the root on every read.
+  - `nifty_algo_report` (additive, `create_all`): `UNIQUE(user_id, kind,
+    period_key)`, generation PENDING/GENERATED/FAILED (3 attempts, exception
+    type only), delivery PENDING/SENT/FAILED/SKIPPED_NO_SMTP, `attempts`,
+    `next_attempt_at`, `last_error_type`, `claim_token`/`claimed_until`,
+    `sent_at`, a small `summary` JSON. Events `report_generated`,
+    `report_delivery` and `report_resend_requested` carry ids, codes and types.
+  - Delivery claim: one compare-and-set `UPDATE` (PENDING, generated, unclaimed
+    or lease expired, due, attempts below 5) sets a token, a 300 s lease and
+    increments `attempts`; only the winner sends, and only the token holder can
+    settle the row. A process that dies mid-send leaves the lease to expire and
+    the next tick retries (at-least-once after a crash, never two concurrent
+    sends); an expired claim at the last attempt ends as FAILED
+    (`DELIVERY_INTERRUPTED`). SENT rows are never claimed again.
+  - Retry policy: at most 5 attempts, backoff 1, 2, 4, 8 minutes after attempts
+    1 to 4, then FAILED. Missing SMTP fields or no user email mark the row
+    SKIPPED_NO_SMTP (`SMTP_NOT_CONFIGURED` / `RECIPIENT_UNAVAILABLE`) without
+    using an attempt; a failed settings read leaves it PENDING.
+  - SMTP settings come from the existing `settings_db.get_smtp_settings`; the
+    recipient is the OpenAlgo user's own email (`users.email`), as password
+    reset uses. No second SMTP store.
+  - `send_email` gains three optional keyword arguments: `attachments` (list of
+    `(filename, bytes, mimetype)`; content in memory, never a path, basename
+    and type validated; base64 size capped at 25 MB before connecting),
+    `timeout` (reports pass 20 s; omitted keeps the existing gthread-only bound)
+    and `redact` (type-only logs, no addresses, `error_type` in the failure
+    result). With none of them the message, logs and result are unchanged.
+  - Execution: a third runner job `nifty-paper:<hash>:reports` every 60 s
+    (`max_instances=1`, `coalesce`), inside an app context and
+    `session_cleanup()`. At most 3 PDFs and 1 email per tick. It stays on the
+    scheduler worker (a green thread under eventlet, where sockets are patched)
+    instead of a real OS thread; the protection and entry jobs never wait on it.
+    Reports never import order paths or the executor.
+  - API: `GET /api/nifty-algo/reports` (masked rows: file name only, never the
+    path or claim token, plus `smtp_configured` and `max_attempts`),
+    `GET /reports/<id>/pdf` (owned, GENERATED rows only; path confined to the
+    root and sha256 checked, else 404 / 409), `POST /reports/<id>/resend`
+    (session and global CSRF; compare-and-set from FAILED or SKIPPED_NO_SMTP to
+    PENDING with attempts reset, else 409 `RESEND_REFUSED`).
 
 ### Phase 7: hardening
 

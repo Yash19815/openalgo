@@ -35,6 +35,12 @@ const LABELS: Record<string, string> = {
   THRESHOLD_ADVERSE: 'Adverse threshold reached',
   WINDOW_45M: '45-minute window ended',
   SESSION_CUTOFF: 'Session cutoff reached',
+  // Zero-trade report reasons (Phase 6)
+  NO_ASSESSMENT_RECORDED: 'No signal assessment was recorded',
+  NO_ELIGIBLE_SIGNAL: 'No eligible signal in the session',
+  ENTRY_NOT_FILLED: 'Entry order expired or was not filled',
+  NO_ENTRY_ATTEMPTED: 'No entry was attempted',
+  KILL_SWITCH: 'Kill switch activated',
 }
 
 export function codeLabel(code: string): string {

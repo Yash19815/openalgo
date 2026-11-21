@@ -277,3 +277,47 @@ export async function requestMode(body: {
   const response = await webClient.post<{ status: string; data: TradingMode }>(`${base}/mode`, body)
   return response.data.data
 }
+
+// Reports (Phase 6) -----------------------------------------------------------
+
+export type ReportKind = 'DAILY' | 'MILESTONE' | 'MONTH_END'
+export type ReportDelivery = 'PENDING' | 'SENT' | 'FAILED' | 'SKIPPED_NO_SMTP'
+
+/** Masked report row: never a server path, only the file name. */
+export interface NiftyReport {
+  id: number
+  kind: ReportKind
+  variant: 'STANDARD' | 'ZERO_TRADE' | string
+  period_key: string
+  filename: string | null
+  sha256: string | null
+  size_bytes: number | null
+  generation_status: 'PENDING' | 'GENERATED' | 'FAILED'
+  generation_error_type: string | null
+  delivery_status: ReportDelivery
+  attempts: number
+  next_attempt_at: string | null
+  last_error_type: string | null
+  summary: { zero_trade_reasons?: string[]; [key: string]: unknown }
+  generated_at: string | null
+  sent_at: string | null
+  created_at: string
+}
+
+export interface ReportList {
+  reports: NiftyReport[]
+  smtp_configured: boolean | null
+  max_attempts: number
+}
+
+export function reportPdfUrl(id: number) {
+  return `${base}/reports/${id}/pdf`
+}
+
+export async function resendReport(id: number) {
+  const response = await webClient.post<{ status: string; data: NiftyReport }>(
+    `${base}/reports/${id}/resend`,
+    {}
+  )
+  return response.data.data
+}

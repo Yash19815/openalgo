@@ -23,10 +23,12 @@ flowchart TD
 `services/nifty_algo/runner.py` reuses the native Python strategy host's existing
 IST APScheduler. It does not upload a generic SDK trading script: that template
 routes orders according to Analyzer mode and conflicts with this feature's
-PAPER_ONLY boundary. Explicit monitor attachment creates two identifiable jobs
-per user: protection every second and entry work every five seconds. Feed/authentication checks run every five seconds; entry
+PAPER_ONLY boundary. Explicit monitor attachment creates three identifiable jobs
+per user: protection every second, entry work every five seconds and report
+generation plus bounded email delivery every minute. Feed/authentication checks run every five seconds; entry
 history is requested once per completed five-minute boundary. Protection does
-not wait for history downloads. The native scheduler owns job execution; this
+not wait for history downloads, and neither protection nor entries waits on
+SMTP. The native scheduler owns job execution; this
 feature creates no scheduler, broker session, private thread or polling loop.
 
 A durable 30-second owner lease fences competing application instances. Jobs

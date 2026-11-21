@@ -305,6 +305,38 @@ class NiftyMode(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False)
 
 
+class NiftyReport(Base):
+    """One PDF report per (user, kind, period). Generation and delivery are tracked
+    separately; ``claim_token`` with ``claimed_until`` is the compare-and-set claim
+    that makes a send happen once. ``path`` is relative to the reports root.
+    """
+
+    __tablename__ = "nifty_algo_report"
+    __table_args__ = (UniqueConstraint("user_id", "kind", "period_key"),)
+    id = Column(Integer, primary_key=True)
+    user_id = Column(String(255), nullable=False, index=True)
+    kind = Column(String(16), nullable=False)
+    variant = Column(String(16), nullable=False, default="STANDARD")
+    period_key = Column(String(32), nullable=False)
+    path = Column(String(255))
+    sha256 = Column(String(64))
+    size_bytes = Column(Integer)
+    generation_status = Column(String(12), nullable=False, default="PENDING")
+    generation_attempts = Column(Integer, nullable=False, default=0)
+    generation_error_type = Column(String(64))
+    delivery_status = Column(String(16), nullable=False, default="PENDING")
+    attempts = Column(Integer, nullable=False, default=0)
+    next_attempt_at = Column(DateTime(timezone=True))
+    last_error_type = Column(String(64))
+    claim_token = Column(String(32))
+    claimed_until = Column(DateTime(timezone=True))
+    summary = Column(JSON, nullable=False, default=dict)
+    generated_at = Column(DateTime(timezone=True))
+    sent_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
 MODE_HISTORY_LIMIT = 50
 
 
@@ -336,10 +368,11 @@ def _month_bounds(key):
 
 
 class NiftyStore:
-    def __init__(self, engine, calendar_blob_dir=None):
+    def __init__(self, engine, calendar_blob_dir=None, report_dir=None):
         self.engine = engine
         self.sessions = sessionmaker(bind=engine, expire_on_commit=False)
         self.calendar_blob_dir = Path(calendar_blob_dir or "db/nifty_calendar")
+        self.report_dir = Path(report_dir or "db/nifty_reports")
 
     def initialize(self):
         Base.metadata.create_all(self.engine)
@@ -2948,3 +2981,541 @@ class NiftyStore:
                 .limit(limit)
             )
             return [dict(row.payload) for row in rows]
+
+    # Reports ---------------------------------------------------------------
+    #
+    # Read-only over feature data. One row per (user, kind, period); generation
+    # and delivery advance only by compare-and-set updates, so two ticks or a
+    # restart can neither generate a second row nor send a report twice.
+
+    @staticmethod
+    def _report_dict(row):
+        def at(value):
+            return None if value is None else _instant(value)
+
+        return {
+            "id": row.id,
+            "kind": row.kind,
+            "variant": row.variant,
+            "period_key": row.period_key,
+            "path": row.path,
+            "filename": Path(row.path).name if row.path else None,
+            "sha256": row.sha256,
+            "size_bytes": row.size_bytes,
+            "generation_status": row.generation_status,
+            "generation_attempts": row.generation_attempts,
+            "generation_error_type": row.generation_error_type,
+            "delivery_status": row.delivery_status,
+            "attempts": row.attempts,
+            "next_attempt_at": at(row.next_attempt_at),
+            "last_error_type": row.last_error_type,
+            "claim_token": row.claim_token,
+            "claimed_until": at(row.claimed_until),
+            "summary": dict(row.summary or {}),
+            "generated_at": at(row.generated_at),
+            "sent_at": at(row.sent_at),
+            "created_at": at(row.created_at),
+            "updated_at": at(row.updated_at),
+        }
+
+    @staticmethod
+    def _report_where(user_id, report_id):
+        return (NiftyReport.user_id == user_id, NiftyReport.id == int(report_id))
+
+    def ensure_report(self, user_id, kind, period_key, now):
+        """Create the period's row once. Returns ``(row, created)``."""
+        def existing(db):
+            return db.scalar(
+                select(NiftyReport).where(
+                    NiftyReport.user_id == user_id,
+                    NiftyReport.kind == kind,
+                    NiftyReport.period_key == period_key,
+                )
+            )
+
+        try:
+            with self.sessions.begin() as db:
+                row = existing(db)
+                if row is not None:
+                    return self._report_dict(row), False
+                row = NiftyReport(
+                    user_id=user_id,
+                    kind=kind,
+                    variant="STANDARD",
+                    period_key=period_key,
+                    generation_status="PENDING",
+                    generation_attempts=0,
+                    delivery_status="PENDING",
+                    attempts=0,
+                    summary={},
+                    created_at=now,
+                    updated_at=now,
+                )
+                db.add(row)
+                db.flush()
+                result = self._report_dict(row)
+        except IntegrityError:
+            with self.sessions() as db:
+                row = existing(db)
+                if row is None:
+                    raise
+                return self._report_dict(row), False
+        return result, True
+
+    def reports(self, user_id, limit=100):
+        with self.sessions() as db:
+            rows = db.scalars(
+                select(NiftyReport)
+                .where(NiftyReport.user_id == user_id)
+                .order_by(NiftyReport.created_at.desc(), NiftyReport.id.desc())
+                .limit(limit)
+            )
+            return [self._report_dict(row) for row in rows]
+
+    def report(self, user_id, report_id):
+        with self.sessions() as db:
+            row = db.scalar(select(NiftyReport).where(*self._report_where(user_id, report_id)))
+            return None if row is None else self._report_dict(row)
+
+    def reports_needing_generation(self, user_id, max_attempts):
+        from sqlalchemy import or_
+
+        with self.sessions() as db:
+            rows = db.scalars(
+                select(NiftyReport)
+                .where(
+                    NiftyReport.user_id == user_id,
+                    or_(
+                        NiftyReport.generation_status == "PENDING",
+                        NiftyReport.generation_status == "FAILED",
+                    ),
+                    NiftyReport.generation_attempts < max_attempts,
+                )
+                .order_by(NiftyReport.id)
+            )
+            return [self._report_dict(row) for row in rows]
+
+    def complete_report_generation(
+        self, user_id, report_id, *, path, sha256, size_bytes, variant, summary, now
+    ):
+        with self.sessions.begin() as db:
+            changed = db.execute(
+                update(NiftyReport)
+                .where(
+                    *self._report_where(user_id, report_id),
+                    NiftyReport.generation_status != "GENERATED",
+                )
+                .values(
+                    generation_status="GENERATED",
+                    generation_attempts=NiftyReport.generation_attempts + 1,
+                    generation_error_type=None,
+                    path=path,
+                    sha256=sha256,
+                    size_bytes=size_bytes,
+                    variant=variant,
+                    summary=summary,
+                    generated_at=now,
+                    updated_at=now,
+                )
+            )
+            if changed.rowcount == 1:
+                row = db.scalar(
+                    select(NiftyReport).where(*self._report_where(user_id, report_id))
+                )
+                db.add(
+                    NiftyEvent(
+                        user_id=user_id,
+                        kind="report_generated",
+                        payload={
+                            "report_id": row.id,
+                            "kind": row.kind,
+                            "variant": variant,
+                            "period_key": row.period_key,
+                            "sha256": sha256,
+                        },
+                        created_at=now,
+                    )
+                )
+            return changed.rowcount == 1
+
+    def fail_report_generation(self, user_id, report_id, error_type, now):
+        with self.sessions.begin() as db:
+            db.execute(
+                update(NiftyReport)
+                .where(
+                    *self._report_where(user_id, report_id),
+                    NiftyReport.generation_status != "GENERATED",
+                )
+                .values(
+                    generation_status="FAILED",
+                    generation_attempts=NiftyReport.generation_attempts + 1,
+                    generation_error_type=str(error_type)[:64],
+                    updated_at=now,
+                )
+            )
+
+    def deliverable_reports(self, user_id, now, max_attempts, limit=10):
+        from sqlalchemy import or_
+
+        with self.sessions() as db:
+            rows = db.scalars(
+                select(NiftyReport)
+                .where(
+                    NiftyReport.user_id == user_id,
+                    NiftyReport.generation_status == "GENERATED",
+                    NiftyReport.delivery_status == "PENDING",
+                    NiftyReport.attempts < max_attempts,
+                    or_(NiftyReport.claimed_until.is_(None), NiftyReport.claimed_until <= now),
+                    or_(NiftyReport.next_attempt_at.is_(None), NiftyReport.next_attempt_at <= now),
+                )
+                .order_by(NiftyReport.id)
+                .limit(limit)
+            )
+            return [self._report_dict(row) for row in rows]
+
+    def claim_report_delivery(self, user_id, report_id, token, now, *, lease_seconds, max_attempts):
+        """Compare-and-set claim. Exactly one caller wins; the attempt is counted here."""
+        from sqlalchemy import or_
+
+        with self.sessions.begin() as db:
+            changed = db.execute(
+                update(NiftyReport)
+                .where(
+                    *self._report_where(user_id, report_id),
+                    NiftyReport.generation_status == "GENERATED",
+                    NiftyReport.delivery_status == "PENDING",
+                    NiftyReport.attempts < max_attempts,
+                    or_(NiftyReport.claimed_until.is_(None), NiftyReport.claimed_until <= now),
+                    or_(NiftyReport.next_attempt_at.is_(None), NiftyReport.next_attempt_at <= now),
+                )
+                .values(
+                    claim_token=token,
+                    claimed_until=now + timedelta(seconds=lease_seconds),
+                    attempts=NiftyReport.attempts + 1,
+                    updated_at=now,
+                )
+            )
+            if changed.rowcount != 1:
+                return None
+            return db.scalar(
+                select(NiftyReport.attempts).where(*self._report_where(user_id, report_id))
+            )
+
+    def finish_report_delivery(
+        self, user_id, report_id, token, now, *, sent, error_type=None, next_attempt_at=None
+    ):
+        """Settle a claimed attempt: SENT, PENDING again at ``next_attempt_at``, or FAILED."""
+        status = "SENT" if sent else ("PENDING" if next_attempt_at is not None else "FAILED")
+        with self.sessions.begin() as db:
+            changed = db.execute(
+                update(NiftyReport)
+                .where(
+                    *self._report_where(user_id, report_id),
+                    NiftyReport.claim_token == token,
+                    NiftyReport.delivery_status == "PENDING",
+                )
+                .values(
+                    delivery_status=status,
+                    claim_token=None,
+                    claimed_until=None,
+                    next_attempt_at=None if sent else next_attempt_at,
+                    last_error_type=None if sent else str(error_type or "UNKNOWN")[:64],
+                    sent_at=now if sent else None,
+                    updated_at=now,
+                )
+            )
+            if changed.rowcount == 1:
+                row = db.scalar(
+                    select(NiftyReport).where(*self._report_where(user_id, report_id))
+                )
+                db.add(
+                    NiftyEvent(
+                        user_id=user_id,
+                        kind="report_delivery",
+                        payload={
+                            "report_id": row.id,
+                            "kind": row.kind,
+                            "period_key": row.period_key,
+                            "status": status,
+                            "attempts": row.attempts,
+                            "error_type": row.last_error_type,
+                        },
+                        created_at=now,
+                    )
+                )
+            return changed.rowcount == 1
+
+    def skip_report_delivery(self, user_id, report_id, error_type, now):
+        from sqlalchemy import or_
+
+        with self.sessions.begin() as db:
+            changed = db.execute(
+                update(NiftyReport)
+                .where(
+                    *self._report_where(user_id, report_id),
+                    NiftyReport.generation_status == "GENERATED",
+                    NiftyReport.delivery_status == "PENDING",
+                    or_(NiftyReport.claimed_until.is_(None), NiftyReport.claimed_until <= now),
+                )
+                .values(
+                    delivery_status="SKIPPED_NO_SMTP",
+                    claim_token=None,
+                    claimed_until=None,
+                    next_attempt_at=None,
+                    last_error_type=str(error_type)[:64],
+                    updated_at=now,
+                )
+            )
+            return changed.rowcount == 1
+
+    def fail_interrupted_deliveries(self, user_id, now, max_attempts):
+        """A claim that expired after the last allowed attempt ends as FAILED."""
+        with self.sessions.begin() as db:
+            changed = db.execute(
+                update(NiftyReport)
+                .where(
+                    NiftyReport.user_id == user_id,
+                    NiftyReport.delivery_status == "PENDING",
+                    NiftyReport.attempts >= max_attempts,
+                    NiftyReport.claimed_until.is_not(None),
+                    NiftyReport.claimed_until <= now,
+                )
+                .values(
+                    delivery_status="FAILED",
+                    claim_token=None,
+                    claimed_until=None,
+                    last_error_type="DELIVERY_INTERRUPTED",
+                    updated_at=now,
+                )
+            )
+            return changed.rowcount
+
+    def resend_report(self, user_id, report_id, now):
+        """Reset delivery of a FAILED or SKIPPED_NO_SMTP report. Compare-and-set on status."""
+        with self.sessions.begin() as db:
+            changed = db.execute(
+                update(NiftyReport)
+                .where(
+                    *self._report_where(user_id, report_id),
+                    NiftyReport.generation_status == "GENERATED",
+                    NiftyReport.delivery_status.in_(("FAILED", "SKIPPED_NO_SMTP")),
+                )
+                .values(
+                    delivery_status="PENDING",
+                    attempts=0,
+                    next_attempt_at=None,
+                    claim_token=None,
+                    claimed_until=None,
+                    last_error_type=None,
+                    updated_at=now,
+                )
+            )
+            if changed.rowcount != 1:
+                return None
+            db.add(
+                NiftyEvent(
+                    user_id=user_id,
+                    kind="report_resend_requested",
+                    payload={"report_id": int(report_id)},
+                    created_at=now,
+                )
+            )
+        return self.report(user_id, report_id)
+
+    def report_months(self, user_id):
+        with self.sessions() as db:
+            rows = db.scalars(
+                select(NiftyMonth).where(NiftyMonth.user_id == user_id).order_by(NiftyMonth.month)
+            )
+            return [
+                {
+                    "month": row.month,
+                    "realized_net": str(row.realized_net),
+                    "loss_locked_at": _instant(row.loss_locked_at) if row.loss_locked_at else None,
+                    "profit_locked_at": (
+                        _instant(row.profit_locked_at) if row.profit_locked_at else None
+                    ),
+                    "lock_detail": dict(row.lock_detail or {}),
+                    "milestone_report_ids": list(row.milestone_report_ids or []),
+                }
+                for row in rows
+            ]
+
+    def link_milestone_report(self, user_id, month, report_id, now):
+        """Record a milestone report id on the month row once (reserved in Phase 3b)."""
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            row = db.get(NiftyMonth, (user_id, month))
+            if row is None or int(report_id) in (row.milestone_report_ids or []):
+                return False
+            row.milestone_report_ids = [*(row.milestone_report_ids or []), int(report_id)]
+            return True
+
+    def user_since(self, user_id):
+        """When the feature first saw this user: the first configuration revision."""
+        from sqlalchemy import func
+
+        with self.sessions() as db:
+            first = db.scalar(
+                select(func.min(NiftyConfiguration.created_at)).where(
+                    NiftyConfiguration.user_id == user_id
+                )
+            )
+        return None if first is None else datetime.fromisoformat(_instant(first))
+
+    def report_inputs(self, user_id, start, end):
+        """Plain, ordered facts for ``[start, end)``; the report renderer does no I/O."""
+        from sqlalchemy import or_
+
+        def amount(value):
+            return None if value is None else str(value)
+
+        with self.sessions() as db:
+            trades = [
+                {
+                    "symbol": row.symbol,
+                    "quantity": row.quantity,
+                    "entry_price": str(row.entry_price),
+                    "exit_price": str(row.exit_price),
+                    "gross": str(row.gross),
+                    "fees": str(row.fees),
+                    "net": str(row.net),
+                    "reason": row.reason,
+                    "opened_at": _instant(row.opened_at),
+                    "closed_at": _instant(row.closed_at),
+                }
+                for row in db.scalars(
+                    select(NiftyTrade)
+                    .where(
+                        NiftyTrade.user_id == user_id,
+                        NiftyTrade.closed_at >= start,
+                        NiftyTrade.closed_at < end,
+                    )
+                    .order_by(NiftyTrade.closed_at, NiftyTrade.id)
+                )
+            ]
+            buys = [
+                {"status": row.status, "filled": row.price is not None, "reason": row.reason}
+                for row in db.scalars(
+                    select(NiftyOrder)
+                    .where(
+                        NiftyOrder.user_id == user_id,
+                        NiftyOrder.side == "BUY",
+                        NiftyOrder.created_at >= start,
+                        NiftyOrder.created_at < end,
+                    )
+                    .order_by(NiftyOrder.created_at, NiftyOrder.order_id)
+                )
+            ]
+            decisions = [
+                {
+                    "eligible": bool(row.payload.get("eligible")),
+                    "side": row.payload.get("side"),
+                    "reasons": [
+                        str(item) for item in (row.payload.get("reasons") or []) if item
+                    ],
+                }
+                for row in db.scalars(
+                    select(NiftyDecision)
+                    .where(
+                        NiftyDecision.user_id == user_id,
+                        NiftyDecision.created_at >= start,
+                        NiftyDecision.created_at < end,
+                    )
+                    .order_by(NiftyDecision.created_at, NiftyDecision.decision_id)
+                )
+            ]
+            events = [
+                {"kind": row.kind, "payload": dict(row.payload or {})}
+                for row in db.scalars(
+                    select(NiftyEvent)
+                    .where(
+                        NiftyEvent.user_id == user_id,
+                        NiftyEvent.created_at >= start,
+                        NiftyEvent.created_at < end,
+                    )
+                    .order_by(NiftyEvent.id)
+                )
+            ]
+            shadows = [
+                {
+                    "kind": row.kind,
+                    "status": row.status,
+                    "symbol": row.symbol,
+                    "quantity": row.quantity,
+                    "net": amount(row.net),
+                    "additive": bool(row.additive),
+                    "exit_reason": row.exit_reason,
+                }
+                for row in db.scalars(
+                    select(NiftyShadowPosition)
+                    .where(
+                        NiftyShadowPosition.user_id == user_id,
+                        NiftyShadowPosition.opened_at >= start,
+                        NiftyShadowPosition.opened_at < end,
+                    )
+                    .order_by(NiftyShadowPosition.opened_at, NiftyShadowPosition.id)
+                )
+            ]
+            opportunities = [
+                {"direction": row.direction, "status": row.status, "outcome": row.outcome}
+                for row in db.scalars(
+                    select(NiftyOpportunity)
+                    .where(
+                        NiftyOpportunity.user_id == user_id,
+                        NiftyOpportunity.candle_end >= start,
+                        NiftyOpportunity.candle_end < end,
+                    )
+                    .order_by(NiftyOpportunity.candle_end, NiftyOpportunity.opportunity_id)
+                )
+            ]
+            first_day = start.astimezone(_IST).date().isoformat()
+            last_day = (end - timedelta(microseconds=1)).astimezone(_IST).date().isoformat()
+            cooldowns = [
+                {
+                    "loss_session": row.loss_session,
+                    "cooldown_session": row.cooldown_session,
+                    "realized_net": str(row.realized_net),
+                }
+                for row in db.scalars(
+                    select(NiftyCooldown)
+                    .where(
+                        NiftyCooldown.user_id == user_id,
+                        or_(
+                            (NiftyCooldown.loss_session >= first_day)
+                            & (NiftyCooldown.loss_session <= last_day),
+                            (NiftyCooldown.cooldown_session >= first_day)
+                            & (NiftyCooldown.cooldown_session <= last_day),
+                        ),
+                    )
+                    .order_by(NiftyCooldown.loss_session)
+                )
+            ]
+            cooldown_reasons = (
+                self._cooldown_reasons(db, user_id, first_day) if first_day == last_day else []
+            )
+            month = db.get(NiftyMonth, (user_id, _month_key(start)))
+            month_state = None
+            if month is not None:
+                month_state = {
+                    "month": month.month,
+                    "realized_net": str(month.realized_net),
+                    "loss_locked_at": (
+                        _instant(month.loss_locked_at) if month.loss_locked_at else None
+                    ),
+                    "profit_locked_at": (
+                        _instant(month.profit_locked_at) if month.profit_locked_at else None
+                    ),
+                    "lock_detail": dict(month.lock_detail or {}),
+                }
+        return {
+            "trades": trades,
+            "buys": buys,
+            "decisions": decisions,
+            "events": events,
+            "shadows": shadows,
+            "opportunities": opportunities,
+            "cooldowns": cooldowns,
+            "cooldown_reasons": cooldown_reasons,
+            "month": month_state,
+        }

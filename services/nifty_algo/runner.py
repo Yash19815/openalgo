@@ -523,6 +523,20 @@ class NiftyRunner:
                     raise OrderRefused(["NATIVE_SUBSCRIPTION_ACK_FAILED"])
         return key
 
+    def reports(self, now=None):
+        """Report generation and email delivery on their own job; SMTP never delays exits."""
+        if self.closed:
+            return None
+        from .reports import ReportService
+
+        try:
+            return ReportService(self.store, self.user_id, clock=self.clock).tick(
+                now or self.clock()
+            )
+        except Exception as exc:
+            logger.warning("NIFTY reports skipped: %s", type(exc).__name__)
+            return None
+
     def _native_assessment(self, config, now):
         key = self._native_feed(config, now)
         return assess_current(key, config, now, native=self.native, observation_only=False)
@@ -562,6 +576,13 @@ def _attach_runner(app, scheduler, user_id):
 
         return job
 
+    def scoped_reports():
+        from utils.db_sessions import session_cleanup
+
+        # Reads OpenAlgo's settings and user tables through their scoped sessions.
+        with app.app_context(), session_cleanup():
+            runner.reports()
+
     prefix = "nifty-paper:" + sha256(user_id.encode()).hexdigest()[:24]
     scheduler.add_job(
         scoped(runner.protect),
@@ -573,6 +594,7 @@ def _attach_runner(app, scheduler, user_id):
         misfire_grace_time=1,
         replace_existing=True,
     )
+    added = [prefix + ":protect"]
     try:
         scheduler.add_job(
             scoped(runner.evaluate),
@@ -584,8 +606,22 @@ def _attach_runner(app, scheduler, user_id):
             misfire_grace_time=1,
             replace_existing=True,
         )
+        added.append(prefix + ":entries")
+        # Reports run on their own job so a slow mail server never delays the
+        # protection or entry jobs.
+        scheduler.add_job(
+            scoped_reports,
+            "interval",
+            seconds=60,
+            id=prefix + ":reports",
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=30,
+            replace_existing=True,
+        )
     except Exception:
-        scheduler.remove_job(prefix + ":protect")
+        for job_id in reversed(added):
+            scheduler.remove_job(job_id)
         raise
     runners[user_id] = runner
     return runner
@@ -607,7 +643,7 @@ def restore_runners(app, scheduler):
         def shutdown():
             for user_id, runner in list(app.extensions.get("nifty_algo_runners", {}).items()):
                 prefix = "nifty-paper:" + sha256(user_id.encode()).hexdigest()[:24]
-                for suffix in (":entries", ":protect"):
+                for suffix in (":reports", ":entries", ":protect"):
                     if scheduler.get_job(prefix + suffix):
                         scheduler.remove_job(prefix + suffix)
                 runner.close()

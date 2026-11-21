@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   upload: vi.fn(),
   mode: vi.fn(),
   patch: vi.fn(),
+  resend: vi.fn(),
 }))
 vi.mock('./api', () => ({
   updateCalendarEntries: api.patch,
@@ -24,6 +25,8 @@ vi.mock('./api', () => ({
   approveCalendar: api.approve,
   rejectCalendar: api.reject,
   requestMode: api.mode,
+  resendReport: api.resend,
+  reportPdfUrl: (id: number) => `/api/nifty-algo/reports/${id}/pdf`,
   MAX_CALENDAR_BYTES: 2 * 1024 * 1024,
 }))
 vi.mock('@/components/socket/SocketProvider', () => ({
@@ -171,6 +174,59 @@ const opportunities = [
   },
 ]
 
+const reportRow = {
+  id: 11,
+  kind: 'DAILY',
+  variant: 'STANDARD',
+  period_key: '2026-03-09',
+  filename: '2026-03-09.pdf',
+  sha256: 'a'.repeat(64),
+  size_bytes: 2048,
+  generation_status: 'GENERATED',
+  generation_error_type: null,
+  delivery_status: 'SENT',
+  attempts: 1,
+  next_attempt_at: null,
+  last_error_type: null,
+  summary: { trades: 1 },
+  generated_at: '2026-03-09T10:10:00+00:00',
+  sent_at: '2026-03-09T10:11:00+00:00',
+  created_at: '2026-03-09T10:10:00+00:00',
+}
+
+const reports = {
+  smtp_configured: true,
+  max_attempts: 5,
+  reports: [
+    {
+      ...reportRow,
+      id: 12,
+      variant: 'ZERO_TRADE',
+      period_key: '2026-03-10',
+      filename: '2026-03-10.pdf',
+      delivery_status: 'FAILED',
+      attempts: 5,
+      last_error_type: 'SMTPAuthenticationError',
+      sent_at: null,
+      summary: { trades: 0, zero_trade_reasons: ['COOLDOWN_ACTIVE', 'NO_ELIGIBLE_SIGNAL'] },
+      // A field outside the masked contract must never be rendered.
+      path: SECRET,
+    },
+    reportRow,
+    {
+      ...reportRow,
+      id: 13,
+      kind: 'MILESTONE',
+      period_key: '2026-03-LOSS_LOCK',
+      filename: null,
+      generation_status: 'PENDING',
+      delivery_status: 'PENDING',
+      attempts: 0,
+      sent_at: null,
+    },
+  ],
+}
+
 function respond(overrides: Record<string, unknown> = {}) {
   const fixtures: Record<string, unknown> = {
     status: { mode: 'PAPER_ONLY', state: 'PAUSED', revision: 1, ready: false, readiness: [] },
@@ -179,6 +235,7 @@ function respond(overrides: Record<string, unknown> = {}) {
     mode,
     shadow,
     'research/opportunities': opportunities,
+    reports,
     configuration: {
       revision: 4,
       configuration_id: 'cfg',
@@ -562,5 +619,68 @@ describe('NIFTY paper-system panels', () => {
     expect(screen.getByText('410.20', { selector: 'td' })).toBeInTheDocument()
     expect(await screen.findByText('Favorable threshold reached')).toBeInTheDocument()
     expect(screen.getByText('THRESHOLD_FAVORABLE')).toBeInTheDocument()
+  })
+
+  it('lists reports with status, attempts, download links and zero-trade reasons', async () => {
+    const { container } = renderPage('reports')
+    const table = await screen.findByRole('table', { name: 'Generated reports' })
+    const rows = within(table).getAllByRole('row')
+    expect(rows).toHaveLength(4)
+    expect(within(rows[1]).getByText('Daily (zero-trade)')).toBeInTheDocument()
+    expect(within(rows[1]).getByText('FAILED')).toBeInTheDocument()
+    expect(within(rows[1]).getByText(/SMTPAuthenticationError/)).toBeInTheDocument()
+    expect(within(rows[1]).getByText('5 / 5')).toBeInTheDocument()
+    expect(within(rows[1]).getByText('Loss cooldown active for this session')).toBeInTheDocument()
+    expect(within(rows[1]).getByText('No eligible signal in the session')).toBeInTheDocument()
+    const download = within(rows[2]).getByRole('link', { name: 'Download 2026-03-09.pdf' })
+    expect(download).toHaveAttribute('href', '/api/nifty-algo/reports/11/pdf')
+    expect(within(rows[2]).getByText('SENT')).toBeInTheDocument()
+    expect(within(rows[3]).getByText('Milestone')).toBeInTheDocument()
+    expect(within(rows[3]).queryByRole('link')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /^Resend/ })).toHaveLength(1)
+    expect(screen.queryByText(/SMTP is not configured/)).not.toBeInTheDocument()
+    expect(container.textContent).not.toContain(SECRET)
+  })
+
+  it('resends only a failed report and shows a refusal', async () => {
+    api.resend.mockRejectedValue({
+      response: {
+        status: 409,
+        data: {
+          code: 'RESEND_REFUSED',
+          message: 'Only a failed or skipped delivery can be resent.',
+        },
+      },
+    })
+    renderPage('reports')
+    fireEvent.click(await screen.findByRole('button', { name: 'Resend 2026-03-10' }))
+    await waitFor(() => expect(api.resend).toHaveBeenCalledWith(12, expect.anything()))
+    expect(
+      await screen.findByText(
+        'Resend refused: Only a failed or skipped delivery can be resent. (RESEND_REFUSED)'
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('surfaces skipped delivery when SMTP is not configured', async () => {
+    api.resend.mockResolvedValue({ ...reportRow, id: 14, delivery_status: 'PENDING' })
+    respond({
+      reports: {
+        smtp_configured: false,
+        max_attempts: 5,
+        reports: [{ ...reportRow, id: 14, delivery_status: 'SKIPPED_NO_SMTP', attempts: 0 }],
+      },
+    })
+    renderPage('reports')
+    expect(await screen.findByText(/SMTP is not configured/)).toBeInTheDocument()
+    expect(screen.getByText('SKIPPED_NO_SMTP')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Resend 2026-03-09' }))
+    expect(await screen.findByText('Report 2026-03-09 queued for delivery.')).toBeInTheDocument()
+  })
+
+  it('shows an empty state before any report exists', async () => {
+    respond({ reports: { smtp_configured: true, max_attempts: 5, reports: [] } })
+    renderPage('reports')
+    expect(await screen.findByText('No reports generated yet.')).toBeInTheDocument()
   })
 })

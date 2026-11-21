@@ -5,6 +5,7 @@ import {
   BookOpen,
   CalendarDays,
   CandlestickChart,
+  FileText,
   FlaskConical,
   LayoutDashboard,
   Play,
@@ -40,6 +41,7 @@ import {
 import { CalendarBanner, CalendarPanel } from './CalendarPanel'
 import { KeySettings } from './KeySettings'
 import { Panel } from './parts'
+import { ReportsPanel } from './ReportsPanel'
 import { RiskLocksPanel } from './RiskLocksPanel'
 import { OpportunitiesPanel, ShadowPanel } from './ShadowResearchPanel'
 import { TradingModePanel } from './TradingModePanel'
@@ -52,6 +54,7 @@ const pages = [
   ['positions', 'Positions & Orders', BookOpen],
   ['performance', 'Performance', BarChart3],
   ['research', 'Shadow & Research', Telescope],
+  ['reports', 'Reports', FileText],
   ['configuration', 'Strategy Settings', Settings2],
   ['risk', 'Risk Management', ShieldCheck],
   ['calendar', 'Session Calendar', CalendarDays],
@@ -433,6 +436,7 @@ export default function Workspace() {
             <OpportunitiesPanel />
           </>
         )}
+        {page === 'reports' && <ReportsPanel />}
         {page === 'configuration' && <Configuration />}
         {page === 'risk' && (
           <>
