@@ -45,6 +45,7 @@ PERIOD_PATTERNS = {
 }
 REPORT_GRACE = timedelta(minutes=10)
 SCAN_DAYS_PER_TICK = 14  # Durable backlog scan, bounded per scheduler tick
+BLOCKED_RECHECKS_PER_TICK = 6  # Recheck unknown dates without starving fresh periods
 MAX_GENERATION_ATTEMPTS = 3
 MAX_DELIVERY_ATTEMPTS = 5
 BACKOFF_BASE_SECONDS = 60
@@ -559,6 +560,7 @@ class ReportService:
         self._sessions = {}
         self._scan_expected = None
         self._scan_next = None
+        self._scan_unblocked = []
 
     # Triggers --------------------------------------------------------------
 
@@ -590,8 +592,12 @@ class ReportService:
         return first.astimezone(IST).date() if first else None
 
     def due_periods(self, now):
-        since = self._since()
+        # Service instances may survive calendar amendments and repeated ticks.
+        # Never let a prior calendar/window result decide today's report eligibility.
+        self._sessions.clear()
         self._scan_expected = self._scan_next = None
+        self._scan_unblocked = []
+        since = self._since()
         if since is None:
             return []
         today = now.astimezone(IST).date()
@@ -602,34 +608,58 @@ class ReportService:
         due = []
         months = {today.strftime("%Y-%m"),
                   (today.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")}
+        unknown = {"CALENDAR_UNAPPROVED", "SESSION_WINDOW_UNAVAILABLE", "UNAVAILABLE"}
+
+        # The forward cursor never blocks on a historical unknown day. Instead,
+        # every unknown day gets a durable record and bounded periodic rechecks.
         if first <= today:
             self._scan_expected = stored
             last = min(today, first + timedelta(days=SCAN_DAYS_PER_TICK - 1))
             day = first
             while day <= last:
                 session = self._session(day)
-                if session["status"] in (
-                    "CALENDAR_UNAPPROVED", "SESSION_WINDOW_UNAVAILABLE", "UNAVAILABLE"
-                ):
-                    # Do not declare an undecidable historical day processed.
-                    break
-                if session["status"] == "TRADING":
+                if session["status"] in unknown:
+                    self.store.record_report_scan_block(
+                        self.user_id, day.isoformat(), session["status"], now
+                    )
+                elif session["status"] == "TRADING":
                     if not session.get("window") or now < self._closes_at(day):
-                        # Today's incomplete session must be reconsidered later.
+                        # Never consume an unfinished live session.
                         break
                     due.append(("DAILY", day.isoformat()))
                 months.add(day.strftime("%Y-%m"))
                 day += timedelta(days=1)
             self._scan_next = day.isoformat()
 
+        # Previously blocked dates are rechecked oldest-attempt-first. Only
+        # delete a block AFTER ensure_report has reserved any newly due period.
+        for blocked in self.store.report_scan_blocks(
+            self.user_id, BLOCKED_RECHECKS_PER_TICK
+        ):
+            blocked_day = date.fromisoformat(blocked["day"])
+            if blocked_day > today:
+                continue
+            session = self._session(blocked_day)
+            if session["status"] in unknown:
+                self.store.record_report_scan_block(
+                    self.user_id, blocked["day"], session["status"], now
+                )
+                continue
+            if session["status"] == "TRADING":
+                if not session.get("window") or now < self._closes_at(blocked_day):
+                    continue
+                if blocked_day >= since:
+                    due.append(("DAILY", blocked["day"]))
+            self._scan_unblocked.append(blocked["day"])
+            months.add(blocked_day.strftime("%Y-%m"))
+
+        # Never publish a monthly report if ANY date in that month is unknown.
+        # Calendar approval also rewinds the main cursor to re-evaluate history.
         for month in sorted(months):
-            # Month-end requires a complete, approved/dated session authority.
             if self.store.approved_calendar_version(self.user_id, int(month[:4])) is None:
                 continue
             sessions = [self._session(d) for d in _month_days(month)]
-            if any(row["status"] in (
-                "CALENDAR_UNAPPROVED", "SESSION_WINDOW_UNAVAILABLE", "UNAVAILABLE"
-            ) for row in sessions):
+            if any(row["status"] in unknown for row in sessions):
                 continue
             last = next(
                 (d for d in reversed(list(_month_days(month)))
@@ -643,7 +673,7 @@ class ReportService:
                 due.append(("MILESTONE", f"{month['month']}-LOSS_LOCK"))
             if month["profit_locked_at"]:
                 due.append(("MILESTONE", f"{month['month']}-PROFIT_LOCK"))
-        return due
+        return list(dict.fromkeys(due))
 
     # Generation ------------------------------------------------------------
 
@@ -697,6 +727,8 @@ class ReportService:
             self.store.advance_report_scan_cursor(
                 self.user_id, self._scan_expected, self._scan_next
             )
+        for day in self._scan_unblocked:
+            self.store.clear_report_scan_block(self.user_id, day)
         generated = []
         for row in self.store.reports_needing_generation(self.user_id, MAX_GENERATION_ATTEMPTS):
             if len(generated) >= GENERATIONS_PER_TICK:

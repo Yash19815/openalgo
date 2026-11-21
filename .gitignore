@@ -19,11 +19,12 @@ Thumbs.db
 .claude/settings.local.json
 .python-version
 config.ini
-.venvv
+.venv
 .cloudflared/*.json
-
+.pytest_tmp*/
 #DB Files, CSV Files and Log/Tmp Files
-
+apply*
+fix*
 # Temporary/debug files
 tmp/
 

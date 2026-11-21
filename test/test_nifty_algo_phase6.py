@@ -326,7 +326,7 @@ def test_report_backlog_scans_old_days_and_intermediate_months(tmp_path):
         value.engine.dispose()
 
 
-def test_unknown_session_window_does_not_consume_report_scan_day(store, monkeypatch):
+def test_unknown_session_window_is_recorded_and_retried(store, monkeypatch):
     class MissingMarketHours(Phase1MarketCalendar):
         @staticmethod
         def get_market_timing(exchange):
@@ -338,7 +338,89 @@ def test_unknown_session_window_does_not_consume_report_scan_day(store, monkeypa
     )
     service(store, Clock(AFTER_CLOSE), send=ok_send()).tick(AFTER_CLOSE)
     assert not [item for item in rows(store) if item["kind"] == "DAILY"]
-    assert store.report_scan_cursor(USER, SESSION) == SESSION.isoformat()
+    # Forward scanning may advance, but the undecidable session is retained.
+    assert store.report_scan_cursor(USER, SESSION) == (
+        SESSION + timedelta(days=1)
+    ).isoformat()
+    blocked = store.report_scan_status(USER)
+    assert blocked["blocked_count"] == 1
+    assert blocked["blocked_examples"] == [{
+        "day": SESSION.isoformat(), "reason": "SESSION_WINDOW_UNAVAILABLE"
+    }]
+
+    # When authoritative market hours recover, the day must be reconsidered.
+    monkeypatch.setattr(session_calendar, "_legacy_calendar", lambda: Phase1MarketCalendar())
+    service(store, Clock(AFTER_CLOSE), send=ok_send()).tick(AFTER_CLOSE)
+    assert store.report_scan_status(USER)["blocked_count"] == 0
+    assert only(store, "DAILY", SESSION.isoformat())["generation_status"] == "GENERATED"
+
+
+def test_report_scan_does_not_starve_later_year_on_unapproved_earlier_year(tmp_path):
+    value = make_store(tmp_path, "scan_blocked_year", holidays=[MONTH_END_HOLIDAY])
+    try:
+        now = datetime(2026, 1, 20, 10, 15, tzinfo=UTC)
+        for _ in range(4):
+            service(value, Clock(now), since=date(2025, 12, 29), send=ok_send()).tick(now)
+        status = value.report_scan_status(USER)
+        assert status["blocked_count"] >= 3
+        assert "2025-12-29" in {x["day"] for x in status["blocked_examples"]}
+        assert value.report_scan_cursor(USER, date(2025, 12, 29)) > "2026-01-10"
+        assert any(x["kind"] == "DAILY" and x["period_key"] == "2026-01-05"
+                   for x in rows(value))
+    finally:
+        value.engine.dispose()
+
+
+def test_report_generation_manual_retry_owned_and_csrf(client, store):
+    from services.nifty_algo.reports import MAX_GENERATION_ATTEMPTS
+    now = AFTER_CLOSE
+    report, _ = store.ensure_report(USER, "DAILY", SESSION.isoformat(), now)
+    for _ in range(MAX_GENERATION_ATTEMPTS - 1):
+        store.fail_report_generation(USER, report["id"], "ValueError", now)
+    url = f"/api/nifty-algo/reports/{report['id']}/retry-generation"
+    assert client.post(url).status_code == 400  # CSRF prevents unauthenticated POST
+    headers = _login(client)
+    assert client.post(url).status_code == 400  # CSRF
+    assert client.post(url, headers=headers).status_code == 409
+    store.fail_report_generation(USER, report["id"], "ValueError", now)
+    accepted = client.post(url, headers=headers)
+    assert accepted.status_code == 200
+    assert accepted.json["data"]["generation_status"] == "PENDING"
+    assert store.report(USER, report["id"])["generation_attempts"] == 0
+    assert client.post(url, headers=headers).status_code == 409
+    assert client.post("/api/nifty-algo/reports/999/retry-generation", headers=headers).status_code == 404
+    _login(client, "someone-else")
+    assert client.post(url, headers=_login(client, "someone-else")).status_code == 404
+    assert any(e["kind"] == "report_generation_retry_requested" for e in store.events(USER))
+
+
+def test_report_pagination_and_scan_status_are_user_scoped(client, store):
+    now = AFTER_CLOSE
+    for i in range(5):
+        store.ensure_report(USER, "DAILY", f"2026-11-{10+i:02d}", now + timedelta(seconds=i))
+    _login(client)
+    page1 = client.get("/api/nifty-algo/reports?limit=2&offset=0")
+    assert page1.status_code == 200
+    p1 = page1.json["data"]
+    assert [r["period_key"] for r in p1["reports"]] == ["2026-11-14", "2026-11-13"]
+    assert p1["pagination"]["next_offset"] == 2
+    page2 = client.get("/api/nifty-algo/reports?limit=2&offset=2").json["data"]
+    assert [r["period_key"] for r in page2["reports"]] == ["2026-11-12", "2026-11-11"]
+    assert client.get("/api/nifty-algo/reports?limit=0").status_code == 400
+    assert client.get("/api/nifty-algo/reports?offset=-1").status_code == 400
+    scan = client.get("/api/nifty-algo/reports/scan-status")
+    assert scan.status_code == 200 and scan.json["data"]["blocked_count"] == 0
+    _login(client, "someone-else")
+    assert client.get("/api/nifty-algo/reports").json["data"]["reports"] == []
+
+
+def test_report_session_cache_reloads_after_a_new_tick(store):
+    now = AFTER_CLOSE
+    runner = service(store, Clock(now), since=SESSION, send=ok_send())
+    runner._sessions[SESSION] = {"status": "UNAVAILABLE", "window": None}
+    found = runner.due_periods(now)
+    assert ("DAILY", SESSION.isoformat()) in found
+    assert runner._sessions[SESSION]["status"] == "TRADING"
 
 
 # Milestones ---------------------------------------------------------------------

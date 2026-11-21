@@ -350,6 +350,17 @@ class NiftyReportScan(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False)
 
 
+class NiftyReportScanBlock(Base):
+    """An unresolved IST session; scanned days must never disappear silently."""
+
+    __tablename__ = "nifty_algo_report_scan_block"
+    user_id = Column(String(255), primary_key=True)
+    day = Column(String(10), primary_key=True)
+    reason = Column(String(40), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    last_checked_at = Column(DateTime(timezone=True), nullable=False)
+
+
 MODE_HISTORY_LIMIT = 50
 
 
@@ -3121,12 +3132,18 @@ class NiftyStore:
                 return self._report_dict(row), False
         return result, True
 
-    def reports(self, user_id, limit=100):
+    def reports(self, user_id, limit=100, offset=0):
+        """Bounded user-owned report history; 1-based display pages via offset."""
+        if not isinstance(limit, int) or not 1 <= limit <= 400:
+            raise ValueError("Report page size must be 1..400")
+        if not isinstance(offset, int) or not 0 <= offset <= 1000000:
+            raise ValueError("Report offset must be 0..1000000")
         with self.sessions() as db:
             rows = db.scalars(
                 select(NiftyReport)
                 .where(NiftyReport.user_id == user_id)
                 .order_by(NiftyReport.created_at.desc(), NiftyReport.id.desc())
+                .offset(offset)
                 .limit(limit)
             )
             return [self._report_dict(row) for row in rows]
@@ -3420,6 +3437,100 @@ class NiftyStore:
                 )
             )
         return self.report(user_id, report_id)
+
+    def retry_report_generation(self, user_id, report_id, now, *, max_attempts):
+        """Manual retry for an exhausted failed PDF generation, never an email.
+
+        Compare-and-set against FAILED plus exhausted counter; only the owned
+        row can be reset. Existing SENT/GENERATED reports are never changed.
+        """
+        if not isinstance(max_attempts, int) or max_attempts < 1:
+            raise ValueError("Valid maximum generation attempts required")
+        with self.sessions.begin() as db:
+            changed = db.execute(
+                update(NiftyReport)
+                .where(
+                    *self._report_where(user_id, report_id),
+                    NiftyReport.generation_status == "FAILED",
+                    NiftyReport.generation_attempts >= max_attempts,
+                    NiftyReport.delivery_status == "PENDING",
+                )
+                .values(
+                    generation_status="PENDING",
+                    generation_attempts=0,
+                    generation_error_type=None,
+                    updated_at=now,
+                )
+            )
+            if changed.rowcount != 1:
+                return None
+            db.add(NiftyEvent(
+                user_id=user_id,
+                kind="report_generation_retry_requested",
+                payload={"report_id": int(report_id)},
+                created_at=now,
+            ))
+        return self.report(user_id, report_id)
+
+    def record_report_scan_block(self, user_id, day, reason, now):
+        """Persist an undecidable date without treating it as a trading day."""
+        day = str(day)
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            item = db.get(NiftyReportScanBlock, (user_id, day))
+            if item is None:
+                db.add(NiftyReportScanBlock(
+                    user_id=user_id, day=day, reason=str(reason)[:40],
+                    created_at=now, last_checked_at=now,
+                ))
+            else:
+                item.reason = str(reason)[:40]
+                item.last_checked_at = now
+
+    def report_scan_blocks(self, user_id, limit=6):
+        """Oldest-check-first recheck order prevents one bad day starving others."""
+        with self.sessions() as db:
+            items = db.scalars(
+                select(NiftyReportScanBlock)
+                .where(NiftyReportScanBlock.user_id == user_id)
+                .order_by(NiftyReportScanBlock.last_checked_at,
+                          NiftyReportScanBlock.day)
+                .limit(limit)
+            )
+            return [{"day": row.day, "reason": row.reason} for row in items]
+
+    def clear_report_scan_block(self, user_id, day):
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            row = db.get(NiftyReportScanBlock, (user_id, str(day)))
+            if row is None:
+                return False
+            db.delete(row)
+            return True
+
+    def report_scan_status(self, user_id):
+        """Read-only and user-scoped. No history or trading state is exposed."""
+        from sqlalchemy import func
+
+        with self.sessions() as db:
+            cursor = db.get(NiftyReportScan, user_id)
+            count = db.scalar(
+                select(func.count()).select_from(NiftyReportScanBlock)
+                .where(NiftyReportScanBlock.user_id == user_id)
+            )
+            blocked = db.scalars(
+                select(NiftyReportScanBlock)
+                .where(NiftyReportScanBlock.user_id == user_id)
+                .order_by(NiftyReportScanBlock.day)
+                .limit(10)
+            )
+            return {
+                "next_day": cursor.next_day if cursor else None,
+                "blocked_count": int(count or 0),
+                "blocked_examples": [
+                    {"day": x.day, "reason": x.reason} for x in blocked
+                ],
+            }
 
     def report_scan_cursor(self, user_id, since):
         """Create/read durable scan cursor using the established per-user lock."""

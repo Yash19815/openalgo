@@ -318,7 +318,7 @@ def opportunities():
 
 _REPORT_FIELDS = (
     "id", "kind", "variant", "period_key", "filename", "sha256", "size_bytes",
-    "generation_status", "generation_error_type", "delivery_status", "attempts",
+    "generation_status", "generation_attempts", "generation_error_type", "delivery_status", "attempts",
     "next_attempt_at", "last_error_type", "summary", "generated_at", "sent_at", "created_at",
 )
 
@@ -340,9 +340,22 @@ def reports():
     except Exception as exc:
         logger.warning("NIFTY report SMTP status unavailable: %s", type(exc).__name__)
         smtp_configured = None
+    try:
+        limit = int(request.args.get("limit", "100"))
+        offset = int(request.args.get("offset", "0"))
+    except (TypeError, ValueError):
+        return jsonify(status="error", code="INVALID_PAGE"), 400
+    if not 1 <= limit <= 100 or not 0 <= offset <= 1000000:
+        return jsonify(status="error", code="INVALID_PAGE"), 400
+    fetched = store().reports(session["user"], limit=limit + 1, offset=offset)
+    more = len(fetched) > limit
     return success(
         {
-            "reports": [_masked_report(row) for row in store().reports(session["user"])],
+            "reports": [_masked_report(row) for row in fetched[:limit]],
+            "pagination": {
+                "limit": limit, "offset": offset,
+                "next_offset": offset + limit if more else None,
+            },
             "smtp_configured": smtp_configured,
             "max_attempts": MAX_DELIVERY_ATTEMPTS,
         }
@@ -395,6 +408,33 @@ def resend_report(report_id):
             message="Only a failed or skipped delivery can be resent.",
         ), 409
     return success(_masked_report(row))
+
+
+@nifty_algo_bp.route("/reports/<int:report_id>/retry-generation", methods=["POST"])
+@check_session_validity
+def retry_report_generation(report_id):
+    from datetime import UTC, datetime
+    from services.nifty_algo.reports import MAX_GENERATION_ATTEMPTS
+
+    if store().report(session["user"], report_id) is None:
+        return jsonify(status="error", code="REPORT_NOT_FOUND", message="Report not found"), 404
+    row = store().retry_report_generation(
+        session["user"], report_id, datetime.now(UTC),
+        max_attempts=MAX_GENERATION_ATTEMPTS,
+    )
+    if row is None:
+        return jsonify(
+            status="error", code="GENERATION_RETRY_REFUSED",
+            message="Only a failed report with exhausted generation attempts can be retried.",
+        ), 409
+    return success(_masked_report(row))
+
+
+@nifty_algo_bp.route("/reports/scan-status")
+@check_session_validity
+def report_scan_status():
+    """Read-only visibility into unresolved historical report periods."""
+    return success(store().report_scan_status(session["user"]))
 
 
 @nifty_algo_bp.route("/activity")
