@@ -3,6 +3,107 @@
 All strategy market inputs used in this session are explicitly deterministic
 offline fixtures. No real historical or live-market evidence is claimed.
 
+## Phase 7 verification — 21 November 2026
+
+Final hardening checks against `4ff43de2c` plus the Phase 7 working diff:
+
+- Linux Python 3.12.12: **311 passed** in 72.06 s: all 283 NIFTY
+  tests plus 28 neighboring email/SMTP tests. Command:
+  `.venv/bin/python -m pytest test/test_nifty_algo_*.py test/test_email_functionality_pytest.py test/test_smtp_error_messages.py test/test_smtp_certificate_verification.py test/test_gthread_messaging_email.py -o addopts="" --timeout=120 -rfs`.
+- Full Linux runtime gate: **1,456 passed, 3 skipped** in 805.23 s.
+  Command: `.venv/bin/python -m pytest test/test_gthread_*.py -o addopts="" --timeout=120 -rfs`.
+  All three skips are documentation checks reporting no threading note about
+  greenlets. The checkout and virtual environment reside in `/work` on the
+  container filesystem; the container runs with `--init` to reap orphaned
+  children. The direct-install eventlet test explicitly isolates Docker
+  detection; the proxy orphan assertion remains unchanged. The eight NIFTY
+  check-then-act sites were reviewed for transaction locking/object ownership.
+  Normalized hashes of the changed Python files, reviewed-site file and Groww
+  data module match the Windows checkout.
+- Windows Python 3.12.11: **310 passed, 1 failed** in 1,199.13 s.
+  The sole failure is the unchanged email diagnostic's
+  `test_cli_help_does_not_require_pytest`: its subprocess exceeded 10 seconds.
+  That same test passed in the Linux run above. Pytest cache permission
+  warnings and the existing strategy-host atexit closed-stream logging error
+  also occurred; the logging error recurred after successful Linux tests.
+  A later isolated Windows diagnostic run using a writable `--basetemp` and
+  `-p no:cacheprovider` passed in 5.00 s without changing the subprocess timeout.
+  This does not replace the earlier full-run result.
+- Windows Node 26.2.0: **26 NIFTY workspace tests passed** in 66.97 s with
+  `node --no-experimental-webstorage node_modules/vitest/vitest.mjs run src/features/nifty-algo --pool=threads --maxWorkers=1`.
+  Fork-pool runs could not start workers within their timeout. An attempted
+  `npx --package=node@24.22.1` still resolved Node 26.2.0 and is not evidence
+  of supported-Node validation.
+- `node node_modules/typescript/bin/tsc -b` passed; production Vite build
+  passed in 1m47s (8,346 modules) with output in `tmp/nifty-phase7-build`.
+  Existing unresolved-runtime asset, plugin timing and large-chunk warnings
+  remain. Tracked `frontend/dist` files were not rewritten.
+- Ruff passed for all NIFTY services, database, blueprint, tests, the SMTP
+  helper and the changed eventlet test; `git diff --check` passed.
+
+Delivery audit regressions reproduce missing events for both expired claims and
+`SKIPPED_NO_SMTP`, and the ability to clear an expired claim through the skip
+method. Recovery and skip now record their outcome in the same transaction;
+repeated calls create no duplicate event. Skipping requires no claim token or
+lease, preserving the unknown-outcome hold until explicit recovery.
+
+The resource review was static: report DB operations use session contexts,
+PDF writes close descriptors and unlink temporary files on failure, SMTP closes
+in `finally` after success or failure, and native settings/user sessions are
+removed at the report scheduler boundary. The report service and its calendar
+cache are recreated per tick; no new persistent thread, executor or registry was
+introduced. This is not a measured long-running resource soak.
+
+The broader frontend suite is **not green** under this installed Node version,
+which is outside `package.json`'s supported range. Earlier full runs recorded
+3,112 passes/588 failures; disabling experimental web storage improved this
+to 3,683 passes, six timeouts and 11 skips, with seven failing files:
+`openscriptStudiesChart.test.ts`, `openscriptHighlight.test.ts`,
+`ChartDataDialog.test.tsx`, `PriceScaleMenu.test.tsx`, `AgentChat.retry.test.tsx`,
+`Message.viz.test.tsx`, and `VizBlock.test.tsx`. Shared implementation and
+assertions were not changed to mask those failures. No full-repository backend
+or supported-Node full-frontend pass is claimed.
+
+These are offline runtime and fixture checks. Genuine broker/feed startup,
+extended forward paper observation and real SMTP deliverability remain
+operator acceptance work.
+
+### Earlier pre-hardening run
+
+Run on the `feat/nifty-paper-trading-system` branch at `4ff43de2c` (Windows
+checkout, `uv run pytest`, Node 26.2.0, npm + `package-lock.json`).
+
+- **Feature suite: 280 passed** across all 15 `test/test_nifty_algo_*.py` files
+  (55.88 s): v2 47, phase6 25, phase5 25, phase4 28, phase1 20, phase2 14,
+  phase3b 12, calendar 12, pipeline 15, core 18, foundation 11, native_data 19,
+  paper_executor 15, assessment 12, research 7.
+- **Neighboring suites: 43 passed** — `test_nifty_algo_pipeline.py`,
+  `test_email_functionality_pytest.py`, `test_smtp_error_messages.py`,
+  `test_smtp_certificate_verification.py`,
+  `test_gthread_messaging_email.py`. `test_email_functionality.py` is a manual
+  diagnostic script with no collectable tests.
+- **Ruff clean**: `services/nifty_algo/`, `database/nifty_algo_db.py`,
+  `blueprints/nifty_algo.py`, `utils/email_utils.py`, `test_nifty_algo_*.py`.
+- **Frontend: 26 vitest tests passed** (`Workspace.test.tsx` 7,
+  `Panels.test.tsx` 19). `npm run build` (`tsc -b && vite build`) passed in
+  2m39s, 8,346 modules; same existing unresolved-runtime asset and large-chunk
+  warnings as before. Generated `frontend/dist` changes were restored, as
+  before.
+- **Environment caveat:** the shared `%TEMP%\pytest-of-hp` directory was owned
+  by another context (WinError 5), causing 156 setup `PermissionError`s on the
+  first run. All suites were run with `--basetemp` pointed at a writable
+  directory; this is a machine issue, not a code issue.
+- `git status` clean and `git diff --check` clean before and after.
+- Safety invariants confirmed by grep (no order API anywhere in
+  `services/nifty_algo/`; `LiveAdapterStub` submit always refuses;
+  `live_readiness` always appends `LIVE_NOT_READY`). Evidence is listed in
+  `PAPER_SYSTEM_DESIGN.md` §5.
+- Unchanged since earlier runs: no Linux eventlet/gthread rehearsal, no real
+  broker session, no historical replay. The pre-existing Python-host atexit
+  logging error (`I/O operation on closed file` from
+  `blueprints/python_strategy.py` cleanup) still prints after the suite exits;
+  it does not affect the result.
+
 ## Measured checks on 19–20 November 2026
 
 - Baseline: 78 existing NIFTY tests passed on clean `main` at `d25122f2f`.

@@ -3,14 +3,39 @@
 Use the existing OpenAlgo installation and `/nifty-algo` route. No second
 frontend, database server, broker account or Analyzer setting is needed.
 
+## Paper-mode startup (the only supported mode)
+
+Prerequisites before the first session:
+
+- **Approved NSE calendar.** Upload the year's NSE trading-holiday PDF through
+  the workspace calendar panel (`POST /api/nifty-algo/calendar/upload`, then
+  review and `.../approve`). Entries refuse `CALENDAR_UNAPPROVED` until a
+  version is approved; uploads are never auto-approved.
+- **SMTP settings (reports only).** Configure SMTP under OpenAlgo settings
+  (`settings_db`) and a user email for daily/milestone/month-end PDF delivery.
+  Without it reports still generate and are listed, marked `SKIPPED_NO_SMTP`;
+  `POST /api/nifty-algo/reports/<id>/resend` retries after SMTP is fixed.
+  `DELIVERY_OUTCOME_UNKNOWN` means an acknowledgement was lost or a delivery
+  claim expired after interruption. Automatic retry stops because the message
+  may already be in the mailbox. Check the mailbox before requesting a manual
+  resend. An SMTP acceptance followed by a failed `QUIT` remains `SENT`.
+- **Native scheduler and market data.** The Python strategy host's APScheduler
+  must be running (normal app startup) and the native Angel market-data
+  connection authenticated with today's full NFO master downloaded.
+- **Trading mode.** Default is PAPER. `GET /api/nifty-algo/mode` shows the
+  mode, revision and masked Live readiness; LIVE stays `LIVE_NOT_READY` —
+  the workspace cannot enable it.
+
+Then:
+
 1. Back up the existing main database through the normal OpenAlgo procedure.
 2. Build production assets with the existing `npm run build --prefix frontend` command, then start the existing application with its declared Python/frontend environment.
 3. Configure the native Angel market-data connection and download today's full NFO master.
 4. Verify the OpenAlgo NFO calendar, source timestamps, genuine futures volume, and complete CE/PE expiry subscriptions.
 5. Open the NIFTY workspace and review the migrated v2 configuration. Migration preserves history and pauses entries.
-6. Select **Connect paper monitor**. This calls the authenticated, CSRF-protected `POST /api/nifty-algo/runner` endpoint and attaches named jobs on the native Python strategy scheduler.
+6. Select **Connect paper monitor**. This calls the authenticated, CSRF-protected `POST /api/nifty-algo/runner` endpoint and attaches three named jobs per user on the native scheduler: `:protect` every second, `:entries` every five seconds, `:reports` every minute.
 7. Review readiness, five indicator states, PCR scope and rejection reasons. Start remains disabled until the backend's current readiness passes.
-8. Start during the allowed session/window. New entries still require a newly completed qualifying bar and final atomic risk approval.
+8. Start during the allowed session/window (entries 10:30–14:45 IST, flat by 15:10). New entries still require a newly completed qualifying bar and final atomic risk approval — at most one primary BUY and ₹400 planned loss per session.
 
 `POST /api/nifty-algo/strategy/start` checks revision, runner lease, data
 readiness, configuration identity, reconciliation and persistent controls.

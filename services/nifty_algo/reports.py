@@ -704,7 +704,7 @@ class ReportService:
         return (Path(row["path"]).name, data, "application/pdf")
 
     def deliver_due(self, now):
-        self.store.fail_interrupted_deliveries(self.user_id, now, MAX_DELIVERY_ATTEMPTS)
+        self.store.fail_interrupted_deliveries(self.user_id, now)
         rows = self.store.deliverable_reports(self.user_id, now, MAX_DELIVERY_ATTEMPTS)
         if not rows:
             return []
@@ -736,22 +736,30 @@ class ReportService:
             if attempts is None:
                 continue
             error_type = None
+            retry_safe = True
+            sending = False
             try:
                 subject, text = self._message(row)
+                attachment = self._attachment(row)
+                sending = True
                 result = self.send(
                     recipient,
                     subject,
                     text,
                     smtp_settings=settings,
-                    attachments=[self._attachment(row)],
+                    attachments=[attachment],
                     timeout=SMTP_TIMEOUT_SECONDS,
                     redact=True,
                 )
                 sent = bool(result and result.get("success"))
                 if not sent:
                     error_type = (result or {}).get("error_type") or "SMTP_SEND_FAILED"
+                    retry_safe = bool(result and result.get("retry_safe"))
             except Exception as exc:
                 sent, error_type = False, type(exc).__name__
+                retry_safe = not sending
+            if not sent and not retry_safe:
+                error_type = "DELIVERY_OUTCOME_UNKNOWN"
             if error_type:
                 logger.warning("NIFTY report delivery failed: %s", error_type)
             finished = self.clock()
@@ -764,7 +772,7 @@ class ReportService:
                 error_type=error_type,
                 next_attempt_at=(
                     None
-                    if sent or attempts >= MAX_DELIVERY_ATTEMPTS
+                    if sent or not retry_safe or attempts >= MAX_DELIVERY_ATTEMPTS
                     else finished + backoff(attempts)
                 ),
             )

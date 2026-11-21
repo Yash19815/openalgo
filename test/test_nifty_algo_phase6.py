@@ -478,8 +478,79 @@ def test_attachment_size_limit_is_enforced_before_connecting(monkeypatch):
     connect.assert_not_called()
 
 
+def test_accepted_report_is_not_retried_when_quit_disconnects(store, monkeypatch):
+    class DisconnectOnQuit(RecordingSMTP):
+        def quit(self):
+            raise smtplib.SMTPServerDisconnected("connection closed after acceptance")
+
+    RecordingSMTP.instances = []
+    monkeypatch.setattr(email_utils.smtplib, "SMTP", DisconnectOnQuit)
+    clock = Clock(AFTER_CLOSE)
+    service(store, clock).tick(clock.now)
+    clock.now += timedelta(minutes=10)
+    service(store, clock).tick(clock.now)
+    assert only(store, "DAILY")["delivery_status"] == "SENT"
+    assert len(RecordingSMTP.instances) == 1
+    assert RecordingSMTP.instances[0].closed
+
+
+def test_report_with_unknown_smtp_outcome_requires_manual_retry(store, monkeypatch):
+    class LostAcknowledgement(RecordingSMTP):
+        def sendmail(self, sender, recipient, message):
+            super().sendmail(sender, recipient, message)
+            raise TimeoutError("final DATA acknowledgement lost")
+
+    RecordingSMTP.instances = []
+    monkeypatch.setattr(email_utils.smtplib, "SMTP", LostAcknowledgement)
+    clock = Clock(AFTER_CLOSE)
+    service(store, clock).tick(clock.now)
+    clock.now += timedelta(minutes=10)
+    service(store, clock).tick(clock.now)
+    row = only(store, "DAILY")
+    assert row["delivery_status"] == "FAILED"
+    assert row["last_error_type"] == "DELIVERY_OUTCOME_UNKNOWN"
+    assert row["next_attempt_at"] is None
+    assert len(RecordingSMTP.instances) == 1
+    assert RecordingSMTP.instances[0].closed
+
+
+def test_expired_delivery_claim_cannot_be_automatically_reclaimed(store):
+    service(store, Clock(AFTER_CLOSE)).generate_due(AFTER_CLOSE)
+    row = only(store, "DAILY")
+    assert store.claim_report_delivery(
+        USER, row["id"], "crashed", AFTER_CLOSE, lease_seconds=300, max_attempts=5
+    ) == 1
+    later = AFTER_CLOSE + timedelta(seconds=301)
+    assert store.claim_report_delivery(
+        USER, row["id"], "new", later, lease_seconds=300, max_attempts=5
+    ) is None
+    # Missing configuration must not erase an unresolved delivery claim.
+    assert not store.skip_report_delivery(USER, row["id"], "SMTP_NOT_CONFIGURED", later)
+    sender = ok_send()
+    service(store, Clock(later), send=sender).deliver_due(later)
+    sender.assert_not_called()
+    row = only(store, "DAILY")
+    assert row["delivery_status"] == "FAILED"
+    assert row["last_error_type"] == "DELIVERY_OUTCOME_UNKNOWN"
+    # Expiry is a durable delivery outcome and must have the same audit trail
+    # as a sender's acknowledgement, exactly once even across recovery ticks.
+    assert store.fail_interrupted_deliveries(USER, later) == 0
+    outcomes = [
+        event
+        for event in store.events(USER)
+        if event["kind"] == "report_delivery"
+        and event["payload"]["report_id"] == row["id"]
+    ]
+    assert len(outcomes) == 1
+    assert outcomes[0]["payload"]["status"] == "FAILED"
+    assert outcomes[0]["payload"]["error_type"] == "DELIVERY_OUTCOME_UNKNOWN"
+
+
 def test_failure_retries_with_backoff_then_fails(store):
-    failing = Mock(return_value={"success": False, "message": "x", "error_type": "SMTPServerDisconnected"})
+    failing = Mock(return_value={
+        "success": False, "message": "x", "error_type": "SMTPServerDisconnected",
+        "retry_safe": True,  # Connection failed before message transmission.
+    })
     clock = Clock(AFTER_CLOSE)
     service(store, clock, send=failing).tick(AFTER_CLOSE)
     row = only(store, "DAILY")
@@ -528,7 +599,7 @@ def test_double_tick_raced_at_the_claim_write_sends_once(store, monkeypatch):
     assert row["delivery_status"] == "SENT" and row["attempts"] == 1
 
 
-def test_restart_does_not_resend_and_interrupted_claim_retries_after_lease(store, monkeypatch):
+def test_restart_does_not_resend_and_interrupted_claim_is_held(store, monkeypatch):
     send = ok_send()
     service(store, Clock(AFTER_CLOSE), send=send).tick(AFTER_CLOSE)
     assert send.call_count == 1
@@ -537,7 +608,7 @@ def test_restart_does_not_resend_and_interrupted_claim_retries_after_lease(store
         service(store, Clock(later), send=send).tick(later)
     assert send.call_count == 1 and only(store, "DAILY")["delivery_status"] == "SENT"
 
-    # A process that dies after claiming leaves the claim to expire, never to double-send.
+    # A process may die after SMTP accepts but before the ledger settles.
     report = store.ensure_report(USER, "MONTH_END", "2026-10", AFTER_CLOSE)[0]
     store.complete_report_generation(
         USER, report["id"], path="x/month_end/2026-10.pdf", sha256="0" * 64, size_bytes=1,
@@ -547,8 +618,10 @@ def test_restart_does_not_resend_and_interrupted_claim_retries_after_lease(store
         USER, report["id"], "dead", AFTER_CLOSE, lease_seconds=300, max_attempts=5
     ) == 1
     assert store.deliverable_reports(USER, AFTER_CLOSE + timedelta(seconds=299), 5) == []
-    expired = store.deliverable_reports(USER, AFTER_CLOSE + timedelta(seconds=300), 5)
-    assert [r["id"] for r in expired] == [report["id"]] and expired[0]["attempts"] == 1
+    expired_at = AFTER_CLOSE + timedelta(seconds=300)
+    assert store.deliverable_reports(USER, expired_at, 5) == []
+    assert store.fail_interrupted_deliveries(USER, expired_at) == 1
+    assert store.report(USER, report["id"])["delivery_status"] == "FAILED"
 
 
 def test_smtp_not_configured_marks_skipped_but_generates(store):
@@ -559,6 +632,17 @@ def test_smtp_not_configured_marks_skipped_but_generates(store):
     assert row["delivery_status"] == "SKIPPED_NO_SMTP"
     assert row["last_error_type"] == "SMTP_NOT_CONFIGURED" and row["attempts"] == 0
     send.assert_not_called()
+    assert not store.skip_report_delivery(USER, row["id"], "SMTP_NOT_CONFIGURED", AFTER_CLOSE)
+    outcomes = [
+        event["payload"]
+        for event in store.events(USER)
+        if event["kind"] == "report_delivery"
+        and event["payload"]["report_id"] == row["id"]
+    ]
+    assert len(outcomes) == 1
+    assert outcomes[0]["status"] == "SKIPPED_NO_SMTP"
+    assert outcomes[0]["error_type"] == "SMTP_NOT_CONFIGURED"
+    assert outcomes[0]["attempts"] == 0
 
 
 def test_incomplete_smtp_or_no_recipient_is_skipped(tmp_path):
@@ -595,7 +679,7 @@ def test_no_smtp_secret_in_logs_events_or_rows(store, monkeypatch, caplog):
         retry = AFTER_CLOSE + backoff(1)
         service(store, Clock(retry)).tick(retry)
     row = only(store, "DAILY")
-    assert row["attempts"] == 2 and row["last_error_type"] == "RuntimeError"
+    assert row["attempts"] == 2 and row["last_error_type"] == "DELIVERY_OUTCOME_UNKNOWN"
     assert "SMTPAuthenticationError" in caplog.text  # Failures are logged, by type only.
     stored = repr(rows(store)) + repr(store.events(USER))
     for text in (caplog.text, stored):
@@ -741,7 +825,9 @@ def test_download_endpoint_confines_path(client, store, tmp_path):
 
 
 def test_resend_is_compare_and_set(client, store, monkeypatch):
-    failing = Mock(return_value={"success": False, "message": "x", "error_type": "TimeoutError"})
+    failing = Mock(return_value={
+        "success": False, "message": "x", "error_type": "TimeoutError", "retry_safe": True,
+    })
     row = _generated(store, send=failing)
     headers = _login(client)
     url = f"/api/nifty-algo/reports/{row['id']}/resend"

@@ -88,3 +88,25 @@ disabled once the profit lock is active. Mandatory stop, target, time, session,
 technical and operator exits take precedence. Live stop modification is not
 implemented; any future live path is gated to Phase 5 and must reconcile broker
 acknowledgements before updating protection state.
+
+### Trading modes and the Live boundary
+
+`services/nifty_algo/trading_mode.py` decides every mode change once under the
+per-user database lock: compare-and-set on the mode revision, exposure read in
+the same transaction, then the update. `nifty_algo_mode` keeps the mode, its
+revision and a capped change history; every change and refusal is an audit
+event. Broker status shown to the workspace is masked — booleans, the broker
+id and the key source only, never a secret character or length.
+
+Live is blocked by construction, not by a flag. `LiveAdapterStub` has no
+transport and imports no broker module; `reachable()` returns `False`,
+`readiness()` always reports `LIVE_NOT_READY` plus `MARKET_DATA_UNVERIFIED`,
+`PROTECTIVE_ORDERS_UNVERIFIED`, `FILL_RECONCILIATION_UNVERIFIED` and
+`STATIC_IP_UNVERIFIED`, and `submit()` raises `OrderRefused([LIVE_NOT_READY])`.
+`live_readiness()` appends `LIVE_NOT_READY` unconditionally even if every other
+check passed. Unblocking Live requires a real adapter and independent
+verification of broker auth, market-data quality, protective-order acceptance,
+fill reconciliation and deployment prerequisites — a code change, never a
+setting. The paper executor also refuses BUY intents when the stored mode is
+not PAPER, re-checked at admission and at fill under the user lock; exits of
+existing paper positions stay simulated in any mode so protection never stops.

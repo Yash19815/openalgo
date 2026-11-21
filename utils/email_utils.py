@@ -478,7 +478,8 @@ def send_email(
             elsewhere).
         redact (bool): Background callers set this. Logs then carry exception types
             only, never addresses or server text, and a failure result gains
-            ``error_type``.
+            ``error_type`` and ``retry_safe``. Retry is safe only when transmission
+            has not started or the server explicitly rejected the message.
 
     Returns:
         dict: Result dictionary with success status and message
@@ -488,12 +489,24 @@ def send_email(
         result = {"success": False, "message": message}
         if redact:
             result["error_type"] = type(exc).__name__
+            # A lost DATA acknowledgement does not prove rejection. Callers
+            # that retry must hold these outcomes for operator reconciliation.
+            result["retry_safe"] = not transmission_started or isinstance(
+                exc,
+                (
+                    smtplib.SMTPRecipientsRefused,
+                    smtplib.SMTPSenderRefused,
+                    smtplib.SMTPDataError,
+                    smtplib.SMTPNotSupportedError,
+                ),
+            )
         return result
 
     def detail(exc):
         return exc if not redact else type(exc).__name__
 
     server = None
+    transmission_started = False
     try:
         if not smtp_settings:
             smtp_settings = get_smtp_settings()
@@ -561,8 +574,14 @@ def send_email(
 
         # Login and send email
         server.login(smtp_settings["smtp_username"], smtp_settings["smtp_password"])
+        transmission_started = True
         server.sendmail(smtp_settings["smtp_from_email"], recipient_email, message.as_string())
-        server.quit()
+        try:
+            server.quit()
+        except Exception as exc:
+            # sendmail has already received acceptance. QUIT is cleanup and
+            # cannot turn a successful send into a retryable failure.
+            logger.warning("Mail accepted; SMTP QUIT failed: %s", type(exc).__name__)
 
         if redact:
             logger.info("Email sent successfully")

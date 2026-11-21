@@ -296,14 +296,17 @@ Pure functions in `protection.py`:
     `next_attempt_at`, `last_error_type`, `claim_token`/`claimed_until`,
     `sent_at`, a small `summary` JSON. Events `report_generated`,
     `report_delivery` and `report_resend_requested` carry ids, codes and types.
-  - Delivery claim: one compare-and-set `UPDATE` (PENDING, generated, unclaimed
-    or lease expired, due, attempts below 5) sets a token, a 300 s lease and
+  - Delivery claim: one compare-and-set `UPDATE` (PENDING, generated, unclaimed,
+    due, attempts below 5) sets a token, a 300 s lease and
     increments `attempts`; only the winner sends, and only the token holder can
-    settle the row. A process that dies mid-send leaves the lease to expire and
-    the next tick retries (at-least-once after a crash, never two concurrent
-    sends); an expired claim at the last attempt ends as FAILED
-    (`DELIVERY_INTERRUPTED`). SENT rows are never claimed again.
-  - Retry policy: at most 5 attempts, backoff 1, 2, 4, 8 minutes after attempts
+    settle the row. An expired claim becomes FAILED with
+    `DELIVERY_OUTCOME_UNKNOWN` and no next automatic attempt: the process may
+    have died after SMTP accepted the message. Lost transmission acknowledgements
+    receive the same treatment. Check the mailbox before requesting a manual
+    resend. SMTP acceptance followed by a failed QUIT still records SENT.
+    SENT rows are never claimed again.
+  - Retry policy: known safe failures before transmission or explicit SMTP
+    rejection get at most 5 attempts, with backoff 1, 2, 4, 8 minutes after attempts
     1 to 4, then FAILED. Missing SMTP fields or no user email mark the row
     SKIPPED_NO_SMTP (`SMTP_NOT_CONFIGURED` / `RECIPIENT_UNAVAILABLE`) without
     using an attempt; a failed settings read leaves it PENDING.
@@ -333,3 +336,85 @@ Pure functions in `protection.py`:
 
 Restart tests, a full NIFTY regression run, the production frontend build, the
 fd-audit procedure, and documentation of the remaining external dependencies.
+
+## 5. Implementation status (Phase 7 verification)
+
+Verified on this branch 21 November 2026. Commands, counts and platform notes
+are recorded in `TESTING.md`; this table is the authoritative phase ledger.
+
+| Phase | Scope | Commit | Tests |
+| --- | --- | --- | --- |
+| 0 | Audit and design (this document) | `691098098` | — |
+| 1 | Rupee-gated 0–3 lot sizing, ₹400 planned-loss ceiling, one primary entry per session | `390abafdd` | 20 (`test_nifty_algo_phase1.py`) |
+| 2 | ₹400 profit-lock activation, ₹350 modeled net floor, early booking | `5bc72b279` | 14 (`test_nifty_algo_phase2.py`) |
+| 3 | Approved NSE calendar import, ATM/ITM-only contract selection | `3b0549fe3` | 12 (`test_nifty_algo_calendar.py`) |
+| 3b | Next-session loss cooldown, monthly loss/profit entry locks | `a7da8467a` | 12 (`test_nifty_algo_phase3b.py`) |
+| 4 | Hypothetical shadow positions, primary mirrors, research observations | `0271954dc` | 28 (`test_nifty_algo_phase4.py`) |
+| 5 | Paper/Live mode, masked broker readiness, Live hard-blocked | `2b5f44a65` | 25 (`test_nifty_algo_phase5.py`) |
+| 5 UI | Workspace panels: locks, calendar review, shadow/research, trading mode | `c47b8462b` | 19 (`Panels.test.tsx`) |
+| 6 | Daily/milestone/month-end PDF reports, bounded SMTP delivery with retry | `4ff43de2c` | 25 at commit; 28 after Phase 7 hardening (`test_nifty_algo_phase6.py`) |
+| 7 | SMTP outcome handling, concurrency review, Linux runtime checks, final documentation | This Phase 7 commit | 283 NIFTY + 28 neighboring email; Linux runtime 1,456 passed/3 skipped |
+
+Pre-existing coverage carried forward: `test_nifty_algo_v2.py` 47,
+`test_nifty_algo_native_data.py` 19, `test_nifty_algo_core.py` 18,
+`test_nifty_algo_pipeline.py` 15 (order-service canaries under every Analyzer
+state), `test_nifty_algo_paper_executor.py` 15, `test_nifty_algo_assessment.py`
+12, `test_nifty_algo_foundation.py` 11, `test_nifty_algo_research.py` 7.
+Final totals: **283 NIFTY backend tests, 26 workspace vitest tests** (7
+`Workspace` + 19 `Panels`), Ruff clean, TypeScript and production Vite build
+passed. Full commands, Windows failures and runtime limits are in `TESTING.md`.
+
+### Verified in code (Phase 7 grep evidence, not new tests)
+
+- No order-placement path exists in `services/nifty_algo/`: zero references to
+  `placeorder`/`place_order`/`order_service`/`basket`/`modifyorder`/
+  `cancelorder`. External imports are read-only data: `history_service`,
+  `market_data_service`, `websocket_service`, `utils.broker_keys`
+  (masked status only).
+- `NiftyPaperExecutor` is the only executor; fills resolve from observed
+  bid/ask depth in the isolated ledger — never LTP, never the shared Sandbox
+  (`paper_executor.py` module docstring).
+- `LiveAdapterStub` (`trading_mode.py`) has no transport and no broker import;
+  `reachable()` is `False`, `submit()` raises `OrderRefused([LIVE_NOT_READY])`,
+  and `live_readiness()` appends `LIVE_NOT_READY` unconditionally — Live cannot
+  activate in this release by construction.
+- Runner registers exactly three scheduler jobs per user: `:protect` (1 s),
+  `:entries` (5 s), `:reports` (60 s); all `max_instances=1`, `coalesce`,
+  inside `app_context()`. The reports job additionally uses `session_cleanup()`
+  for native settings/user scoped sessions; NIFTY store methods own short-lived
+  session contexts.
+- Report delivery is idempotent per `(kind, period_key)`, claimed by one
+  compare-and-set UPDATE, retried with bounded backoff only for definite
+  failures, and `SKIPPED_NO_SMTP` when mail is not configured. Lost
+  acknowledgements and expired claims become `DELIVERY_OUTCOME_UNKNOWN`,
+  requiring a mailbox check before manual resend. Accepted messages remain
+  sent even when SMTP `QUIT` fails. Skipped deliveries and interrupted-claim
+  recovery each create a delivery audit event in the same transaction.
+
+### Deliberate deviation: `virtual_capital` ₹20,000
+
+The original specification asked for ₹2,000 of virtual capital. The shipped
+default is **₹20,000** (`config.py` `virtual_capital = Decimal("20000")`),
+confirmed as a deliberate, user-approved deviation: ₹2,000 cannot fund even
+one NIFTY option lot at realistic premiums plus charges, so every entry would
+refuse `INSUFFICIENT_FUNDS`. `monthly_loss_limit` stays at **₹2,000**
+(`config.py`) — the circuit-breaker, not the float, is what the spec's ₹2,000
+number now governs.
+
+### Known limitations
+
+- Report delivery needs SMTP settings (`settings_db`) and a user email;
+  without them reports still generate but are marked `SKIPPED_NO_SMTP`.
+- Live readiness requires real-broker verification that no release code can
+  self-certify: broker auth/token validity, market-data quality, protective
+  order acceptance, fill reconciliation, and deployment prerequisites
+  (SEBI static-IP whitelisting). All stay `*_UNVERIFIED` until an independent
+  check replaces `LiveAdapterStub` — a code change, not a configuration flag.
+- The 8% premium stop plus ₹400 planned-loss cap admit only cheap premiums;
+  deep ITM or high-IV contracts refuse `PLANNED_LOSS_EXCEEDS_400` by design.
+- The full Linux runtime gate passed (1,456 tests, three documentation skips).
+  A full application rehearsal with genuine broker/feed startup remains
+  acceptance work; the broader frontend suite also needs verification on a
+  supported Node version (see `TESTING.md`).
+- No real historical dataset was replayed and no live-market paper fill was
+  observed; durability and recovery evidence is deterministic-fixture based.

@@ -1,5 +1,27 @@
 # NIFTY ALGO changelog
 
+## 0.4.0 — 2026-11-21
+
+### Paper-trading system (Phases 0–7, `feat/nifty-paper-trading-system`)
+
+- Rupee-gated risk: 0–3 lot sizing under a ₹400 planned-loss ceiling and ₹350 minimum modeled net reward; exactly one primary BUY per session (`390abafdd`).
+- Profit lock: ₹400 modeled-net activation, ₹350 tick-aligned floor, early-booking discretionary exit (`5bc72b279`).
+- Approved NSE calendar import (DRAFT/APPROVED/REJECTED PDF review) and ATM/ITM-only contract selection (`3b0549fe3`).
+- Next-session loss cooldown and monthly loss/profit entry locks, latched and restart-safe (`a7da8467a`).
+- Hypothetical shadow positions, primary mirrors (non-additive), and bounded research observations (`0271954dc`).
+- Paper/Live trading mode with masked broker readiness; Live hard-blocked by a no-transport stub reporting `LIVE_NOT_READY` (`2b5f44a65`), plus workspace panels for locks, calendar, shadow/research and mode (`c47b8462b`).
+- Daily, milestone and month-end PDF reports with bounded, idempotent SMTP delivery and resend (`4ff43de2c`).
+- Deliberate deviation: `virtual_capital` is ₹20,000, not the spec's ₹2,000 (user-approved; `monthly_loss_limit` stays ₹2,000). See `PAPER_SYSTEM_DESIGN.md` §5.
+- Phase 7 prevents automatic resend after a lost SMTP acknowledgement or an
+  expired delivery claim. SMTP acceptance remains successful if `QUIT` fails.
+  Skipped deliveries and expired-claim recovery record transactional audit events;
+  missing SMTP configuration cannot clear an unresolved delivery claim.
+- Phase 7 verification: 283 NIFTY backend + 28 neighboring email + 26 workspace
+  tests passed; Linux runtime gate 1,456 passed/3 skipped; Ruff, TypeScript and
+  production build passed. Earlier Windows email CLI timeout, unsupported installed
+  Node and broader frontend failures are recorded in `TESTING.md`.
+  Live mode remains blocked pending independent broker verification.
+
 ## 0.3.0 — 2026-11-19
 
 ### Fix

@@ -3165,7 +3165,8 @@ class NiftyStore:
                     NiftyReport.generation_status == "GENERATED",
                     NiftyReport.delivery_status == "PENDING",
                     NiftyReport.attempts < max_attempts,
-                    or_(NiftyReport.claimed_until.is_(None), NiftyReport.claimed_until <= now),
+                    NiftyReport.claim_token.is_(None),
+                    NiftyReport.claimed_until.is_(None),
                     or_(NiftyReport.next_attempt_at.is_(None), NiftyReport.next_attempt_at <= now),
                 )
                 .order_by(NiftyReport.id)
@@ -3185,7 +3186,8 @@ class NiftyStore:
                     NiftyReport.generation_status == "GENERATED",
                     NiftyReport.delivery_status == "PENDING",
                     NiftyReport.attempts < max_attempts,
-                    or_(NiftyReport.claimed_until.is_(None), NiftyReport.claimed_until <= now),
+                    NiftyReport.claim_token.is_(None),
+                    NiftyReport.claimed_until.is_(None),
                     or_(NiftyReport.next_attempt_at.is_(None), NiftyReport.next_attempt_at <= now),
                 )
                 .values(
@@ -3246,8 +3248,6 @@ class NiftyStore:
             return changed.rowcount == 1
 
     def skip_report_delivery(self, user_id, report_id, error_type, now):
-        from sqlalchemy import or_
-
         with self.sessions.begin() as db:
             changed = db.execute(
                 update(NiftyReport)
@@ -3255,7 +3255,8 @@ class NiftyStore:
                     *self._report_where(user_id, report_id),
                     NiftyReport.generation_status == "GENERATED",
                     NiftyReport.delivery_status == "PENDING",
-                    or_(NiftyReport.claimed_until.is_(None), NiftyReport.claimed_until <= now),
+                    NiftyReport.claim_token.is_(None),
+                    NiftyReport.claimed_until.is_(None),
                 )
                 .values(
                     delivery_status="SKIPPED_NO_SMTP",
@@ -3266,17 +3267,33 @@ class NiftyStore:
                     updated_at=now,
                 )
             )
+            if changed.rowcount == 1:
+                row = db.scalar(select(NiftyReport).where(*self._report_where(user_id, report_id)))
+                db.add(
+                    NiftyEvent(
+                        user_id=user_id,
+                        kind="report_delivery",
+                        payload={
+                            "report_id": row.id,
+                            "kind": row.kind,
+                            "period_key": row.period_key,
+                            "status": "SKIPPED_NO_SMTP",
+                            "attempts": row.attempts,
+                            "error_type": row.last_error_type,
+                        },
+                        created_at=now,
+                    )
+                )
             return changed.rowcount == 1
 
-    def fail_interrupted_deliveries(self, user_id, now, max_attempts):
-        """A claim that expired after the last allowed attempt ends as FAILED."""
+    def fail_interrupted_deliveries(self, user_id, now):
+        """Hold expired claims: SMTP may have accepted before the process died."""
         with self.sessions.begin() as db:
-            changed = db.execute(
+            rows = db.execute(
                 update(NiftyReport)
                 .where(
                     NiftyReport.user_id == user_id,
                     NiftyReport.delivery_status == "PENDING",
-                    NiftyReport.attempts >= max_attempts,
                     NiftyReport.claimed_until.is_not(None),
                     NiftyReport.claimed_until <= now,
                 )
@@ -3284,11 +3301,34 @@ class NiftyStore:
                     delivery_status="FAILED",
                     claim_token=None,
                     claimed_until=None,
-                    last_error_type="DELIVERY_INTERRUPTED",
+                    next_attempt_at=None,
+                    last_error_type="DELIVERY_OUTCOME_UNKNOWN",
                     updated_at=now,
                 )
-            )
-            return changed.rowcount
+                .returning(
+                    NiftyReport.id,
+                    NiftyReport.kind,
+                    NiftyReport.period_key,
+                    NiftyReport.attempts,
+                )
+            ).all()
+            for row in rows:
+                db.add(
+                    NiftyEvent(
+                        user_id=user_id,
+                        kind="report_delivery",
+                        payload={
+                            "report_id": row.id,
+                            "kind": row.kind,
+                            "period_key": row.period_key,
+                            "status": "FAILED",
+                            "attempts": row.attempts,
+                            "error_type": "DELIVERY_OUTCOME_UNKNOWN",
+                        },
+                        created_at=now,
+                    )
+                )
+            return len(rows)
 
     def resend_report(self, user_id, report_id, now):
         """Reset delivery of a FAILED or SKIPPED_NO_SMTP report. Compare-and-set on status."""
