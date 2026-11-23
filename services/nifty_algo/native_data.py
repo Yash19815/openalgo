@@ -9,6 +9,9 @@ from decimal import Decimal
 from math import isfinite
 from zoneinfo import ZoneInfo
 
+from .depth_quote import depth_quote
+from .models import Instrument, Quote
+
 IST = ZoneInfo("Asia/Kolkata")
 FIELDS = (
     "symbol",
@@ -198,6 +201,38 @@ class NativeDataAdapter:
             for row in self._instruments(now or self.clock())
             if row["kind"] != "SPOT" and row.get("master_freshness") == "VERIFIED"
         ]
+
+    def recording_quote(self, instrument, now=None):
+        """Read only identified mode-3 source evidence; never subscribe or reconnect."""
+        if not isinstance(instrument, Instrument) or self.market_data is None:
+            return None
+        try:
+            cached = self.market_data.get_all_data(instrument.symbol, instrument.exchange)
+            sources = cached.get("source_observations", {})
+            raw = sources.get("3")
+            if not isinstance(raw, dict) or (
+                raw.get("symbol") != instrument.symbol or raw.get("exchange") != instrument.exchange
+            ):
+                return None
+            depth = raw.get("depth", raw)
+            if not isinstance(depth, dict) or any(
+                not isinstance(depth[key], (list, tuple)) or len(depth[key]) > 20
+                for key in ("buy", "sell", "bids", "asks")
+                if depth.get(key) is not None
+            ):
+                return None
+            quote = depth_quote(instrument, raw, now or self.clock(), self.max_age, strict=True)
+            if quote is None or quote.bid is None or quote.ask is None:
+                return None
+            return Quote.model_validate(
+                {
+                    **quote.model_dump(),
+                    "oi": raw.get("oi"),
+                    "sequence": raw.get("sequence_number", 0),
+                }
+            )
+        except (AttributeError, TypeError, ValueError, RuntimeError):
+            return None
 
     def quote(self, instrument, now=None, max_age=None):
         """Read causal source fields, never display defaults, for PCR and selection."""

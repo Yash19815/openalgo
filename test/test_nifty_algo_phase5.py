@@ -368,9 +368,9 @@ def test_mode_flip_at_the_admission_write_is_refused_under_the_lock(store, monke
     exe = executor(store, config=StrategyConfig(latency_ms=1))
     original = NiftyStore.admit_order
 
-    def flip_then_admit(self, user_id, order):
+    def flip_then_admit(self, user_id, order, **kwargs):
         force_mode(self, "LIVE")
-        return original(self, user_id, order)
+        return original(self, user_id, order, **kwargs)
 
     monkeypatch.setattr(NiftyStore, "admit_order", flip_then_admit)
     with pytest.raises(OrderRefused) as refused:

@@ -1,21 +1,33 @@
 """Authenticated feature API. Order admission remains closed until ready."""
 
+from datetime import UTC, date, datetime, time, timedelta
 from hashlib import sha256
+from io import BytesIO
+from json import loads
+from re import fullmatch
+from zoneinfo import ZoneInfo
 
-from flask import Blueprint, current_app, jsonify, request, session
+from flask import Blueprint, current_app, jsonify, request, send_file, session
 from flask_socketio import join_room, leave_room
 from pydantic import ValidationError
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from database.nifty_algo_db import NiftyStore, StateConflict
 from extensions import socketio
 from services.nifty_algo import calendar as nifty_calendar
+from services.nifty_algo.analytics_report import analytics_pdf
 from services.nifty_algo.config import StrategyConfig
+from services.nifty_algo.ledger_analytics import AnalyticsDataError
 from services.nifty_algo.paper_executor import NiftyPaperExecutor
 from utils.logging import get_logger
 from utils.session import check_session_validity
 
 logger = get_logger(__name__)
 nifty_algo_bp = Blueprint("nifty_algo", __name__, url_prefix="/api/nifty-algo")
+
+from blueprints.nifty_discord import register_discord_routes
+
+register_discord_routes(nifty_algo_bp)
 
 
 def _socket_room():
@@ -83,12 +95,14 @@ def status():
     state = store().read(session["user"])
     state.pop("configuration")
     runner = store().runner_status(session["user"])
+    safety = store().safety_status(session["user"])
     ready = bool(
         runner.get("operational")
         and runner.get("entries_ready")
         and runner.get("configuration_id") == state["configuration_id"]
         and not state["killed"]
         and not state["daily_locked"]
+        and not safety["entry_blocked"]
     )
     return success(
         {
@@ -96,9 +110,69 @@ def status():
             "mode": "PAPER_ONLY",
             "ready": ready,
             "runner": runner,
+            "safety": safety,
             "readiness": NiftyPaperExecutor(store(), session["user"]).readiness(),
         }
     )
+
+
+@nifty_algo_bp.route("/safety")
+@check_session_validity
+def safety_status():
+    return success(store().safety_status(session["user"]))
+
+
+@nifty_algo_bp.route("/safety/incidents/<int:incident_id>/acknowledge", methods=["POST"])
+@check_session_validity
+def acknowledge_incident(incident_id):
+    body = request.get_json(silent=True)
+    if (
+        not isinstance(body, dict)
+        or set(body) != {"revision"}
+        or type(body["revision"]) is not int
+        or body["revision"] < 1
+    ):
+        return jsonify(status="error", message="Positive integer revision required"), 400
+    try:
+        result = store().acknowledge_safety_incident(
+            session["user"],
+            incident_id,
+            body["revision"],
+            actor=session["user"],
+            now=datetime.now(UTC),
+        )
+    except LookupError:
+        return jsonify(status="error", message="Incident not found"), 404
+    return success(result)
+
+
+@nifty_algo_bp.route("/safety/incidents/<int:incident_id>/resolve", methods=["POST"])
+@check_session_validity
+def resolve_incident(incident_id):
+    body = request.get_json(silent=True)
+    if (
+        not isinstance(body, dict)
+        or set(body) != {"revision", "state_revision", "confirm"}
+        or body["confirm"] != "RESOLVE_ONLY"
+        or any(
+            type(body[key]) is not int or body[key] < 1 for key in ("revision", "state_revision")
+        )
+    ):
+        return jsonify(
+            status="error", message="Positive revisions and RESOLVE_ONLY confirmation required"
+        ), 400
+    try:
+        result = store().resolve_safety_incident(
+            session["user"],
+            incident_id,
+            body["revision"],
+            body["state_revision"],
+            actor=session["user"],
+            now=datetime.now(UTC),
+        )
+    except LookupError:
+        return jsonify(status="error", message="Incident not found"), 404
+    return success(result)
 
 
 @nifty_algo_bp.route("/configuration", methods=["GET", "PUT"])
@@ -163,6 +237,33 @@ def prepare_runner():
 @check_session_validity
 def signals():
     return success(store().decisions(session["user"]))
+
+
+@nifty_algo_bp.route("/selector")
+@check_session_validity
+def selector():
+    """Read recorded selector evidence without fetching data or admitting orders."""
+    mode = request.args.get("mode", "PAPER")
+    if mode not in {"PAPER", "SHADOW"}:
+        return jsonify(status="error", message="Selector mode must be PAPER or SHADOW"), 400
+    rows = store().events(session["user"], kind=f"contract_selector:{mode}", limit=1)
+    if rows:
+        if mode == "SHADOW":
+            quantities = store().shadow_selection(
+                session["user"],
+                rows[0]["payload"].get("decision_id"),
+                rows[0]["payload"].get("configuration_id"),
+            )
+            if quantities:
+                rows[0]["payload"]["quantity_ranking"] = quantities
+            return success(rows[0])
+        quantities = store().events(session["user"], kind=f"contract_quantities:{mode}", limit=1)
+        if quantities and all(
+            quantities[0]["payload"].get(key) == rows[0]["payload"].get(key)
+            for key in ("decision_id", "configuration_id")
+        ):
+            rows[0]["payload"]["quantity_ranking"] = quantities[0]["payload"]
+    return success(rows[0] if rows else None)
 
 
 @nifty_algo_bp.route("/assessment", methods=["POST"])
@@ -309,6 +410,20 @@ def shadow():
     return success(store().shadow_status(session["user"]))
 
 
+@nifty_algo_bp.route("/analytics/trades/<int:trade_id>")
+@check_session_validity
+def analytics_trade_detail(trade_id):
+    if request.args:
+        return jsonify(status="error", message="Trade details take no query parameters"), 400
+    try:
+        detail = store().trade_detail(session["user"], trade_id)
+    except AnalyticsDataError:
+        return jsonify(status="error", message="Trade evidence failed reconciliation"), 409
+    if detail is None:
+        return jsonify(status="error", message="Trade not found"), 404
+    return success(detail)
+
+
 @nifty_algo_bp.route("/research/opportunities")
 @check_session_validity
 def opportunities():
@@ -316,10 +431,296 @@ def opportunities():
     return success(store().opportunities(session["user"]))
 
 
+@nifty_algo_bp.after_request
+def recording_cache_policy(response):
+    if request.path.startswith(
+        ("/api/nifty-algo/research/recordings", "/api/nifty-algo/research/experiments")
+    ):
+        response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
+@nifty_algo_bp.errorhandler(RequestEntityTooLarge)
+def oversized_request(error):
+    message = (
+        "Recording request too large"
+        if request.endpoint
+        in {"nifty_algo.research_recordings", "nifty_algo.research_recording_seal"}
+        else "Request too large"
+    )
+    return jsonify(status="error", message=message), 413
+
+
+def _recording_body():
+    """Read bounded control JSON even when CSRF already initialized request.stream."""
+    if request.content_length is not None and request.content_length > 2048:
+        raise RequestEntityTooLarge
+    if not request.is_json:
+        return None
+    body = request.stream.read(2049)
+    if len(body) > 2048:
+        raise RequestEntityTooLarge
+    try:
+        return loads(body)
+    except (ValueError, UnicodeError, RecursionError):
+        return None
+
+
+@nifty_algo_bp.route("/research/recordings", methods=["GET", "POST"])
+@check_session_validity
+def research_recordings():
+    if request.method == "GET":
+        if request.args:
+            return jsonify(status="error", message="Recording list takes no parameters"), 400
+        items = store().recordings(session["user"])
+        # This reports opt-in, not feed health or complete quote coverage.
+        requested = any(row["capture"] is not None for row in items)
+        return success(
+            {
+                "items": items,
+                "capture_status": "NATIVE_CAPTURE_REQUESTED" if requested else "NOT_CONNECTED",
+            }
+        )
+    body = _recording_body()
+    if (
+        not isinstance(body, dict)
+        or set(body) - {"duration_minutes", "max_observations", "confirm", "native_capture"}
+        or not {"duration_minutes", "max_observations", "confirm"} <= set(body)
+        or body["confirm"] != "RESEARCH_ONLY"
+        or type(body.get("native_capture", False)) is not bool
+        or type(body["duration_minutes"]) is not int
+        or not 1 <= body["duration_minutes"] <= 1440
+        or type(body["max_observations"]) is not int
+        or not 1 <= body["max_observations"] <= 10000
+    ):
+        return jsonify(status="error", message="Invalid research recording request"), 400
+    now = datetime.now(UTC)
+    try:
+        data = store().create_recording(
+            session["user"],
+            now,
+            now + timedelta(minutes=body["duration_minutes"]),
+            now,
+            max_observations=body["max_observations"],
+            native_capture=body.get("native_capture", False),
+        )
+    except ValueError:
+        return jsonify(status="error", message="Research recording limit reached"), 400
+    return success(data), 201
+
+
+@nifty_algo_bp.route("/research/recordings/<recording_id>")
+@check_session_validity
+def research_recording_page(recording_id):
+    args = request.args
+    if set(args) - {"after", "limit", "as_of"} or any(len(args.getlist(key)) != 1 for key in args):
+        return jsonify(status="error", message="Invalid recording query"), 400
+    try:
+        after, limit = args.get("after", "0"), args.get("limit", "100")
+        if any(
+            len(value) > 5 or not value.isascii() or not value.isdecimal()
+            for value in (after, limit)
+        ):
+            raise ValueError
+        as_of = None
+        if "as_of" in args:
+            value = args["as_of"]
+            if not value or len(value) > 64:
+                raise ValueError
+            as_of = datetime.fromisoformat(value)
+        data = store().recording_page(
+            session["user"], recording_id, after=int(after), limit=int(limit), as_of=as_of
+        )
+    except ValueError:
+        return jsonify(status="error", message="Invalid recording query"), 400
+    if data is None:
+        return jsonify(status="error", message="Recording not found"), 404
+    return success(data)
+
+
+@nifty_algo_bp.route("/research/recordings/<recording_id>/seal", methods=["POST"])
+@check_session_validity
+def research_recording_seal(recording_id):
+    body = _recording_body()
+    if (
+        not isinstance(body, dict)
+        or set(body) != {"expected_count", "confirm"}
+        or body["confirm"] != "SEAL_ONLY"
+        or type(body["expected_count"]) is not int
+        or not 0 <= body["expected_count"] <= 10000
+    ):
+        return jsonify(status="error", message="Recording count and SEAL_ONLY required"), 400
+    if store().recording_page(session["user"], recording_id, limit=1) is None:
+        return jsonify(status="error", message="Recording not found"), 404
+    try:
+        data = store().seal_recording(
+            session["user"],
+            recording_id,
+            datetime.now(UTC),
+            expected_count=body["expected_count"],
+        )
+    except StateConflict:
+        raise
+    except ValueError:
+        return jsonify(status="error", message="Recording cannot be sealed at this time"), 400
+    return success(data)
+
+
+@nifty_algo_bp.route("/research/experiments", methods=["GET", "POST"])
+@check_session_validity
+def research_experiments():
+    """Freeze research settings against owned sealed evidence, never active settings."""
+    if request.args:
+        return jsonify(status="error", message="Experiment controls take no query parameters"), 400
+    if request.method == "GET":
+        return success({"items": store().experiment_summaries(session["user"])})
+    body = _recording_body()
+    required = {
+        "recording_id",
+        "expected_count",
+        "expected_sha256",
+        "train_end",
+        "validation_end",
+        "confirm",
+    }
+    if (
+        not isinstance(body, dict)
+        or not required <= set(body)
+        or set(body) - required - {"configuration_overrides"}
+        or body["confirm"] != "DEFINE_ONLY"
+        or not isinstance(body["recording_id"], str)
+        or fullmatch(r"[a-f0-9]{32}", body["recording_id"]) is None
+        or type(body["expected_count"]) is not int
+        or not 0 <= body["expected_count"] <= 10000
+        or not isinstance(body["expected_sha256"], str)
+        or fullmatch(r"[a-f0-9]{64}", body["expected_sha256"]) is None
+        or not isinstance(body.get("configuration_overrides", {}), dict)
+        or set(body.get("configuration_overrides", {})) - StrategyConfig.model_fields.keys()
+        or any(
+            not isinstance(body[key], str) or not 1 <= len(body[key]) <= 64
+            for key in ("train_end", "validation_end")
+        )
+    ):
+        return jsonify(status="error", message="Invalid experiment definition"), 400
+    try:
+        train_end = datetime.fromisoformat(body["train_end"])
+        validation_end = datetime.fromisoformat(body["validation_end"])
+        if train_end.tzinfo is None or validation_end.tzinfo is None:
+            raise ValueError
+    except ValueError:
+        return jsonify(
+            status="error", message="Provide dated experiment boundaries with timezones"
+        ), 400
+    source = store().recording_page(session["user"], body["recording_id"], limit=1)
+    if source is None:
+        return jsonify(status="error", message="Recording not found"), 404
+    configuration = {
+        **source["manifest"]["configuration"],
+        **body.get("configuration_overrides", {}),
+    }
+    try:
+        data = store().create_experiment(
+            session["user"],
+            body["recording_id"],
+            datetime.now(UTC),
+            expected_count=body["expected_count"],
+            expected_sha256=body["expected_sha256"],
+            configuration=configuration,
+            train_end=train_end,
+            validation_end=validation_end,
+        )
+    except StateConflict:
+        raise
+    except ValueError:
+        return jsonify(
+            status="error",
+            message="Experiment cannot be defined. Check sealed evidence, settings, splits and limits.",
+        ), 400
+    return success(data), 201
+
+
+@nifty_algo_bp.route("/research/experiments/<experiment_id>")
+@check_session_validity
+def research_experiment(experiment_id):
+    if request.args:
+        return jsonify(status="error", message="Experiment reads take no query parameters"), 400
+    if fullmatch(r"[a-f0-9]{32}", experiment_id) is None:
+        return jsonify(status="error", message="Experiment not found"), 404
+    try:
+        data = store().experiment(session["user"], experiment_id)
+    except ValueError:
+        return jsonify(status="error", message="Stored experiment failed verification"), 409
+    if data is None:
+        return jsonify(status="error", message="Experiment not found"), 404
+    return success(data)
+
+
+@nifty_algo_bp.route("/research/experiments/<experiment_id>/inspection", methods=["GET", "POST"])
+@check_session_validity
+def experiment_inspection(experiment_id):
+    if fullmatch(r"[a-f0-9]{32}", experiment_id) is None or request.args:
+        return jsonify(status="error", message="Invalid experiment inspection"), 400
+    try:
+        if request.method == "POST":
+            if _recording_body() != {"confirm": "INSPECT_EVIDENCE_ONLY"}:
+                return jsonify(status="error", message="Confirm evidence-only inspection"), 400
+            data = store().save_research_inspection(
+                session["user"], experiment_id, datetime.now(UTC)
+            )
+        else:
+            data = store().research_inspection(session["user"], experiment_id)
+    except StateConflict:
+        raise
+    except LookupError:
+        return jsonify(status="error", message="Experiment not found"), 404
+    except ValueError:
+        return jsonify(status="error", message="Experiment evidence failed verification"), 409
+    return success(data)
+
+
+@nifty_algo_bp.route("/research/experiments/<experiment_id>/replay")
+@check_session_validity
+def experiment_replay(experiment_id):
+    from services.nifty_algo.replay_lab import replay_page
+
+    if fullmatch(r"[a-f0-9]{32}", experiment_id) is None or set(request.args) != {"as_of", "after"}:
+        return jsonify(status="error", message="Provide bounded replay clock and cursor"), 400
+    if len(request.args["as_of"]) > 64 or fullmatch(r"[0-9]{1,5}", request.args["after"]) is None:
+        return jsonify(status="error", message="Invalid replay controls"), 400
+    try:
+        data = replay_page(
+            store(),
+            session["user"],
+            experiment_id,
+            as_of=datetime.fromisoformat(request.args["as_of"]),
+            after=int(request.args["after"]),
+        )
+    except LookupError:
+        return jsonify(status="error", message="Experiment not found"), 404
+    except ValueError:
+        return jsonify(status="error", message="Replay evidence or clock failed verification"), 409
+    return success(data)
+
+
 _REPORT_FIELDS = (
-    "id", "kind", "variant", "period_key", "filename", "sha256", "size_bytes",
-    "generation_status", "generation_attempts", "generation_error_type", "delivery_status", "attempts",
-    "next_attempt_at", "last_error_type", "summary", "generated_at", "sent_at", "created_at",
+    "id",
+    "kind",
+    "variant",
+    "period_key",
+    "filename",
+    "sha256",
+    "size_bytes",
+    "generation_status",
+    "generation_attempts",
+    "generation_error_type",
+    "delivery_status",
+    "attempts",
+    "next_attempt_at",
+    "last_error_type",
+    "summary",
+    "generated_at",
+    "sent_at",
+    "created_at",
 )
 
 
@@ -353,7 +754,8 @@ def reports():
         {
             "reports": [_masked_report(row) for row in fetched[:limit]],
             "pagination": {
-                "limit": limit, "offset": offset,
+                "limit": limit,
+                "offset": offset,
                 "next_offset": offset + limit if more else None,
             },
             "smtp_configured": smtp_configured,
@@ -413,18 +815,20 @@ def resend_report(report_id):
 @nifty_algo_bp.route("/reports/<int:report_id>/retry-generation", methods=["POST"])
 @check_session_validity
 def retry_report_generation(report_id):
-    from datetime import UTC, datetime
     from services.nifty_algo.reports import MAX_GENERATION_ATTEMPTS
 
     if store().report(session["user"], report_id) is None:
         return jsonify(status="error", code="REPORT_NOT_FOUND", message="Report not found"), 404
     row = store().retry_report_generation(
-        session["user"], report_id, datetime.now(UTC),
+        session["user"],
+        report_id,
+        datetime.now(UTC),
         max_attempts=MAX_GENERATION_ATTEMPTS,
     )
     if row is None:
         return jsonify(
-            status="error", code="GENERATION_RETRY_REFUSED",
+            status="error",
+            code="GENERATION_RETRY_REFUSED",
             message="Only a failed report with exhausted generation attempts can be retried.",
         ), 409
     return success(_masked_report(row))
@@ -518,6 +922,56 @@ def performance():
     return success(store().performance(session["user"]))
 
 
+@nifty_algo_bp.route("/analytics")
+@nifty_algo_bp.route("/analytics.pdf")
+@check_session_validity
+def analytics_snapshot():
+    if request.args.get("mode", "PAPER") != "PAPER":
+        return jsonify(status="error", code="PAPER_ANALYTICS_ONLY"), 400
+    try:
+        ist = ZoneInfo("Asia/Kolkata")
+        today = datetime.now(ist).date()
+        start = datetime.combine(
+            date.fromisoformat(request.args.get("start", today.replace(day=1).isoformat())),
+            time.min,
+            tzinfo=ist,
+        )
+        end = datetime.combine(
+            date.fromisoformat(request.args.get("end", (today + timedelta(days=1)).isoformat())),
+            time.min,
+            tzinfo=ist,
+        )
+        data = store().analytics_snapshot(
+            session["user"],
+            start,
+            end,
+            limit=int(request.args.get("limit", "50")),
+            offset=int(request.args.get("offset", "0")),
+        )
+        if request.path.endswith("/analytics.pdf"):
+            response = send_file(
+                BytesIO(analytics_pdf(data, datetime.now(UTC))),
+                mimetype="application/pdf",
+                as_attachment=True,
+                download_name=f"nifty-paper-analytics-{start.date()}-{end.date()}.pdf",
+            )
+            response.headers["Cache-Control"] = "private, no-store"
+            return response
+        return success(data)
+    except AnalyticsDataError:
+        return jsonify(
+            status="error",
+            code="ANALYTICS_EVIDENCE_UNAVAILABLE",
+            message="Paper fill evidence is inconsistent or exceeds 5000 fills; narrow the period.",
+        ), 422
+    except (ValueError, TypeError, OverflowError):
+        return jsonify(
+            status="error",
+            code="INVALID_ANALYTICS_PERIOD",
+            message="Use ISO dates, a period of 1 to 366 days, limit 1 to 100 and offset 0 to 5000.",
+        ), 400
+
+
 def _calendar_response(version):
     return {
         **version,
@@ -607,8 +1061,14 @@ def calendar_version(version_id):
 @check_session_validity
 def update_calendar(version_id):
     body = request.get_json(silent=True)
-    if not isinstance(body, dict) or set(body) != {"entries"} or not isinstance(body["entries"], list):
-        return jsonify(status="error", code="ENTRIES_INVALID", message="Provide an entries list"), 400
+    if (
+        not isinstance(body, dict)
+        or set(body) != {"entries"}
+        or not isinstance(body["entries"], list)
+    ):
+        return jsonify(
+            status="error", code="ENTRIES_INVALID", message="Provide an entries list"
+        ), 400
     try:
         version = store().update_draft_entries(
             session["user"], version_id, body["entries"], session["user"]
@@ -651,7 +1111,9 @@ def approve_calendar(version_id):
 def reject_calendar(version_id):
     body = request.get_json(silent=True) or {}
     if not isinstance(body, dict) or set(body) - {"detail"}:
-        return jsonify(status="error", code="REQUEST_INVALID", message="Invalid reject request"), 400
+        return jsonify(
+            status="error", code="REQUEST_INVALID", message="Invalid reject request"
+        ), 400
     try:
         version = store().reject_calendar(
             session["user"], version_id, session["user"], body.get("detail")

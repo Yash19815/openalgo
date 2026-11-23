@@ -9,11 +9,12 @@ resolve only through ``process`` against fresh market depth.
 
 from datetime import UTC, datetime, time, timedelta
 from decimal import ROUND_CEILING, Decimal
-from math import isfinite
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from services.nifty_algo.models import Instrument, Quote
+from services.nifty_algo.depth_quote import depth_quote
+from services.nifty_algo.depth_quote import epoch as _epoch
+from services.nifty_algo.models import Instrument
 from utils.logging import get_logger
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -30,47 +31,6 @@ class OrderRefused(ValueError):
     def __init__(self, reasons):
         self.reasons = list(reasons)
         super().__init__(", ".join(self.reasons))
-
-
-def _epoch(value):
-    if value is None or isinstance(value, bool):
-        return None
-    if isinstance(value, datetime):
-        return value.astimezone(UTC) if value.tzinfo else None
-    if isinstance(value, (int, float)):
-        try:
-            return (
-                datetime.fromtimestamp(value / 1000 if value > 10**12 else value, UTC)
-                if isfinite(value)
-                else None
-            )
-        except (ValueError, OverflowError, OSError):
-            return None
-    try:
-        stamp = datetime.fromisoformat(str(value))
-    except ValueError:
-        return None
-    return stamp if stamp.tzinfo else None
-
-
-def _best_level(entries, high=True):
-    """(price, quantity) at the best level of a depth side."""
-    best = None
-    for entry in entries or []:
-        try:
-            if isinstance(entry, dict):
-                price = Decimal(str(entry["price"]))
-                size = int(entry.get("quantity", 0))
-            else:
-                price = Decimal(str(entry[0]))
-                size = int(entry[1])
-        except (KeyError, IndexError, TypeError, ValueError, ArithmeticError):
-            continue
-        if not price.is_finite() or price <= 0 or size <= 0:
-            continue
-        if best is None or (price > best[0] if high else price < best[0]):
-            best = (price, size)
-    return best
 
 
 def _charges(side, price, quantity, config=None):
@@ -191,8 +151,16 @@ class NiftyPaperExecutor:
                 for value in (raw_candidates or [intent["instrument"]])
             ]
             instrument = candidate_instruments[0]
+            requested_instrument = Instrument.model_validate(intent["instrument"])
         except (ValueError, TypeError, KeyError):
             raise OrderRefused(["METADATA_INVALID"]) from None
+        if requested_instrument != instrument:
+            raise OrderRefused(["INSTRUMENT_IDENTITY_MISMATCH"])
+        identities = {}
+        for candidate in candidate_instruments:
+            if candidate.token in identities and identities[candidate.token] != candidate:
+                raise OrderRefused(["INSTRUMENT_IDENTITY_MISMATCH"])
+            identities[candidate.token] = candidate
         if (
             intent["token"] != instrument.token
             or intent["symbol"] != instrument.symbol
@@ -201,6 +169,7 @@ class NiftyPaperExecutor:
         ):
             raise OrderRefused(["INSTRUMENT_RESTRICTED"])
         confidence = None
+        candidate_metadata = []
         held = next((row for row in positions if row["token"] == intent["token"]), None)
         if side == "SELL":
             if held is None:
@@ -238,6 +207,16 @@ class NiftyPaperExecutor:
                 )
                 if classification not in ("ATM", "ITM"):
                     raise OrderRefused(["OTM_PROHIBITED"])
+                candidate_metadata.append(
+                    {
+                        "token": candidate.token,
+                        "moneyness": classification,
+                        "spot_reference": (
+                            str(spot_reference) if spot_reference is not None else None
+                        ),
+                        "atm_strike": str(atm_strike) if atm_strike is not None else None,
+                    }
+                )
             confidence = decision.get("confidence")
             if (
                 not decision.get("eligible")
@@ -258,9 +237,7 @@ class NiftyPaperExecutor:
                 raise OrderRefused(["CONFIDENCE_OR_DECISION_INVALID"]) from None
             from .calendar import nifty_session
 
-            session = nifty_session(
-                self.user_id, now.astimezone(IST).date(), store=self.store
-            )
+            session = nifty_session(self.user_id, now.astimezone(IST).date(), store=self.store)
             if session["status"] == "CALENDAR_UNAPPROVED":
                 raise OrderRefused(["CALENDAR_UNAPPROVED"])
             # Loss cooldown and monthly locks refuse before sizing or any intent.
@@ -289,8 +266,11 @@ class NiftyPaperExecutor:
                 (candidate, self._depth(candidate, now)) for candidate in candidate_instruments
             ]
             entry_candidate, quote = next(
-                ((candidate, candidate_quote) for candidate, candidate_quote in candidate_quotes
-                 if candidate_quote is not None),
+                (
+                    (candidate, candidate_quote)
+                    for candidate, candidate_quote in candidate_quotes
+                    if candidate_quote is not None
+                ),
                 (instrument, None),
             )
             reasons = entry_reasons(
@@ -310,6 +290,15 @@ class NiftyPaperExecutor:
                 config,
                 confidence["score"],
                 _charges,
+                now=now,
+            )
+            self.store.record_event(
+                self.user_id, 'contract_quantities:PAPER',
+                {'decision_id': intent.get('decision_id'), 'configuration_id': config.version_id,
+                 'evaluated_at': now.isoformat(), 'policy': 'risk-approved-weighted-v1',
+                 'ranking': list(sizing.ranking),
+                 'rejections': [{'token': token, 'lots': lots, 'reason': reason}
+                                for token, lots, reason in sizing.rejections]}, now,
             )
             if sizing.instrument is None:
                 reasons = list(dict.fromkeys(reason for _, _, reason in sizing.rejections))
@@ -346,6 +335,7 @@ class NiftyPaperExecutor:
                 "planned_loss": str(sizing.planned_loss),
                 "projected_net_reward": str(sizing.projected_net_reward),
                 "cash_required": str(sizing.cash_required),
+                "ranking": list(sizing.ranking),
                 "rejections": [
                     {"token": token, "lots": lots, "reason": reason}
                     for token, lots, reason in sizing.rejections
@@ -368,6 +358,7 @@ class NiftyPaperExecutor:
             "quantity": quantity,
             "payload": {
                 "instrument": instrument.model_dump(mode="json"),
+                "candidate_metadata": candidate_metadata,
                 "decision_id": intent.get("decision_id"),
                 "exit_reason": intent.get("exit_reason", "SIGNAL_EXIT"),
                 "configuration": config.model_dump(mode="json"),
@@ -391,7 +382,25 @@ class NiftyPaperExecutor:
             "expires_at": expires_at,
             "created_at": now,
         }
-        return self.store.admit_order(self.user_id, order)
+        approved_identity = instrument.model_dump(mode="json")
+
+        def validate_entry():
+            if (
+                order["payload"]["instrument"] != approved_identity
+                or order["token"] != instrument.token
+                or order["symbol"] != instrument.symbol
+            ):
+                raise OrderRefused(["INSTRUMENT_IDENTITY_MISMATCH"])
+            # Cache-only read at the locked write; never reuse selection-time ATM.
+            spot = self._spot(now, config)
+            if spot is None:
+                raise OrderRefused(["SPOT_REFERENCE_UNAVAILABLE"])
+            if moneyness(instrument, spot) == "OTM":
+                raise OrderRefused(["OTM_PROHIBITED"])
+
+        return self.store.admit_order(
+            self.user_id, order, validate_entry=validate_entry if side == "BUY" else None
+        )
 
     # Fills ----------------------------------------------------------------
 
@@ -434,38 +443,16 @@ class NiftyPaperExecutor:
             return None
         source = cached.get("source_observations", {}).get("3")
         depth = (source.get("depth") or source) if source else (cached.get("depth") or {})
-        bid = _best_level(depth.get("buy") or depth.get("bids"))
-        ask = _best_level(depth.get("sell") or depth.get("asks"), high=False)
-        stamp = _epoch(
-            source.get("ltt") if source else (depth.get("source_time") or depth.get("ltt"))
-        )
-        ltp = source.get("ltp") if source else cached.get("ltp")
-        if isinstance(ltp, dict):
-            ltp = ltp.get("value")
         config = config or self.config
         max_age = getattr(config, "quote_max_age", 5) if config else 5
-        if stamp is None or stamp > now or (now - stamp).total_seconds() > max_age:
-            return None
-        received = _epoch(source.get("received_time") if source else cached.get("last_update"))
-        if received is None or received < stamp or received > now:
-            return None
-        if any(level and level[0] % instrument.tick_size != 0 for level in (bid, ask)):
-            return None
-        try:
-            return Quote(
-                token=instrument.token,
-                source_time=stamp,
-                received_time=received,
-                ltp=Decimal(str(ltp)) if ltp is not None and Decimal(str(ltp)) > 0 else None,
-                bid=None if bid is None else bid[0],
-                ask=None if ask is None else ask[0],
-                bid_size=0 if bid is None else bid[1],
-                ask_size=0 if ask is None else ask[1],
-                volume=source.get("volume") if source else cached.get("volume"),
-                provider="native_depth",
-            )
-        except (ValueError, TypeError, ArithmeticError):
-            return None
+        raw = source or {
+            "depth": depth,
+            "ltt": depth.get("source_time") or depth.get("ltt"),
+            "received_time": cached.get("last_update"),
+            "ltp": cached.get("ltp"),
+            "volume": cached.get("volume"),
+        }
+        return depth_quote(instrument, raw, now, max_age)
 
     def _spot(self, now, config=None):
         """Current NIFTY index LTP for fill-time moneyness revalidation."""
@@ -520,9 +507,7 @@ class NiftyPaperExecutor:
             if order["side"] == "BUY":
                 from .calendar import nifty_session
 
-                session = nifty_session(
-                    self.user_id, now.astimezone(IST).date(), store=self.store
-                )
+                session = nifty_session(self.user_id, now.astimezone(IST).date(), store=self.store)
                 if (
                     session["status"] != "TRADING"
                     or not session["window"]

@@ -6,25 +6,40 @@ paper ledger keeps funds, order intents, positions and closed trades inside
 this feature only; it never shares the shared Sandbox balance.
 """
 
+from contextlib import nullcontext
+from copy import deepcopy
 from datetime import UTC, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from hashlib import sha256 as sha256_bytes
+from json import dumps
 from pathlib import Path
+from re import fullmatch
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import (
     JSON,
     Column,
     DateTime,
+    Index,
     Integer,
     Numeric,
     String,
     UniqueConstraint,
+    and_,
+    func,
     select,
     update,
 )
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, aliased, sessionmaker
+
+from database.nifty_notifications import NotificationStore
+from database.nifty_research_analytics import ResearchAnalyticsStore
+from services.nifty_algo import analytics
+from services.nifty_algo.config import StrategyConfig
+from services.nifty_algo.ledger_analytics import AnalyticsDataError, fill_facts
+from services.nifty_algo.research import experiment_snapshot, recording_cursor
 
 
 class Base(DeclarativeBase):
@@ -58,6 +73,100 @@ class NiftyEvent(Base):
     user_id = Column(String(255), nullable=False, index=True)
     kind = Column(String(40), nullable=False)
     payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class NiftySafetyIncident(Base):
+    """Entry interlocks are separate from, and cannot disable, held protection."""
+
+    __tablename__ = "nifty_algo_safety_incident"
+    __table_args__ = (
+        UniqueConstraint("user_id", "incident_key"),
+        Index("ix_nifty_safety_open", "user_id", "mode", "severity", "status"),
+    )
+    id = Column(Integer, primary_key=True)
+    user_id = Column(String(255), nullable=False)
+    incident_key = Column(String(128), nullable=False)
+    mode = Column(String(12), nullable=False)
+    code = Column(String(64), nullable=False)
+    severity = Column(String(12), nullable=False)
+    status = Column(String(20), nullable=False, default="OPEN")
+    revision = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    acknowledged_at = Column(DateTime(timezone=True))
+    acknowledged_by = Column(String(255))
+
+
+class NiftyNotificationCursor(Base):
+    __tablename__ = "nifty_algo_notification_cursor"
+    user_id = Column(String(255), primary_key=True)
+    event_id = Column(Integer, nullable=False, default=0)
+
+
+class NiftyShadowNotificationCursor(Base):
+    __tablename__ = "nifty_algo_shadow_notification_cursor"
+    user_id = Column(String(255), primary_key=True)
+    event_id = Column(Integer, nullable=False)
+    next_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class NiftyNotificationDelivery(Base):
+    __tablename__ = "nifty_algo_notification_delivery"
+    __table_args__ = (
+        UniqueConstraint("user_id", "event_id", "destination"),
+        Index("ix_nifty_notification_due", "user_id", "status", "next_at"),
+    )
+    id = Column(Integer, primary_key=True)
+    user_id = Column(String(255), nullable=False)
+    event_id = Column(Integer, nullable=False)
+    destination = Column(String(24), nullable=False)
+    envelope = Column(JSON, nullable=False)
+    status = Column(String(16), nullable=False, default="PENDING")
+    attempts = Column(Integer, nullable=False, default=0)
+    next_at = Column(DateTime(timezone=True), nullable=False)
+    claim_token = Column(String(32))
+    claimed_until = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class NiftyDiscordSettings(Base):
+    __tablename__ = "nifty_algo_discord_settings"
+    user_id = Column(String(255), primary_key=True)
+    application_id = Column(String(20), nullable=False, unique=True)
+    revision = Column(Integer, nullable=False)
+    configuration = Column(JSON, nullable=False)
+    token_encrypted = Column(String(1024), nullable=False)
+    verified_revision = Column(Integer)
+    verification = Column(JSON)
+    rate_limit_until = Column(DateTime(timezone=True))
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class NiftyNotificationAttempt(Base):
+    __tablename__ = "nifty_algo_notification_attempt"
+    __table_args__ = (UniqueConstraint("delivery_id", "attempt"),)
+    id = Column(Integer, primary_key=True)
+    user_id = Column(String(255), nullable=False, index=True)
+    delivery_id = Column(Integer, nullable=False)
+    attempt = Column(Integer, nullable=False)
+    result = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class NiftyIncidentReminder(Base):
+    __tablename__ = "nifty_algo_incident_reminder"
+    user_id = Column(String(255), primary_key=True)
+    incident_id = Column(Integer, primary_key=True)
+    stage = Column(Integer, nullable=False)
+    next_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class NiftyDiscordInteraction(Base):
+    __tablename__ = "nifty_algo_discord_interaction"
+    user_id = Column(String(255), primary_key=True)
+    interaction_id = Column(String(20), primary_key=True)
+    response = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False)
 
 
@@ -305,6 +414,82 @@ class NiftyMode(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False)
 
 
+class NiftyResearchRecording(Base):
+    """Bounded research evidence; never an account, order or active configuration."""
+
+    __tablename__ = "nifty_algo_research_recording"
+    user_id = Column(String(255), primary_key=True)
+    id = Column(String(32), primary_key=True)
+    status = Column(String(16), nullable=False)
+    starts_at = Column(DateTime(timezone=True), nullable=False)
+    ends_at = Column(DateTime(timezone=True), nullable=False)
+    last_available_at = Column(DateTime(timezone=True))
+    count = Column(Integer, nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+    max_observations = Column(Integer, nullable=False)
+    configuration_id = Column(String(64), nullable=False)
+    configuration = Column(JSON, nullable=False)
+    content_sha256 = Column(String(64), nullable=False)
+    sealed_at = Column(DateTime(timezone=True))
+
+
+class NiftyResearchCapture(Base):
+    """Explicit native opt-in and immutable scope; never adopts existing recordings."""
+
+    __tablename__ = "nifty_algo_research_capture"
+    user_id = Column(String(255), primary_key=True)
+    recording_id = Column(String(32), primary_key=True)
+    payload = Column(JSON)
+    sha256 = Column(String(64))
+
+
+class NiftyResearchObservation(Base):
+    __tablename__ = "nifty_algo_research_observation"
+    __table_args__ = (UniqueConstraint("user_id", "recording_id", "sha256"),)
+    user_id = Column(String(255), primary_key=True)
+    recording_id = Column(String(32), primary_key=True)
+    sequence = Column(Integer, primary_key=True)
+    sha256 = Column(String(64), nullable=False)
+    available_at = Column(DateTime(timezone=True), nullable=False)
+    payload = Column(JSON, nullable=False)
+
+
+class NiftyResearchSample(Base):
+    """Sample identities exclude poll availability; one row per accepted observation."""
+
+    __tablename__ = "nifty_algo_research_sample"
+    user_id = Column(String(255), primary_key=True)
+    recording_id = Column(String(32), primary_key=True)
+    sha256 = Column(String(64), primary_key=True)
+
+
+class NiftyResearchExperiment(Base):
+    """Write-once research definition; no primary account or execution state."""
+
+    __tablename__ = "nifty_algo_research_experiment"
+    user_id = Column(String(255), primary_key=True)
+    id = Column(String(32), primary_key=True)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    snapshot = Column(JSON, nullable=False)
+    sha256 = Column(String(64), nullable=False)
+
+
+class NiftyExitStudy(Base):
+    __tablename__ = "nifty_algo_exit_study"
+    user_id = Column(String(255), primary_key=True)
+    trade_id = Column(Integer, primary_key=True)
+    payload = Column(JSON, nullable=False)
+
+
+class NiftyResearchResult(Base):
+    __tablename__ = "nifty_algo_research_result"
+    user_id = Column(String(255), primary_key=True)
+    experiment_id = Column(String(32), primary_key=True)
+    payload = Column(JSON, nullable=False)
+    sha256 = Column(String(64), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+
+
 class NiftyReport(Base):
     """One PDF report per (user, kind, period). Generation and delivery are tracked
     separately; ``claim_token`` with ``claimed_until`` is the compare-and-set claim
@@ -391,7 +576,7 @@ def _month_bounds(key):
     return start.astimezone(UTC), end.astimezone(UTC)
 
 
-class NiftyStore:
+class NiftyStore(NotificationStore, ResearchAnalyticsStore):
     def __init__(self, engine, calendar_blob_dir=None, report_dir=None):
         self.engine = engine
         self.sessions = sessionmaker(bind=engine, expire_on_commit=False)
@@ -406,18 +591,36 @@ class NiftyStore:
         if row is None:
             return None
         return {
-            "id": row.id, "user_id": row.user_id, "year": row.year,
-            "segment": row.segment, "source_filename": row.source_filename,
-            "sha256": row.sha256, "uploader": row.uploader, "status": row.status,
-            "entries": row.entries, "issues": row.issues, "audit": row.audit,
+            "id": row.id,
+            "user_id": row.user_id,
+            "year": row.year,
+            "segment": row.segment,
+            "source_filename": row.source_filename,
+            "sha256": row.sha256,
+            "uploader": row.uploader,
+            "status": row.status,
+            "entries": row.entries,
+            "issues": row.issues,
+            "audit": row.audit,
             "created_at": _instant(row.created_at),
             "approved_at": _instant(row.approved_at) if row.approved_at else None,
-            "approved_by": row.approved_by, "supersedes_id": row.supersedes_id,
+            "approved_by": row.approved_by,
+            "supersedes_id": row.supersedes_id,
         }
 
     def create_calendar_draft(
-        self, user_id, *, year, segment, source_filename, sha256, uploader,
-        entries, issues, data, extension,
+        self,
+        user_id,
+        *,
+        year,
+        segment,
+        source_filename,
+        sha256,
+        uploader,
+        entries,
+        issues,
+        data,
+        extension,
     ):
         self.ensure_user(user_id)
         if not year:
@@ -435,16 +638,29 @@ class NiftyStore:
             if destination.read_bytes() != data:
                 raise ValueError("Calendar content hash collision") from None
         now = datetime.now(UTC)
-        audit = [{"at": now.isoformat(), "actor": uploader, "action": "DRAFT_CREATED",
-                  "detail": {"sha256": sha256}}]
+        audit = [
+            {
+                "at": now.isoformat(),
+                "actor": uploader,
+                "action": "DRAFT_CREATED",
+                "detail": {"sha256": sha256},
+            }
+        ]
         try:
             with self.sessions.begin() as db:
                 self._lock(db, user_id)
                 row = NiftyCalendarVersion(
-                    user_id=user_id, year=int(year), segment=segment,
-                    source_filename=Path(source_filename).name[:255], sha256=sha256,
-                    uploader=uploader, status="DRAFT", entries=entries, issues=list(issues),
-                    audit=audit, created_at=now,
+                    user_id=user_id,
+                    year=int(year),
+                    segment=segment,
+                    source_filename=Path(source_filename).name[:255],
+                    sha256=sha256,
+                    uploader=uploader,
+                    status="DRAFT",
+                    entries=entries,
+                    issues=list(issues),
+                    audit=audit,
+                    created_at=now,
                 )
                 db.add(row)
                 db.flush()
@@ -467,21 +683,25 @@ class NiftyStore:
     def calendar_version(self, user_id, version_id):
         self.ensure_user(user_id)
         with self.sessions() as db:
-            row = db.scalar(select(NiftyCalendarVersion).where(
-                NiftyCalendarVersion.user_id == user_id,
-                NiftyCalendarVersion.id == int(version_id),
-            ))
+            row = db.scalar(
+                select(NiftyCalendarVersion).where(
+                    NiftyCalendarVersion.user_id == user_id,
+                    NiftyCalendarVersion.id == int(version_id),
+                )
+            )
             return self._calendar_dict(row)
 
     def approved_calendar_version(self, user_id, year):
         self.ensure_user(user_id)
         with self.sessions() as db:
-            row = db.scalar(select(NiftyCalendarVersion).where(
-                NiftyCalendarVersion.user_id == user_id,
-                NiftyCalendarVersion.year == int(year),
-                NiftyCalendarVersion.segment == "NFO",
-                NiftyCalendarVersion.status == "APPROVED",
-            ))
+            row = db.scalar(
+                select(NiftyCalendarVersion).where(
+                    NiftyCalendarVersion.user_id == user_id,
+                    NiftyCalendarVersion.year == int(year),
+                    NiftyCalendarVersion.segment == "NFO",
+                    NiftyCalendarVersion.status == "APPROVED",
+                )
+            )
             return self._calendar_dict(row)
 
     def update_draft_entries(self, user_id, version_id, entries, actor):
@@ -490,19 +710,26 @@ class NiftyStore:
         self.ensure_user(user_id)
         with self.sessions.begin() as db:
             self._lock(db, user_id)
-            row = db.scalar(select(NiftyCalendarVersion).where(
-                NiftyCalendarVersion.user_id == user_id,
-                NiftyCalendarVersion.id == int(version_id),
-            ))
+            row = db.scalar(
+                select(NiftyCalendarVersion).where(
+                    NiftyCalendarVersion.user_id == user_id,
+                    NiftyCalendarVersion.id == int(version_id),
+                )
+            )
             if row is None or row.status != "DRAFT":
                 raise ValueError("Calendar version is not an editable draft")
             normalized, issues = recompute_entries(entries, row.year)
             row.entries = normalized
             row.issues = list(issues)
-            row.audit = [*row.audit, {
-                "at": datetime.now(UTC).isoformat(), "actor": actor,
-                "action": "DRAFT_ENTRIES_UPDATED", "detail": {"count": len(normalized)},
-            }]
+            row.audit = [
+                *row.audit,
+                {
+                    "at": datetime.now(UTC).isoformat(),
+                    "actor": actor,
+                    "action": "DRAFT_ENTRIES_UPDATED",
+                    "detail": {"count": len(normalized)},
+                },
+            ]
             result = self._calendar_dict(row)
         return result
 
@@ -526,10 +753,12 @@ class NiftyStore:
         self.ensure_user(user_id)
         with self.sessions.begin() as db:
             self._lock(db, user_id)
-            row = db.scalar(select(NiftyCalendarVersion).where(
-                NiftyCalendarVersion.user_id == user_id,
-                NiftyCalendarVersion.id == int(version_id),
-            ))
+            row = db.scalar(
+                select(NiftyCalendarVersion).where(
+                    NiftyCalendarVersion.user_id == user_id,
+                    NiftyCalendarVersion.id == int(version_id),
+                )
+            )
             if row is None or row.status != "DRAFT":
                 raise ValueError("Calendar version is not an approvable draft")
             if int(confirmed_year) != row.year or confirmed_segment != row.segment:
@@ -538,30 +767,41 @@ class NiftyStore:
                 raise ValueError("Calendar has an unconfirmed segment or ambiguous entries")
             # An empty/unparsed calendar would treat every ordinary weekday as tradable.
             if not row.entries or not all(
-                isinstance(item, dict) and item.get("date")
-                for item in row.entries
+                isinstance(item, dict) and item.get("date") for item in row.entries
             ):
                 raise ValueError("Calendar must contain reviewed dated NFO holidays")
-            prior = db.scalar(select(NiftyCalendarVersion).where(
-                NiftyCalendarVersion.user_id == user_id,
-                NiftyCalendarVersion.year == row.year,
-                NiftyCalendarVersion.status == "APPROVED",
-            ))
+            prior = db.scalar(
+                select(NiftyCalendarVersion).where(
+                    NiftyCalendarVersion.user_id == user_id,
+                    NiftyCalendarVersion.year == row.year,
+                    NiftyCalendarVersion.status == "APPROVED",
+                )
+            )
             now = datetime.now(UTC)
             if prior:
                 prior.status = "SUPERSEDED"
                 row.supersedes_id = prior.id
-                prior.audit = [*prior.audit, {
-                    "at": now.isoformat(), "actor": actor, "action": "SUPERSEDED",
-                    "detail": {"by_version": row.id},
-                }]
+                prior.audit = [
+                    *prior.audit,
+                    {
+                        "at": now.isoformat(),
+                        "actor": actor,
+                        "action": "SUPERSEDED",
+                        "detail": {"by_version": row.id},
+                    },
+                ]
             row.status = "APPROVED"
             row.approved_at = now
             row.approved_by = actor
-            row.audit = [*row.audit, {
-                "at": now.isoformat(), "actor": actor, "action": "APPROVED",
-                "detail": {"year": row.year, "segment": row.segment},
-            }]
+            row.audit = [
+                *row.audit,
+                {
+                    "at": now.isoformat(),
+                    "actor": actor,
+                    "action": "APPROVED",
+                    "detail": {"year": row.year, "segment": row.segment},
+                },
+            ]
             result = self._calendar_dict(row)
         return result
 
@@ -569,17 +809,24 @@ class NiftyStore:
         self.ensure_user(user_id)
         with self.sessions.begin() as db:
             self._lock(db, user_id)
-            row = db.scalar(select(NiftyCalendarVersion).where(
-                NiftyCalendarVersion.user_id == user_id,
-                NiftyCalendarVersion.id == int(version_id),
-            ))
+            row = db.scalar(
+                select(NiftyCalendarVersion).where(
+                    NiftyCalendarVersion.user_id == user_id,
+                    NiftyCalendarVersion.id == int(version_id),
+                )
+            )
             if row is None or row.status != "DRAFT":
                 raise ValueError("Calendar version is not a rejectable draft")
             row.status = "REJECTED"
-            row.audit = [*row.audit, {
-                "at": datetime.now(UTC).isoformat(), "actor": actor,
-                "action": "REJECTED", "detail": detail or {},
-            }]
+            row.audit = [
+                *row.audit,
+                {
+                    "at": datetime.now(UTC).isoformat(),
+                    "actor": actor,
+                    "action": "REJECTED",
+                    "detail": detail or {},
+                },
+            ]
             result = self._calendar_dict(row)
         return result
 
@@ -725,6 +972,8 @@ class NiftyStore:
             # Killing is monotonic. Configuration and pause cannot clear it.
             row = db.get(NiftyState, user_id)
             if action == "start":
+                if self._safety_reasons(db, user_id):
+                    raise StateConflict("Safety interlock requires operator recovery.")
                 lease = db.get(NiftyRunnerLease, user_id)
                 account = db.get(NiftyAccount, user_id)
                 if (
@@ -734,8 +983,8 @@ class NiftyStore:
                     or account is None
                     or not account.reconciled
                     or datetime.fromisoformat(_instant(lease.expires_at)) <= now
-                    or not lease.payload.get("entries_ready")
-                    or lease.payload.get("configuration_id") != row.configuration_id
+                    or self._fresh_runner_assessment(lease, row.configuration_id, now) is None
+                    or self.reconciliation_issues(user_id, _session=db)
                 ):
                     raise StateConflict("Start prerequisites changed. Reload readiness.")
             if row.killed:
@@ -863,14 +1112,14 @@ class NiftyStore:
                 return existing.payload
         return decision
 
-    def events(self, user_id):
+    def events(self, user_id, *, kind=None, limit=100):
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("Event limit must be an integer from 1 to 100")
+        statement = select(NiftyEvent).where(NiftyEvent.user_id == user_id)
+        if kind is not None:
+            statement = statement.where(NiftyEvent.kind == kind)
         with self.sessions() as db:
-            rows = db.scalars(
-                select(NiftyEvent)
-                .where(NiftyEvent.user_id == user_id)
-                .order_by(NiftyEvent.id.desc())
-                .limit(100)
-            )
+            rows = db.scalars(statement.order_by(NiftyEvent.id.desc()).limit(limit))
             return [
                 {
                     "id": row.id,
@@ -884,6 +1133,513 @@ class NiftyStore:
     def record_event(self, user_id, kind, payload, now):
         with self.sessions.begin() as db:
             db.add(NiftyEvent(user_id=user_id, kind=kind, payload=payload, created_at=now))
+
+    # Safety Center --------------------------------------------------------
+
+    @staticmethod
+    def _safety_reasons(db, user_id):
+        mode = db.get(NiftyMode, user_id)
+        primary_mode = mode.mode if mode is not None else "PAPER"
+        blocked = db.scalar(
+            select(NiftySafetyIncident.id)
+            .where(
+                NiftySafetyIncident.user_id == user_id,
+                NiftySafetyIncident.mode == primary_mode,
+                NiftySafetyIncident.severity == "CRITICAL",
+                NiftySafetyIncident.status.in_(("OPEN", "ACKNOWLEDGED")),
+            )
+            .limit(1)
+        )
+        return ["SAFETY_INTERLOCK"] if blocked is not None else []
+
+    @staticmethod
+    def _incident_dict(row):
+        return {
+            "id": row.id,
+            "incident_key": row.incident_key,
+            "mode": row.mode,
+            "code": row.code,
+            "severity": row.severity,
+            "status": row.status,
+            "revision": row.revision,
+            "created_at": _instant(row.created_at),
+            "acknowledged_at": _instant(row.acknowledged_at) if row.acknowledged_at else None,
+            "acknowledged_by": row.acknowledged_by,
+        }
+
+    @staticmethod
+    def _fresh_runner_assessment(lease, configuration_id, now):
+        """A heartbeat renews ownership, not the age of its readiness evidence."""
+        if (
+            lease is None
+            or not isinstance(lease.payload, dict)
+            or lease.payload.get("entries_ready") is not True
+            or lease.payload.get("configuration_id") != configuration_id
+        ):
+            return None
+        try:
+            assessed = datetime.fromisoformat(lease.payload["assessed_at"])
+            if (
+                assessed.utcoffset() is not None
+                and 0 <= (now - assessed).total_seconds() <= 30
+                and datetime.fromisoformat(_instant(lease.expires_at)) > now
+            ):
+                return assessed
+        except (KeyError, TypeError, ValueError):
+            pass
+        return None
+
+    def safety_status(self, user_id):
+        """Read-only, bounded incident page; the gate considers all open incidents."""
+        with self.sessions() as db:
+            reasons = self._safety_reasons(db, user_id)
+            rows = list(
+                db.scalars(
+                    select(NiftySafetyIncident)
+                    .where(NiftySafetyIncident.user_id == user_id)
+                    .order_by(NiftySafetyIncident.id.desc())
+                    .limit(100)
+                )
+            )
+            resolved_ids = [row.id for row in rows if row.status == "RESOLVED"]
+            resolutions = {}
+            if resolved_ids:
+                # The committed resolution event is the existing audit authority.
+                events = db.scalars(
+                    select(NiftyEvent)
+                    .where(
+                        NiftyEvent.user_id == user_id,
+                        NiftyEvent.kind == "safety_resolved",
+                        NiftyEvent.payload["id"].as_integer().in_(resolved_ids),
+                    )
+                    .order_by(NiftyEvent.id.desc())
+                    .limit(100)
+                )
+                for event in events:
+                    resolutions.setdefault(event.payload["id"], event.payload)
+            incidents = []
+            for row in rows:
+                incident = self._incident_dict(row)
+                resolution = resolutions.get(row.id)
+                if resolution and resolution.get("revision") == row.revision:
+                    for field in ("resolved_by", "resolved_at", "evidence"):
+                        incident[field] = resolution.get(field)
+                incidents.append(incident)
+            return {
+                "entry_blocked": bool(reasons),
+                "reasons": reasons,
+                "incidents": incidents,
+                "recovery_available": True,
+                "state_revision": (
+                    state.revision if (state := db.get(NiftyState, user_id)) else None
+                ),
+            }
+
+    def raise_safety_incident(self, user_id, incident_key, *, mode, code, severity, now):
+        """Persist a retry-safe incident and pause primary critical entries atomically."""
+        if (
+            mode not in ("PAPER", "LIVE", "SHADOW", "RESEARCH")
+            or severity not in ("WARNING", "CRITICAL")
+            or not isinstance(incident_key, str)
+            or not fullmatch(r"[A-Za-z0-9_.:-]{1,128}", incident_key)
+            or not isinstance(code, str)
+            or not fullmatch(r"[A-Z][A-Z0-9_]{0,63}", code)
+            or not isinstance(now, datetime)
+            or now.utcoffset() is None
+        ):
+            raise ValueError("Invalid safety incident")
+        self.ensure_user(user_id)
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            existing = db.scalar(
+                select(NiftySafetyIncident).where(
+                    NiftySafetyIncident.user_id == user_id,
+                    NiftySafetyIncident.incident_key == incident_key,
+                )
+            )
+            if existing is not None:
+                if (existing.mode, existing.code, existing.severity) != (mode, code, severity):
+                    raise ValueError("Incident identity cannot change")
+                return self._incident_dict(existing)
+            row = NiftySafetyIncident(
+                user_id=user_id,
+                incident_key=incident_key,
+                mode=mode,
+                code=code,
+                severity=severity,
+                status="OPEN",
+                revision=1,
+                created_at=now,
+            )
+            db.add(row)
+            db.flush()
+            if self._safety_reasons(db, user_id):
+                state = db.get(NiftyState, user_id)
+                # Existing PAUSED survives rollback to code without incident tables.
+                state.state = "KILLED" if state.killed else "PAUSED"
+                state.revision += 1
+                state.updated_at = now
+            db.add(
+                NiftyEvent(
+                    user_id=user_id,
+                    kind="safety_incident",
+                    payload=self._incident_dict(row),
+                    created_at=now,
+                )
+            )
+            return self._incident_dict(row)
+
+    def acknowledge_safety_incident(self, user_id, incident_id, revision, *, actor, now):
+        """Acknowledgement is audited; it never resolves or resumes an entry gate."""
+        if (
+            actor != user_id
+            or type(incident_id) is not int
+            or incident_id < 1
+            or type(revision) is not int
+            or revision < 1
+            or not isinstance(now, datetime)
+            or now.utcoffset() is None
+        ):
+            raise ValueError("Invalid incident acknowledgement")
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            row = db.scalar(
+                select(NiftySafetyIncident).where(
+                    NiftySafetyIncident.user_id == user_id,
+                    NiftySafetyIncident.id == incident_id,
+                )
+            )
+            if row is None:
+                raise LookupError("Incident not found")
+            if row.revision != revision or row.status != "OPEN":
+                raise StateConflict("Incident changed. Reload before acknowledging.")
+            row.status = "ACKNOWLEDGED"
+            row.revision += 1
+            row.acknowledged_at = now
+            row.acknowledged_by = actor
+            db.add(
+                NiftyEvent(
+                    user_id=user_id,
+                    kind="safety_acknowledged",
+                    payload=self._incident_dict(row),
+                    created_at=now,
+                )
+            )
+            return self._incident_dict(row)
+
+    def resolve_safety_incident(
+        self, user_id, incident_id, revision, state_revision, *, actor, now
+    ):
+        """Resolve verified paper conditions, never kill flags or trading state."""
+        if (
+            actor != user_id
+            or any(
+                type(value) is not int or value < 1
+                for value in (incident_id, revision, state_revision)
+            )
+            or not isinstance(now, datetime)
+            or now.utcoffset() is None
+        ):
+            raise ValueError("Invalid incident resolution")
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            row = db.scalar(
+                select(NiftySafetyIncident).where(
+                    NiftySafetyIncident.user_id == user_id,
+                    NiftySafetyIncident.id == incident_id,
+                )
+            )
+            if row is None:
+                raise LookupError("Incident not found")
+            state = db.get(NiftyState, user_id)
+            mode = db.get(NiftyMode, user_id)
+            account = db.get(NiftyAccount, user_id)
+            lease = db.get(NiftyRunnerLease, user_id)
+            if (
+                row.status != "ACKNOWLEDGED"
+                or row.revision != revision
+                or state.revision != state_revision
+                or row.mode != "PAPER"
+                or (mode is not None and mode.mode != "PAPER")
+                or row.code
+                not in ("STALE_DATA", "MARKET_DATA_DISCONNECTED", "RECONCILIATION_BLOCKED")
+                or state.state != "PAUSED"
+                or state.killed
+                or state.daily_locked
+                or account is None
+                or not account.reconciled
+            ):
+                raise StateConflict("Incident recovery prerequisites changed.")
+            assessed = self._fresh_runner_assessment(lease, state.configuration_id, now)
+            if (
+                assessed is None
+                or assessed < datetime.fromisoformat(_instant(row.created_at))
+                or self.reconciliation_issues(user_id, _session=db)
+            ):
+                raise StateConflict("Fresh runner and paper reconciliation evidence required.")
+            pending = db.scalar(
+                select(NiftyOrder.order_id)
+                .where(
+                    NiftyOrder.user_id == user_id,
+                    NiftyOrder.side == "BUY",
+                    NiftyOrder.status == "PENDING",
+                )
+                .limit(1)
+            )
+            positions = db.scalars(
+                select(NiftyPosition).where(NiftyPosition.user_id == user_id).limit(2)
+            )
+            if pending is not None or any(
+                not p.protection or p.protection.get("legacy") for p in positions
+            ):
+                raise StateConflict("Pending entries or unverified protection require review.")
+            row.status = "RESOLVED"
+            row.revision += 1
+            state.revision += 1
+            state.updated_at = now
+            result = {
+                **self._incident_dict(row),
+                "resolved_by": actor,
+                "resolved_at": now.isoformat(),
+                "evidence": {
+                    "scope": "ISOLATED_PAPER_LEDGER",
+                    "checked_at": now.isoformat(),
+                    "assessed_at": assessed.isoformat(),
+                    "configuration_id": state.configuration_id,
+                    "runner_owner": lease.owner,
+                },
+            }
+            db.add(
+                NiftyEvent(
+                    user_id=user_id,
+                    kind="safety_resolved",
+                    payload=result,
+                    created_at=now,
+                )
+            )
+            return result
+
+    # Notification outbox ---------------------------------------------------
+
+    @staticmethod
+    def _notification_time(now):
+        if not isinstance(now, datetime) or now.utcoffset() is None:
+            raise ValueError("Timezone-aware notification time required")
+        return now.astimezone(UTC)
+
+    @staticmethod
+    def _notification_dict(row):
+        return {
+            "id": row.id,
+            "event_id": row.event_id,
+            "destination": row.destination,
+            "envelope": row.envelope,
+            "status": row.status,
+            "attempts": row.attempts,
+            "next_at": _instant(row.next_at),
+            "created_at": _instant(row.created_at),
+            "updated_at": _instant(row.updated_at),
+        }
+
+    def notifications(self, user_id):
+        with self.sessions() as db:
+            rows = db.scalars(
+                select(NiftyNotificationDelivery)
+                .where(NiftyNotificationDelivery.user_id == user_id)
+                .order_by(NiftyNotificationDelivery.id.desc())
+                .limit(100)
+            )
+            return [self._notification_dict(row) for row in rows]
+
+    def project_notifications(self, user_id, destinations, *, now):
+        """Project at most 100 committed events; never copy arbitrary event payloads."""
+        routes = {
+            "safety",
+            "system",
+            "execution",
+            "trades",
+            "signals",
+            "risk",
+            "daily",
+            "weekly",
+            "monthly",
+            "research",
+        }
+        if (
+            not isinstance(destinations, list)
+            or not 1 <= len(destinations) <= 10
+            or any(not isinstance(item, str) or item not in routes for item in destinations)
+            or len(set(destinations)) != len(destinations)
+        ):
+            raise ValueError("One to ten distinct logical notification routes required")
+        now = self._notification_time(now)
+        self.ensure_user(user_id)
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            cursor = db.get(NiftyNotificationCursor, user_id)
+            if cursor is None:
+                cursor = NiftyNotificationCursor(user_id=user_id, event_id=0)
+                db.add(cursor)
+            events = db.scalars(
+                select(NiftyEvent)
+                .where(NiftyEvent.user_id == user_id, NiftyEvent.id > cursor.event_id)
+                .order_by(NiftyEvent.id)
+                .limit(100)
+            ).all()
+            count = 0
+            for event in events:
+                if event.kind in ("safety_incident", "safety_acknowledged"):
+                    payload = event.payload
+                    incident_id = payload.get("id") if isinstance(payload, dict) else None
+                    incident = (
+                        db.get(NiftySafetyIncident, incident_id)
+                        if type(incident_id) is int
+                        else None
+                    )
+                    if incident is None or incident.user_id != user_id:
+                        raise ValueError("Notification incident identity is invalid")
+                    # The incident supplies bounded codes; audit revision remains point-in-time.
+                    revision = payload.get("revision")
+                    if type(revision) is not int or not 1 <= revision <= incident.revision:
+                        raise ValueError("Notification event revision is invalid")
+                    envelope = {
+                        "schema_version": 1,
+                        "event_id": event.id,
+                        "kind": event.kind,
+                        "occurred_at": _instant(event.created_at),
+                        "mode": incident.mode,
+                        "code": incident.code,
+                        "severity": incident.severity,
+                        "incident_id": incident.id,
+                        "revision": revision,
+                    }
+                    for destination in destinations:
+                        db.add(
+                            NiftyNotificationDelivery(
+                                user_id=user_id,
+                                event_id=event.id,
+                                destination=destination,
+                                envelope=envelope,
+                                status="PENDING",
+                                attempts=0,
+                                next_at=now,
+                                created_at=now,
+                                updated_at=now,
+                            )
+                        )
+                        count += 1
+                cursor.event_id = event.id
+            return count
+
+    @staticmethod
+    def _notification_fallback(db, row, now):
+        if row.destination == "email_fallback" or row.envelope["severity"] != "CRITICAL":
+            return
+        existing = db.scalar(
+            select(NiftyNotificationDelivery.id).where(
+                NiftyNotificationDelivery.user_id == row.user_id,
+                NiftyNotificationDelivery.event_id == row.event_id,
+                NiftyNotificationDelivery.destination == "email_fallback",
+            )
+        )
+        if existing is None:
+            db.add(
+                NiftyNotificationDelivery(
+                    user_id=row.user_id,
+                    event_id=row.event_id,
+                    destination="email_fallback",
+                    envelope=row.envelope,
+                    status="PENDING",
+                    attempts=0,
+                    next_at=now,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            db.flush()
+
+    def claim_notification(self, user_id, *, now, email_only=False):
+        """Fence a single transport attempt. Expired dispatches cannot be replayed."""
+        now = self._notification_time(now)
+        self.ensure_user(user_id)
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            expired = db.scalars(
+                select(NiftyNotificationDelivery)
+                .where(
+                    NiftyNotificationDelivery.user_id == user_id,
+                    NiftyNotificationDelivery.status == "DISPATCHING",
+                    NiftyNotificationDelivery.claimed_until <= now,
+                )
+                .order_by(NiftyNotificationDelivery.id)
+                .limit(100)
+            ).all()
+            for row in expired:
+                row.status, row.updated_at = "AMBIGUOUS", now
+                self._notification_fallback(db, row, now)
+            db.flush()
+            settings = db.get(NiftyDiscordSettings, user_id)
+            rate_limited = bool(
+                settings is not None
+                and settings.rate_limit_until is not None
+                and datetime.fromisoformat(_instant(settings.rate_limit_until)) > now
+            )
+            row = db.scalar(
+                select(NiftyNotificationDelivery)
+                .where(
+                    NiftyNotificationDelivery.user_id == user_id,
+                    NiftyNotificationDelivery.status.in_(("PENDING", "RETRY")),
+                    NiftyNotificationDelivery.next_at <= now,
+                    NiftyNotificationDelivery.destination == "email_fallback"
+                    if rate_limited or email_only
+                    else True,
+                )
+                .order_by(NiftyNotificationDelivery.id)
+                .limit(1)
+            )
+            if row is None:
+                return None
+            row.status = "DISPATCHING"
+            row.attempts += 1
+            row.claim_token = uuid4().hex
+            row.claimed_until = now + timedelta(seconds=60)
+            row.updated_at = now
+            db.flush()
+            return {**self._notification_dict(row), "claim_token": row.claim_token}
+
+    def finish_notification(
+        self, user_id, delivery_id, claim_token, outcome, *, now, retry_after=30
+    ):
+        """Only RETRY means a confirmed non-acceptance, never a network timeout."""
+        now = self._notification_time(now)
+        if (
+            type(delivery_id) is not int
+            or delivery_id < 1
+            or not isinstance(claim_token, str)
+            or not 1 <= len(claim_token) <= 32
+            or outcome not in ("DELIVERED", "RETRY", "AMBIGUOUS", "DEAD")
+            or type(retry_after) is not int
+            or not 1 <= retry_after <= 86400
+        ):
+            raise ValueError("Invalid notification result")
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            row = db.get(NiftyNotificationDelivery, delivery_id)
+            if row is None or row.user_id != user_id:
+                raise LookupError("Notification not found")
+            if row.status == "AMBIGUOUS":
+                return False
+            if row.status != "DISPATCHING" or row.claim_token != claim_token:
+                raise ValueError("Notification claim is not current")
+            if datetime.fromisoformat(_instant(row.claimed_until)) <= now:
+                outcome = "AMBIGUOUS"
+            row.status = "DEAD" if outcome == "RETRY" and row.attempts >= 5 else outcome
+            row.updated_at = now
+            if row.status == "RETRY":
+                row.next_at = now + timedelta(seconds=retry_after)
+            if row.status in ("DEAD", "AMBIGUOUS"):
+                self._notification_fallback(db, row, now)
+            return outcome != "AMBIGUOUS"
 
     # Trading mode ----------------------------------------------------------
 
@@ -1093,7 +1849,7 @@ class NiftyStore:
             row.reconciled = 1
             row.updated_at = now or datetime.now(UTC)
 
-    def reconciliation_issues(self, user_id):
+    def reconciliation_issues(self, user_id, *, _session=None):
         """Check durable fill/position/cash invariants without inventing repairs.
 
         Historical quantities are aggregated in SQL; startup does not load an
@@ -1103,7 +1859,7 @@ class NiftyStore:
 
         from services.nifty_algo.models import Instrument
 
-        with self.sessions.begin() as db:
+        with self.sessions.begin() if _session is None else nullcontext(_session) as db:
             self._lock(db, user_id)
             account = db.get(NiftyAccount, user_id)
             positions = list(
@@ -1352,7 +2108,7 @@ class NiftyStore:
                     )
                 )
 
-    def admit_order(self, user_id, order):
+    def admit_order(self, user_id, order, *, validate_entry=None):
         """Persist a pending intent exactly once; a retry reads the original."""
         try:
             with self.sessions.begin() as db:
@@ -1382,7 +2138,7 @@ class NiftyStore:
                 if order["side"] == "BUY":
                     config = StrategyConfig.model_validate(order["payload"]["configuration"])
                     # Paper entries only; a non-PAPER mode has no executor here.
-                    reasons = self._mode_reasons(db, user_id)
+                    reasons = self._mode_reasons(db, user_id) + self._safety_reasons(db, user_id)
                     local_day = order["created_at"].astimezone(ZoneInfo("Asia/Kolkata")).date()
                     approved_calendar = db.scalar(
                         select(NiftyCalendarVersion.id).where(
@@ -1434,10 +2190,7 @@ class NiftyStore:
                     # excludes distinct admissions under this same transaction lock.
                     if Decimal(order["payload"]["reserved_capital"]) > account.available:
                         reasons.append("INSUFFICIENT_FUNDS")
-                    if (
-                        Decimal(order["payload"]["reserved_risk"])
-                        > config.max_planned_loss
-                    ):
+                    if Decimal(order["payload"]["reserved_risk"]) > config.max_planned_loss:
                         reasons.append("PLANNED_LOSS_LIMIT")
                     # Phase 3b: loss cooldown and monthly locks, under the same lock.
                     reasons.extend(self._cooldown_reasons(db, user_id, local_day.isoformat()))
@@ -1446,6 +2199,8 @@ class NiftyStore:
                     )
                     if reasons:
                         raise OrderRefused(reasons)
+                    if validate_entry is not None:
+                        validate_entry()
                 else:
                     held = next((p for p in positions if p.token == order["token"]), None)
                     reserved = sum(
@@ -1625,11 +2380,9 @@ class NiftyStore:
                 return self._order_dict(order)
             account = db.get(NiftyAccount, user_id)
             quantity = order.quantity
-            if (
-                order.side == "BUY"
-                and now.astimezone(ZoneInfo("Asia/Kolkata")).time().replace(tzinfo=None)
-                >= time(14, 45)
-            ):
+            if order.side == "BUY" and now.astimezone(ZoneInfo("Asia/Kolkata")).time().replace(
+                tzinfo=None
+            ) >= time(14, 45):
                 order.status, order.reason, order.resolved_at = "EXPIRED", "ENTRY_CUTOFF", now
                 return self._order_dict(order)
             if now < datetime.fromisoformat(_instant(order.eligible_at)):
@@ -1646,6 +2399,20 @@ class NiftyStore:
             config = StrategyConfig.model_validate(order.payload["configuration"])
             quote = Quote.model_validate(observation)
             instrument = Instrument.model_validate(order.payload["instrument"])
+            if (
+                instrument.token != order.token
+                or instrument.symbol != order.symbol
+                or instrument.exchange != "NFO"
+                or instrument.kind not in ("CE", "PE")
+            ):
+                raise ValueError("Final execution instrument failed validation")
+            if order.side == "BUY":
+                try:
+                    spot = Decimal(str(spot))
+                except (TypeError, ValueError, ArithmeticError):
+                    raise ValueError("Current spot required for entry fill") from None
+                if not spot.is_finite() or spot <= 0:
+                    raise ValueError("Current spot required for entry fill")
             level, size = (
                 (quote.ask, quote.ask_size) if order.side == "BUY" else (quote.bid, quote.bid_size)
             )
@@ -1707,21 +2474,8 @@ class NiftyStore:
                     _charges("SELL", stop_exit, quantity, config) + config.planned_loss_buffer
                 )
                 target = Decimal(protection["target_price"])
-                reward = (target - price) * quantity - fees - _charges(
-                    "SELL", target, quantity, config
-                )
-                meta = next(
-                    (
-                        m
-                        for m in order.payload.get("candidate_metadata") or []
-                        if m.get("token") == order.token
-                    ),
-                    None,
-                )
-                atm_strike = (
-                    Decimal(str(meta["atm_strike"]))
-                    if meta and meta.get("atm_strike") is not None
-                    else None
+                reward = (
+                    (target - price) * quantity - fees - _charges("SELL", target, quantity, config)
                 )
                 if (
                     state.killed
@@ -1732,10 +2486,10 @@ class NiftyStore:
                     order.status, order.reason = "CANCELED", "ENTRIES_DISABLED"
                 elif mode_reasons := self._mode_reasons(db, user_id):
                     order.status, order.reason = "REJECTED", mode_reasons[0]
+                elif safety_reasons := self._safety_reasons(db, user_id):
+                    order.status, order.reason = "REJECTED", safety_reasons[0]
                 elif entry_locks := (
-                    self._cooldown_reasons(
-                        db, user_id, now.astimezone(_IST).date().isoformat()
-                    )
+                    self._cooldown_reasons(db, user_id, now.astimezone(_IST).date().isoformat())
                     + self._month_lock_reasons(db, user_id, now, config)
                 ):
                     order.status, order.reason = "REJECTED", entry_locks[0]
@@ -1750,7 +2504,8 @@ class NiftyStore:
                     order.status, order.reason = "REJECTED", "STOP_PRICE_INVALID"
                 elif (
                     spot is not None
-                    and moneyness(instrument, spot, atm_strike) == "OTM"
+                    # Selection-time ATM evidence must not override current spot.
+                    and moneyness(instrument, spot) == "OTM"
                 ):
                     order.status, order.reason = "REJECTED", "OTM_PROHIBITED"
                 elif (
@@ -1914,6 +2669,20 @@ class NiftyStore:
                             db.delete(protection)
                     order.status = "FILLED"
             if order.status == "FILLED":
+                db.add(
+                    NiftyEvent(
+                        user_id=user_id,
+                        kind="paper_fill_verified",
+                        created_at=now,
+                        payload={
+                            "order_id": order.order_id,
+                            "side": order.side,
+                            "quantity": quantity,
+                            "price": str(price),
+                            "fees": str(fees),
+                        },
+                    )
+                )
                 order.price, order.fees = price, fees
                 order.payload = {**order.payload, "fill_observation": observation}
                 if use is None:
@@ -2015,9 +2784,7 @@ class NiftyStore:
             payload = dict(row.payload)
             if valid:
                 previous_exit_reason = payload.get("exit_reason")
-                previous_stop = Decimal(
-                    payload.get("stop_price", payload["initial_stop"])
-                )
+                previous_stop = Decimal(payload.get("stop_price", payload["initial_stop"]))
                 quantity = min(position.quantity, self._remaining_quantity(db, user_id, position))
                 payload = observe_bid(
                     payload,
@@ -2143,6 +2910,92 @@ class NiftyStore:
                 for row in rows
             ]
 
+    def analytics_snapshot(self, user_id, start, end, *, limit=50, offset=0):
+        """Bounded, read-only realized analytics; detail paging never changes totals."""
+        if (
+            not isinstance(start, datetime)
+            or not isinstance(end, datetime)
+            or start.utcoffset() is None
+            or end.utcoffset() is None
+            or not timedelta(0) < end - start <= timedelta(days=366)
+            or type(limit) is not int
+            or not 1 <= limit <= 100
+            or type(offset) is not int
+            or not 0 <= offset <= 5000
+        ):
+            raise ValueError("Invalid analytics period or pagination")
+        start, end = start.astimezone(UTC), end.astimezone(UTC)
+        entry, exit_order = aliased(NiftyOrder), aliased(NiftyOrder)
+        with self.sessions() as db:
+            # Owner-locked fill writers append immutable trades in commit order.
+            # Fence later fills without taking a write lock or rolling the account day.
+            watermark = (
+                db.scalar(select(func.max(NiftyTrade.id)).where(NiftyTrade.user_id == user_id)) or 0
+            )
+            owner_rows = (NiftyTrade.user_id == user_id, NiftyTrade.id <= watermark)
+            prior_net = db.scalar(
+                select(func.sum(NiftyTrade.net)).where(*owner_rows, NiftyTrade.closed_at < start)
+            ) or Decimal(0)
+            rows = db.execute(
+                select(NiftyTrade, entry, exit_order)
+                .outerjoin(
+                    entry,
+                    and_(
+                        entry.user_id == NiftyTrade.user_id,
+                        entry.order_id == NiftyTrade.entry_order_id,
+                    ),
+                )
+                .outerjoin(
+                    exit_order,
+                    and_(
+                        exit_order.user_id == NiftyTrade.user_id,
+                        exit_order.order_id == NiftyTrade.exit_order_id,
+                    ),
+                )
+                .where(*owner_rows, NiftyTrade.closed_at >= start, NiftyTrade.closed_at < end)
+                .order_by(NiftyTrade.closed_at, NiftyTrade.id)
+                .limit(5001)
+            ).all()
+            if len(rows) > 5000:
+                raise AnalyticsDataError("Analytics period exceeds 5000 fills; narrow the period")
+            journal, details, entry_totals = [], [], {}
+            for trade, entry_fill, exit_fill in rows:
+                normalized, detail = fill_facts(trade, entry_fill, exit_fill)
+                quantity, fees = entry_totals.get(entry_fill.order_id, (0, Decimal(0)))
+                quantity += trade.quantity
+                fees += trade.fees - exit_fill.fees
+                if quantity > entry_fill.quantity or fees > entry_fill.fees:
+                    raise AnalyticsDataError("Partial exits exceed persisted entry fill evidence")
+                entry_totals[entry_fill.order_id] = quantity, fees
+                journal.append(normalized)
+                details.append(detail)
+        opening = StrategyConfig().virtual_capital + prior_net
+        try:
+            metrics = analytics.performance(journal, opening)
+        except (ValueError, TypeError, KeyError, ArithmeticError):
+            raise AnalyticsDataError("Persisted paper fill evidence is inconsistent") from None
+        return {
+            "schema_version": 1,
+            "mode": "PAPER",
+            "period": {
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+                "timezone": "Asia/Kolkata",
+            },
+            "watermark": watermark,
+            "opening_realized_equity": str(opening),
+            "equity_basis": "SEED_PLUS_REALIZED_NET_NOT_MARK_TO_MARKET",
+            "trade_scope": "ENTRIES_WITH_REALIZED_EXITS_IN_PERIOD",
+            "marked_unrealized": {"value": None, "reason": "NO_PERSISTED_MARK_SERIES"},
+            "metrics": metrics,
+            "details": {
+                "total": len(details),
+                "limit": limit,
+                "offset": offset,
+                "items": list(reversed(details))[offset : offset + limit],
+            },
+        }
+
     def performance(self, user_id):
         from sqlalchemy import case, func
 
@@ -2219,9 +3072,7 @@ class NiftyStore:
     @staticmethod
     def _month_breaches(net, config):
         loss = net < 0 and -net >= config.monthly_loss_limit
-        profit = (
-            config.monthly_profit_target is not None and net >= config.monthly_profit_target
-        )
+        profit = config.monthly_profit_target is not None and net >= config.monthly_profit_target
         return loss, profit
 
     def _latch_month_locks(self, db, user_id, row, config, now):
@@ -2380,13 +3231,9 @@ class NiftyStore:
         resolved = {}
         for loss_session, current in pending:
             try:
-                value = next_eligible_session(
-                    user_id, date.fromisoformat(loss_session), store=self
-                )
+                value = next_eligible_session(user_id, date.fromisoformat(loss_session), store=self)
                 if current is not None and value < today:
-                    value = next_eligible_session(
-                        user_id, today - timedelta(days=1), store=self
-                    )
+                    value = next_eligible_session(user_id, today - timedelta(days=1), store=self)
                 resolved[loss_session] = (current, value.isoformat())
             except ValueError:
                 resolved[loss_session] = (current, None)
@@ -2424,9 +3271,7 @@ class NiftyStore:
         with self.sessions.begin() as db:
             self._lock(db, user_id)
             key = _month_key(now)
-            row = db.get(NiftyMonth, (user_id, key)) or self._create_month(
-                db, user_id, key, now
-            )
+            row = db.get(NiftyMonth, (user_id, key)) or self._create_month(db, user_id, key, now)
             self._latch_month_locks(db, user_id, row, config, now)
             return self._cooldown_reasons(db, user_id, day) + self._month_lock_reasons(
                 db, user_id, now, config
@@ -2590,19 +3435,25 @@ class NiftyStore:
                 reasons = []
                 if self._active_shadow(db, user_id) is not None:
                     reasons.append("SHADOW_ACTIVE")
-                if db.scalar(
-                    select(NiftyPosition.token).where(NiftyPosition.user_id == user_id).limit(1)
-                ) is not None:
-                    reasons.append("PRIMARY_ACTIVE")
-                if db.scalar(
-                    select(NiftyOrder.order_id)
-                    .where(
-                        NiftyOrder.user_id == user_id,
-                        NiftyOrder.side == "BUY",
-                        NiftyOrder.status == "PENDING",
+                if (
+                    db.scalar(
+                        select(NiftyPosition.token).where(NiftyPosition.user_id == user_id).limit(1)
                     )
-                    .limit(1)
-                ) is not None:
+                    is not None
+                ):
+                    reasons.append("PRIMARY_ACTIVE")
+                if (
+                    db.scalar(
+                        select(NiftyOrder.order_id)
+                        .where(
+                            NiftyOrder.user_id == user_id,
+                            NiftyOrder.side == "BUY",
+                            NiftyOrder.status == "PENDING",
+                        )
+                        .limit(1)
+                    )
+                    is not None
+                ):
                     reasons.append("PRIMARY_PENDING")
                 if not (
                     config.shadow_entry_after
@@ -2735,7 +3586,9 @@ class NiftyStore:
             if forced_reason and not payload.get("exit_reason"):
                 payload["exit_reason"] = forced_reason
             events = payload.pop("new_events", [])
-            for kind, event_payload in self._protection_transitions(row.protection, payload, events):
+            for kind, event_payload in self._protection_transitions(
+                row.protection, payload, events
+            ):
                 self._shadow_event(
                     db, user_id, row.id, kind, {"token": row.token, **event_payload}, now
                 )
@@ -2777,12 +3630,16 @@ class NiftyStore:
                 return None
             if active is not None and active.shadow_key == wanted:
                 return None
-            if active is None and db.scalar(
-                select(NiftyShadowPosition.id).where(
-                    NiftyShadowPosition.user_id == user_id,
-                    NiftyShadowPosition.shadow_key == wanted,
+            if (
+                active is None
+                and db.scalar(
+                    select(NiftyShadowPosition.id).where(
+                        NiftyShadowPosition.user_id == user_id,
+                        NiftyShadowPosition.shadow_key == wanted,
+                    )
                 )
-            ) is not None:
+                is not None
+            ):
                 return None
         with self.sessions.begin() as db:
             self._lock(db, user_id)
@@ -2790,8 +3647,10 @@ class NiftyStore:
                 select(NiftyPosition).where(NiftyPosition.user_id == user_id).limit(1)
             )
             active = self._active_shadow(db, user_id)
-            if active is not None and active.kind == "MIRROR" and (
-                position is None or active.primary_entry_order_id != position.entry_order_id
+            if (
+                active is not None
+                and active.kind == "MIRROR"
+                and (position is None or active.primary_entry_order_id != position.entry_order_id)
             ):
                 self._close_mirror(db, active, now)
                 active = None
@@ -2800,12 +3659,15 @@ class NiftyStore:
             key = "mirror:" + position.entry_order_id
             if active is not None and active.shadow_key == key:
                 return self._shadow_dict(active)
-            if db.scalar(
-                select(NiftyShadowPosition.id).where(
-                    NiftyShadowPosition.user_id == user_id,
-                    NiftyShadowPosition.shadow_key == key,
+            if (
+                db.scalar(
+                    select(NiftyShadowPosition.id).where(
+                        NiftyShadowPosition.user_id == user_id,
+                        NiftyShadowPosition.shadow_key == key,
+                    )
                 )
-            ) is not None:
+                is not None
+            ):
                 return None
             if active is not None:
                 active.primary_entry_order_id = position.entry_order_id
@@ -2967,6 +3829,470 @@ class NiftyStore:
     # Research observations -------------------------------------------------
 
     @staticmethod
+    def _recording_dict(row, capture=None):
+        if row is None:
+            return None
+        return {
+            "id": row.id,
+            "mode": "RESEARCH",
+            "schema_version": 1,
+            "status": row.status,
+            "starts_at": _instant(row.starts_at),
+            "ends_at": _instant(row.ends_at),
+            "last_available_at": _instant(row.last_available_at) if row.last_available_at else None,
+            "count": row.count,
+            "size_bytes": row.size_bytes,
+            "max_observations": row.max_observations,
+            "configuration_id": row.configuration_id,
+            "configuration": row.configuration,
+            "content_sha256": row.content_sha256,
+            "sealed_at": _instant(row.sealed_at) if row.sealed_at else None,
+            "execution_eligible": False,
+            "limitations": ["QUOTE_EVIDENCE_ONLY", "PROVENANCE_NOT_AUTHENTICATED"],
+            "capture": (
+                {"scope": capture.payload, "scope_sha256": capture.sha256}
+                if capture is not None
+                else None
+            ),
+        }
+
+    def recordings(self, user_id):
+        """Read the owner's bounded manifests without creating trading state."""
+        with self.sessions() as db:
+            rows = db.execute(
+                select(NiftyResearchRecording, NiftyResearchCapture)
+                .outerjoin(
+                    NiftyResearchCapture,
+                    and_(
+                        NiftyResearchCapture.user_id == NiftyResearchRecording.user_id,
+                        NiftyResearchCapture.recording_id == NiftyResearchRecording.id,
+                    ),
+                )
+                .where(NiftyResearchRecording.user_id == user_id)
+                .order_by(NiftyResearchRecording.starts_at.desc(), NiftyResearchRecording.id)
+                .limit(20)
+            ).all()
+            return [self._recording_dict(row, capture) for row, capture in rows]
+
+    def create_recording(
+        self, user_id, starts_at, ends_at, now, *, max_observations=10000, native_capture=False
+    ):
+        """Create explicit research storage with a fixed window and configuration."""
+        if (
+            any(
+                not isinstance(at, datetime) or at.tzinfo is None
+                for at in (starts_at, ends_at, now)
+            )
+            or not starts_at <= now < ends_at
+            or ends_at - starts_at > timedelta(days=1)
+            or type(max_observations) is not int
+            or not 1 <= max_observations <= 10000
+            or type(native_capture) is not bool
+        ):
+            raise ValueError("Invalid recording window or observation limit")
+        starts_at, ends_at = starts_at.astimezone(UTC), ends_at.astimezone(UTC)
+        self.ensure_user(user_id)
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            total = db.scalar(
+                select(func.count())
+                .select_from(NiftyResearchRecording)
+                .where(NiftyResearchRecording.user_id == user_id)
+            )
+            if total >= 20:
+                raise ValueError("Recording quota reached; evidence is not automatically deleted")
+            state = db.get(NiftyState, user_id)
+            configuration = StrategyConfig.model_validate(state.configuration).model_dump(
+                mode="json"
+            )
+            context = {
+                "starts_at": starts_at.isoformat(),
+                "ends_at": ends_at.isoformat(),
+                "configuration": configuration,
+                "schema_version": 1,
+            }
+            if native_capture:
+                context["capture"] = "NATIVE_FEED"
+            row = NiftyResearchRecording(
+                user_id=user_id,
+                id=uuid4().hex,
+                status="RECORDING",
+                starts_at=starts_at,
+                ends_at=ends_at,
+                count=0,
+                size_bytes=0,
+                max_observations=max_observations,
+                configuration=configuration,
+                configuration_id=state.configuration_id,
+                content_sha256=sha256_bytes(
+                    dumps(context, sort_keys=True, separators=(",", ":")).encode()
+                ).hexdigest(),
+            )
+            db.add(row)
+            capture = None
+            if native_capture:
+                capture = NiftyResearchCapture(user_id=user_id, recording_id=row.id)
+                db.add(capture)
+            result = self._recording_dict(row, capture)
+        return result
+
+    @staticmethod
+    def _recording_runner(db, user_id, owner, now):
+        lease = db.get(NiftyRunnerLease, user_id)
+        if (
+            not isinstance(owner, str)
+            or not owner
+            or lease is None
+            or lease.owner != owner
+            or datetime.fromisoformat(_instant(lease.expires_at)) <= now
+        ):
+            raise StateConflict("Research capture runner no longer owns the lease")
+
+    def freeze_recording_scope(
+        self, user_id, recording_id, now, *, instruments, broker, runner_owner
+    ):
+        """Bind a native opt-in recording to server-derived metadata before evidence."""
+        from services.nifty_algo.research import recording_scope
+
+        scope = recording_scope(instruments, broker, now)
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            self._recording_runner(db, user_id, runner_owner, now)
+            row = db.get(NiftyResearchRecording, (user_id, recording_id))
+            capture = db.get(NiftyResearchCapture, (user_id, recording_id))
+            if row is None:
+                raise ValueError("Recording not found")
+            if (
+                capture is None
+                or row.status != "RECORDING"
+                or not datetime.fromisoformat(_instant(row.starts_at))
+                <= now
+                < datetime.fromisoformat(_instant(row.ends_at))
+            ):
+                raise StateConflict("Recording is not available for native capture")
+            if capture.payload is not None:
+                if (
+                    capture.payload["broker"] != scope["broker"]
+                    or capture.payload["instruments"] != scope["instruments"]
+                ):
+                    raise StateConflict("Native recording scope is immutable")
+                return self._recording_dict(row, capture)
+            if row.count:
+                raise StateConflict("Native scope must precede observations")
+            capture.payload = scope
+            capture.sha256 = sha256_bytes(
+                dumps(scope, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+            row.content_sha256 = sha256_bytes(
+                (row.content_sha256 + capture.sha256).encode("ascii")
+            ).hexdigest()
+            return self._recording_dict(row, capture)
+
+    def append_recording(
+        self,
+        user_id,
+        recording_id,
+        observations,
+        now,
+        *,
+        expected_count,
+        deduplicate_samples=False,
+        runner_owner=None,
+    ):
+        """Append atomically in availability order, fenced by the durable row count."""
+        from services.nifty_algo.research import recording_batch
+
+        batch = recording_batch(observations, now)
+        if type(expected_count) is not int or expected_count < 0:
+            raise ValueError("Invalid recording cursor")
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            if runner_owner is not None:
+                self._recording_runner(db, user_id, runner_owner, now)
+            row = db.get(NiftyResearchRecording, (user_id, recording_id))
+            if row is None:
+                raise ValueError("Recording not found")
+            if row.status != "RECORDING" or row.count != expected_count:
+                raise StateConflict("Recording is sealed or the append cursor changed")
+            capture = db.get(NiftyResearchCapture, (user_id, recording_id))
+            if capture is not None:
+                if runner_owner is None or capture.payload is None:
+                    raise StateConflict("Native recording requires a frozen scope and runner")
+                tokens = {item["token"] for item in capture.payload["instruments"]}
+                frozen_at = datetime.fromisoformat(capture.payload["frozen_at"])
+                if any(
+                    item["source"] != "NATIVE_FEED"
+                    or item["payload"]["token"] not in tokens
+                    or datetime.fromisoformat(item["source_time"]) < frozen_at
+                    for item in batch
+                ):
+                    raise ValueError("Observation is outside frozen native scope")
+            if deduplicate_samples:
+                identities = [
+                    sha256_bytes(
+                        dumps(item["payload"], sort_keys=True, separators=(",", ":")).encode()
+                    ).hexdigest()
+                    for item in batch
+                ]
+                seen = set(
+                    db.scalars(
+                        select(NiftyResearchSample.sha256).where(
+                            NiftyResearchSample.user_id == user_id,
+                            NiftyResearchSample.recording_id == recording_id,
+                            NiftyResearchSample.sha256.in_(identities),
+                        )
+                    ).all()
+                )
+                unseen = []
+                for identity, item in zip(identities, batch, strict=True):
+                    if identity not in seen:
+                        seen.add(identity)
+                        unseen.append(item)
+                        db.add(
+                            NiftyResearchSample(
+                                user_id=user_id,
+                                recording_id=recording_id,
+                                sha256=identity,
+                            )
+                        )
+                batch = unseen
+                if not batch:
+                    return self._recording_dict(row, capture)
+            encoded_size = sum(
+                len(dumps(item, sort_keys=True, separators=(",", ":")).encode()) for item in batch
+            )
+            duplicate = db.scalar(
+                select(NiftyResearchObservation.sequence)
+                .where(
+                    NiftyResearchObservation.user_id == user_id,
+                    NiftyResearchObservation.recording_id == recording_id,
+                    NiftyResearchObservation.sha256.in_([item["sha256"] for item in batch]),
+                )
+                .limit(1)
+            )
+            if duplicate is not None:
+                raise ValueError("Duplicate point-in-time quote evidence")
+            start = datetime.fromisoformat(_instant(row.starts_at))
+            end = datetime.fromisoformat(_instant(row.ends_at))
+            previous = (
+                datetime.fromisoformat(_instant(row.last_available_at))
+                if row.last_available_at
+                else start
+            )
+            if (
+                row.count + len(batch) > row.max_observations
+                or row.size_bytes + encoded_size > 16777216
+                or datetime.fromisoformat(batch[0]["available_at"]) < previous
+                or any(
+                    not start
+                    <= datetime.fromisoformat(item["source_time"])
+                    <= datetime.fromisoformat(item["available_at"])
+                    <= end
+                    for item in batch
+                )
+            ):
+                raise ValueError("Recording bounds or chronology violated")
+            digest = row.content_sha256
+            for sequence, item in enumerate(batch, start=row.count + 1):
+                db.add(
+                    NiftyResearchObservation(
+                        user_id=user_id,
+                        recording_id=recording_id,
+                        sequence=sequence,
+                        sha256=item["sha256"],
+                        available_at=datetime.fromisoformat(item["available_at"]),
+                        payload=item,
+                    )
+                )
+                digest = sha256_bytes((digest + item["sha256"]).encode("ascii")).hexdigest()
+            row.count = expected_count + len(batch)
+            row.size_bytes += encoded_size
+            row.last_available_at = datetime.fromisoformat(batch[-1]["available_at"])
+            row.content_sha256 = digest
+            result = self._recording_dict(row, capture)
+        return result
+
+    def seal_recording(self, user_id, recording_id, now, *, expected_count):
+        """Freeze evidence; sealing never claims completeness or execution readiness."""
+        if (
+            not isinstance(now, datetime)
+            or now.tzinfo is None
+            or type(expected_count) is not int
+            or expected_count < 0
+        ):
+            raise ValueError("Invalid seal time or recording cursor")
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            row = db.get(NiftyResearchRecording, (user_id, recording_id))
+            if row is None:
+                raise ValueError("Recording not found")
+            if row.count != expected_count:
+                raise StateConflict("Recording cursor changed")
+            if now < datetime.fromisoformat(_instant(row.last_available_at or row.starts_at)):
+                raise ValueError("Seal time predates evidence")
+            if row.status == "RECORDING":
+                row.status, row.sealed_at = "SEALED", now.astimezone(UTC)
+            result = self._recording_dict(
+                row, db.get(NiftyResearchCapture, (user_id, recording_id))
+            )
+        return result
+
+    def recording_page(self, user_id, recording_id, *, after=0, limit=100, as_of=None):
+        """Bounded owner-scoped evidence page; an as-of cursor never reveals future arrivals."""
+        if (
+            type(after) is not int
+            or not 0 <= after <= 10000
+            or type(limit) is not int
+            or not 1 <= limit <= 100
+            or (as_of is not None and (not isinstance(as_of, datetime) or as_of.tzinfo is None))
+        ):
+            raise ValueError("Invalid recording page")
+        if as_of is not None:
+            try:
+                as_of = as_of.astimezone(UTC)
+            except (OverflowError, ValueError):
+                raise ValueError("Invalid recording page") from None
+        with self.sessions() as db:
+            row = db.get(NiftyResearchRecording, (user_id, recording_id))
+            if row is None:
+                return None
+            query = select(NiftyResearchObservation).where(
+                NiftyResearchObservation.user_id == user_id,
+                NiftyResearchObservation.recording_id == recording_id,
+                NiftyResearchObservation.sequence > after,
+                NiftyResearchObservation.sequence <= row.count,
+            )
+            if as_of is not None:
+                query = query.where(NiftyResearchObservation.available_at <= as_of)
+            items = db.scalars(query.order_by(NiftyResearchObservation.sequence).limit(limit)).all()
+            return {
+                "manifest": self._recording_dict(
+                    row, db.get(NiftyResearchCapture, (user_id, recording_id))
+                ),
+                "items": [{"sequence": item.sequence, **item.payload} for item in items],
+                "next_after": items[-1].sequence if items else after,
+            }
+
+    @staticmethod
+    def _experiment_dict(row):
+        if row is None:
+            return None
+        encoded = dumps(row.snapshot, sort_keys=True, separators=(",", ":")).encode()
+        if len(encoded) > 1048576 or sha256_bytes(encoded).hexdigest() != row.sha256:
+            raise ValueError("Experiment snapshot integrity failed")
+        return {
+            "id": row.id,
+            "mode": "RESEARCH",
+            "status": "DEFINED",
+            "created_at": _instant(row.created_at),
+            "snapshot": deepcopy(row.snapshot),
+            "sha256": row.sha256,
+            "execution_eligible": False,
+            "performance": None,
+            "limitations": [
+                "DEFINITION_ONLY",
+                "QUOTE_EVIDENCE_ONLY",
+                "PROVENANCE_NOT_AUTHENTICATED",
+                "OPTION_REPLAY_UNAVAILABLE",
+            ],
+        }
+
+    def create_experiment(
+        self,
+        user_id,
+        recording_id,
+        now,
+        *,
+        expected_count,
+        expected_sha256,
+        configuration,
+        train_end,
+        validation_end,
+    ):
+        """Validate existing evidence, then persist a bounded immutable definition."""
+        manifest = recording_cursor(
+            self,
+            user_id,
+            recording_id,
+            expected_count=expected_count,
+            expected_sha256=expected_sha256,
+        ).manifest
+        snapshot = experiment_snapshot(
+            manifest,
+            configuration,
+            train_end=train_end,
+            validation_end=validation_end,
+            now=now,
+        )
+        digest = sha256_bytes(
+            dumps(snapshot, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            source = db.get(NiftyResearchRecording, (user_id, recording_id))
+            current = self._recording_dict(
+                source, db.get(NiftyResearchCapture, (user_id, recording_id))
+            )
+            if current != manifest:
+                raise StateConflict("Recording changed before experiment creation")
+            total = db.scalar(
+                select(func.count())
+                .select_from(NiftyResearchExperiment)
+                .where(NiftyResearchExperiment.user_id == user_id)
+            )
+            if total >= 50:
+                raise ValueError("Experiment quota reached; definitions are not deleted")
+            row = NiftyResearchExperiment(
+                user_id=user_id,
+                id=uuid4().hex,
+                created_at=now.astimezone(UTC),
+                snapshot=snapshot,
+                sha256=digest,
+            )
+            db.add(row)
+            result = self._experiment_dict(row)
+        return result
+
+    def experiment(self, user_id, experiment_id):
+        """Read without creating a user, account, runner lease or transaction write."""
+        with self.sessions() as db:
+            return self._experiment_dict(db.get(NiftyResearchExperiment, (user_id, experiment_id)))
+
+    def experiments(self, user_id):
+        with self.sessions() as db:
+            rows = db.scalars(
+                select(NiftyResearchExperiment)
+                .where(NiftyResearchExperiment.user_id == user_id)
+                .order_by(NiftyResearchExperiment.created_at.desc(), NiftyResearchExperiment.id)
+                .limit(50)
+            ).all()
+            return [self._experiment_dict(row) for row in rows]
+
+    def experiment_summaries(self, user_id):
+        """List bounded identities without loading full dataset/configuration snapshots."""
+        with self.sessions() as db:
+            rows = db.execute(
+                select(
+                    NiftyResearchExperiment.id,
+                    NiftyResearchExperiment.sha256,
+                    NiftyResearchExperiment.created_at,
+                )
+                .where(NiftyResearchExperiment.user_id == user_id)
+                .order_by(NiftyResearchExperiment.created_at.desc(), NiftyResearchExperiment.id)
+                .limit(50)
+            ).all()
+            return [
+                {
+                    "id": row.id,
+                    "sha256": row.sha256,
+                    "created_at": _instant(row.created_at),
+                    "status": "DEFINED",
+                    "execution_eligible": False,
+                }
+                for row in rows
+            ]
+
+    @staticmethod
     def _opportunity_columns(row, payload, now):
         row.payload = payload
         row.status = payload["status"]
@@ -3094,6 +4420,7 @@ class NiftyStore:
 
     def ensure_report(self, user_id, kind, period_key, now):
         """Create the period's row once. Returns ``(row, created)``."""
+
         def existing(db):
             return db.scalar(
                 select(NiftyReport).where(
@@ -3195,9 +4522,7 @@ class NiftyStore:
                 )
             )
             if changed.rowcount == 1:
-                row = db.scalar(
-                    select(NiftyReport).where(*self._report_where(user_id, report_id))
-                )
+                row = db.scalar(select(NiftyReport).where(*self._report_where(user_id, report_id)))
                 db.add(
                     NiftyEvent(
                         user_id=user_id,
@@ -3303,9 +4628,7 @@ class NiftyStore:
                 )
             )
             if changed.rowcount == 1:
-                row = db.scalar(
-                    select(NiftyReport).where(*self._report_where(user_id, report_id))
-                )
+                row = db.scalar(select(NiftyReport).where(*self._report_where(user_id, report_id)))
                 db.add(
                     NiftyEvent(
                         user_id=user_id,
@@ -3464,12 +4787,14 @@ class NiftyStore:
             )
             if changed.rowcount != 1:
                 return None
-            db.add(NiftyEvent(
-                user_id=user_id,
-                kind="report_generation_retry_requested",
-                payload={"report_id": int(report_id)},
-                created_at=now,
-            ))
+            db.add(
+                NiftyEvent(
+                    user_id=user_id,
+                    kind="report_generation_retry_requested",
+                    payload={"report_id": int(report_id)},
+                    created_at=now,
+                )
+            )
         return self.report(user_id, report_id)
 
     def record_report_scan_block(self, user_id, day, reason, now):
@@ -3479,10 +4804,15 @@ class NiftyStore:
             self._lock(db, user_id)
             item = db.get(NiftyReportScanBlock, (user_id, day))
             if item is None:
-                db.add(NiftyReportScanBlock(
-                    user_id=user_id, day=day, reason=str(reason)[:40],
-                    created_at=now, last_checked_at=now,
-                ))
+                db.add(
+                    NiftyReportScanBlock(
+                        user_id=user_id,
+                        day=day,
+                        reason=str(reason)[:40],
+                        created_at=now,
+                        last_checked_at=now,
+                    )
+                )
             else:
                 item.reason = str(reason)[:40]
                 item.last_checked_at = now
@@ -3493,8 +4823,7 @@ class NiftyStore:
             items = db.scalars(
                 select(NiftyReportScanBlock)
                 .where(NiftyReportScanBlock.user_id == user_id)
-                .order_by(NiftyReportScanBlock.last_checked_at,
-                          NiftyReportScanBlock.day)
+                .order_by(NiftyReportScanBlock.last_checked_at, NiftyReportScanBlock.day)
                 .limit(limit)
             )
             return [{"day": row.day, "reason": row.reason} for row in items]
@@ -3515,7 +4844,8 @@ class NiftyStore:
         with self.sessions() as db:
             cursor = db.get(NiftyReportScan, user_id)
             count = db.scalar(
-                select(func.count()).select_from(NiftyReportScanBlock)
+                select(func.count())
+                .select_from(NiftyReportScanBlock)
                 .where(NiftyReportScanBlock.user_id == user_id)
             )
             blocked = db.scalars(
@@ -3527,9 +4857,7 @@ class NiftyStore:
             return {
                 "next_day": cursor.next_day if cursor else None,
                 "blocked_count": int(count or 0),
-                "blocked_examples": [
-                    {"day": x.day, "reason": x.reason} for x in blocked
-                ],
+                "blocked_examples": [{"day": x.day, "reason": x.reason} for x in blocked],
             }
 
     def report_scan_cursor(self, user_id, since):
@@ -3658,9 +4986,7 @@ class NiftyStore:
                 {
                     "eligible": bool(row.payload.get("eligible")),
                     "side": row.payload.get("side"),
-                    "reasons": [
-                        str(item) for item in (row.payload.get("reasons") or []) if item
-                    ],
+                    "reasons": [str(item) for item in (row.payload.get("reasons") or []) if item],
                 }
                 for row in db.scalars(
                     select(NiftyDecision)

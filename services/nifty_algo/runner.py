@@ -7,6 +7,7 @@ The database lease fences ownership across application restarts.
 from datetime import UTC, datetime
 from decimal import Decimal
 from hashlib import sha256
+from time import monotonic
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -16,11 +17,12 @@ from utils.logging import get_logger
 from .assessment import assess_current
 from .calendar import IST
 from .config import StrategyConfig
-from .contract_resolver import Resolver, moneyness
+from .contract_resolver import Resolver, SelectionUnavailable
+from .models import Instrument
 from .native_data import NativeDataAdapter
 from .paper_executor import NiftyPaperExecutor, OrderRefused, _charges
 from .protection import early_booking_exit, momentum_weakening
-from .research import opportunity_from_decision
+from .research import opportunity_from_decision, recording_scope
 from .shadow import ShadowBook
 
 _ATTACH_LOCKS = KeyedLocks(name="nifty-paper-attach")
@@ -68,6 +70,7 @@ class NiftyRunner:
         self.last_assessed_at = None
         self.socket_ref = None
         self.closed = False
+        self.recording_feed = None
 
     def _lease(self, now):
         if self.closed:
@@ -82,6 +85,9 @@ class NiftyRunner:
                 "started_at": self.started_at.isoformat(),
                 "last_boundary": self.last_boundary,
                 "configuration_id": self.assessed_configuration_id,
+                "assessed_at": (
+                    self.last_assessed_at.isoformat() if self.last_assessed_at else None
+                ),
             },
         )
 
@@ -213,9 +219,7 @@ class NiftyRunner:
                         source_time = protection.get("last_source_time")
                         last_bid = protection.get("last_bid")
                         try:
-                            quote_age = (
-                                now - datetime.fromisoformat(source_time)
-                            ).total_seconds()
+                            quote_age = (now - datetime.fromisoformat(source_time)).total_seconds()
                             if (
                                 last_bid is not None
                                 and 0 <= quote_age <= entry_config.quote_max_age
@@ -239,11 +243,7 @@ class NiftyRunner:
                     self.store.update_position_snapshot(
                         self.user_id,
                         held["token"],
-                        {
-                            key: snapshot[key]
-                            for key in ("end", "price", "macd")
-                            if key in snapshot
-                        },
+                        {key: snapshot[key] for key in ("end", "price", "macd") if key in snapshot},
                     )
             self.executor.monitor_exits(
                 now,
@@ -300,50 +300,81 @@ class NiftyRunner:
             self._lease(self.clock() if now is None else now)
         return None
 
-    def _entry_candidates(self, decision, config, now):
-        market = self.native.get_market()
-        spot = market.get("spot")
-        if not spot or spot["status"] != "AVAILABLE":
-            raise OrderRefused(["SPOT_REFERENCE_UNAVAILABLE"])
-        spot_reference = Decimal(str(spot["ltp"]))
-        instruments = self.native.instruments(now)
-        if config.pcr_expiry:
-            instruments = [
-                i for i in instruments if i.kind == "FUT" or i.expiry == config.pcr_expiry
-            ]
-        quotes = {
-            i.token: self.executor._depth(i, now)
-            for i in instruments
-            if i.kind == decision["side"]
-        }
-        session_day = now.astimezone(IST).date()
-        option_metadata = [
-            item
-            for item in instruments
-            if item.exchange == "NFO"
-            and item.underlying == "NIFTY"
-            and item.kind == decision["side"]
-            and item.tradable
-            and item.expiry >= session_day
-            and item.master_date == session_day
-            and (not config.avoid_expiry_day or item.expiry > session_day)
-        ]
-        active_expiry = min(item.expiry for item in option_metadata)
-        atm_strike = min(
-            (item.strike for item in option_metadata if item.expiry == active_expiry),
-            key=lambda strike: (abs(strike - spot_reference), strike),
+    def _entry_candidates(self, decision, config, now, *, mode="PAPER"):
+        if mode not in {"PAPER", "SHADOW"}:
+            raise ValueError("Selector mode must be PAPER or SHADOW")
+        spot_reference = None
+        try:
+            market = self.native.get_market()
+            spot = market.get("spot")
+            if not spot or spot["status"] != "AVAILABLE":
+                raise OrderRefused(["SPOT_REFERENCE_UNAVAILABLE"])
+            try:
+                spot_reference = Decimal(str(spot["ltp"]))
+                if not spot_reference.is_finite() or spot_reference <= 0:
+                    raise ValueError("Invalid spot")
+            except (ValueError, TypeError, ArithmeticError):
+                spot_reference = None
+                raise OrderRefused(["SPOT_REFERENCE_UNAVAILABLE"]) from None
+            instruments = self.native.instruments(now)
+            if config.pcr_expiry:
+                instruments = [
+                    i for i in instruments if i.kind == "FUT" or i.expiry == config.pcr_expiry
+                ]
+            quotes = {
+                i.token: self.executor._depth(i, now)
+                for i in instruments
+                if i.kind == decision["side"]
+            }
+            report = Resolver().assess(
+                instruments, quotes, spot_reference, decision["side"], now, config
+            )
+        except (OrderRefused, ValueError) as exc:
+            if isinstance(exc, OrderRefused):
+                reasons = exc.reasons
+            elif isinstance(exc, SelectionUnavailable):
+                reasons = [exc.code]
+            else:
+                reasons = ["CONTRACT_EVIDENCE_UNAVAILABLE"]
+            self.store.record_event(
+                self.user_id,
+                f"contract_selector:{mode}",
+                {
+                    "status": "UNAVAILABLE",
+                    "reasons": reasons,
+                    "policy": "listed-preference-v1",
+                    "configuration_id": config.version_id,
+                    "decision_id": decision["decision_id"],
+                    "mode": mode,
+                    "evaluated_at": now.isoformat(),
+                    "spot_reference": str(spot_reference) if spot_reference is not None else None,
+                    "atm_strike": None,
+                    "expiry": None,
+                    "ranked_tokens": [],
+                    "candidates": [],
+                    "omitted_candidates": 0,
+                },
+                now,
+            )
+            raise
+        self.store.record_event(
+            self.user_id,
+            f"contract_selector:{mode}",
+            {**report, "decision_id": decision["decision_id"], "mode": mode},
+            now,
         )
-        candidates = Resolver().candidates(
-            instruments, quotes, spot_reference, decision["side"], now, config
-        )
+        eligible = [item for item in report["candidates"] if not item["reasons"]]
+        if not eligible:
+            raise OrderRefused(["CONTRACT_LIQUIDITY_UNAVAILABLE"])
+        candidates = [Instrument.model_validate(item["instrument"]) for item in eligible]
         return candidates, [
             {
-                "token": candidate.token,
-                "moneyness": moneyness(candidate, spot_reference, atm_strike),
-                "spot_reference": str(spot_reference),
-                "atm_strike": str(atm_strike),
+                "token": item["instrument"]["token"],
+                "moneyness": item["moneyness"],
+                "spot_reference": report["spot_reference"],
+                "atm_strike": report["atm_strike"],
             }
-            for candidate in candidates
+            for item in eligible
         ]
 
     def _research(self, decision, config, now):
@@ -383,7 +414,7 @@ class NiftyRunner:
                 decision,
                 now,
                 config,
-                lambda: self._entry_candidates(decision, config, now)[0],
+                lambda: self._entry_candidates(decision, config, now, mode="SHADOW")[0],
             )
             return row
         except Exception as exc:
@@ -400,6 +431,7 @@ class NiftyRunner:
             logger.warning("NIFTY shadow upkeep skipped: %s", type(exc).__name__)
 
     def _native_feed(self, config, now):
+        self.recording_feed = None
         from database.auth_db import get_api_key_for_tradingview, get_broker_name
         from services.websocket_service import get_websocket_connection
 
@@ -521,7 +553,185 @@ class NiftyRunner:
                 )
                 if ack.get("status") != "success":
                     raise OrderRefused(["NATIVE_SUBSCRIPTION_ACK_FAILED"])
+        try:
+            master = self.native.master_reader()
+            scope = recording_scope(
+                [
+                    item
+                    for item in contracts
+                    if item.kind in ("CE", "PE") and (item.exchange, item.symbol, "Depth") in wanted
+                ],
+                broker,
+                now,
+            )
+            scope_rows = [
+                row
+                for row in rows
+                if row["kind"] in ("CE", "PE")
+                and (row["exchange"], row["symbol"], "Depth") in wanted
+            ]
+            if any(
+                row.get("master_freshness") != "VERIFIED"
+                or row.get("master_broker") != broker
+                or not row.get("master_complete")
+                for row in scope_rows
+            ):
+                raise ValueError("Recording master verification changed")
+            verified_scope = recording_scope(
+                [
+                    Instrument.model_validate(
+                        {
+                            key: value
+                            for key, value in row.items()
+                            if key not in ("master_freshness", "master_broker", "master_complete")
+                        }
+                    )
+                    for row in scope_rows
+                ],
+                broker,
+                now,
+            )
+            if verified_scope != scope:
+                raise ValueError("Recording master identity changed")
+            if (
+                master
+                and master.get("is_ready")
+                and master.get("broker") == broker
+                and master.get("download_date") == now.astimezone(IST).date().isoformat()
+            ):
+                self.recording_feed = {
+                    "at": now,
+                    "client": client,
+                    "socket": client.ws,
+                    "reconnect": reconnect,
+                    "master": dict(master),
+                    "scope": scope,
+                }
+        except Exception as exc:
+            # Research metadata must never block the existing trading feed.
+            logger.warning("NIFTY recording context skipped: %s", type(exc).__name__)
         return key
+
+    def _recording_feed_current(self, context, now):
+        if (
+            context is None
+            or self.closed
+            or self.recording_feed is not context
+            or not 0 <= (now - context["at"]).total_seconds() <= 10
+            or self.client is not context["client"]
+            or not self.client.connected
+            or not self.client.authenticated
+            or self.client.ws is not context["socket"]
+            or self.native.master_reader() != context["master"]
+            or self.native.market_data.health_monitor.get_health().get("reconnect_count")
+            != context["reconnect"]
+        ):
+            return False
+        active = {
+            (row["exchange"], row["symbol"], row["mode"])
+            for row in self.client.get_subscriptions()["subscriptions"]
+        }
+        return all(
+            (item["exchange"], item["symbol"], "Depth") in active
+            for item in context["scope"]["instruments"]
+        )
+
+    def capture(self, now=None):
+        """Bounded cache-only quote sampling; never renews readiness or the lease."""
+        now = now or self.clock()
+        context = self.recording_feed
+        try:
+            if not self._recording_feed_current(context, now):
+                return None
+            self._capture_exit_studies(now)
+            manifest = next(
+                (
+                    row
+                    for row in self.store.recordings(self.user_id)
+                    if row["capture"] is not None
+                    and row["status"] == "RECORDING"
+                    and row["count"] < row["max_observations"]
+                    and row["size_bytes"] < 16777216
+                    and datetime.fromisoformat(row["starts_at"])
+                    <= now
+                    < datetime.fromisoformat(row["ends_at"])
+                ),
+                None,
+            )
+            if manifest is None:
+                return None
+            scope = context["scope"]
+            manifest = self.store.freeze_recording_scope(
+                self.user_id,
+                manifest["id"],
+                now,
+                instruments=[Instrument.model_validate(item) for item in scope["instruments"]],
+                broker=scope["broker"],
+                runner_owner=self.owner,
+            )
+            frozen = manifest["capture"]["scope"]
+            instruments = frozen["instruments"]
+            # Wall-clock rotation avoids an unbounded process cursor or sample cache.
+            start = (int(now.timestamp()) // 5 * 100) % len(instruments)
+            limit = min(100, len(instruments), manifest["max_observations"] - manifest["count"])
+            deadline = monotonic() + 0.25
+            observations = []
+            floor = max(datetime.fromisoformat(frozen["frozen_at"]), self.started_at)
+            for offset in range(limit):
+                if monotonic() >= deadline:
+                    break
+                item = Instrument.model_validate(instruments[(start + offset) % len(instruments)])
+                quote = self.native.recording_quote(item, now)
+                if quote is None or quote.source_time < floor:
+                    continue
+                observations.append(
+                    {
+                        "kind": "QUOTE",
+                        "source": "NATIVE_FEED",
+                        "source_time": quote.source_time.isoformat(),
+                        "available_at": now.isoformat(),
+                        "payload": quote.model_dump(mode="json"),
+                    }
+                )
+            write_now = self.clock()
+            if not self._recording_feed_current(context, write_now):
+                return None
+            if not observations:
+                return manifest
+            return self.store.append_recording(
+                self.user_id,
+                manifest["id"],
+                observations,
+                write_now,
+                expected_count=manifest["count"],
+                deduplicate_samples=True,
+                runner_owner=self.owner,
+            )
+        except Exception as exc:
+            logger.warning("NIFTY recording capture skipped: %s", type(exc).__name__)
+            return None
+
+    def _capture_exit_studies(self, now):
+        """Cache-only sampled research through the approved effective session close."""
+        from .calendar import nifty_session
+
+        day = now.astimezone(ZoneInfo("Asia/Kolkata")).date()
+        session = nifty_session(self.user_id, day, store=self.store)
+        if (
+            session["status"] != "TRADING"
+            or not session["window"][0] <= now <= session["window"][1]
+        ):
+            return
+        calendar = self.store.approved_calendar_version(self.user_id, day.year)
+        deadline = monotonic() + 0.1
+        for trade in self.store.exit_study_targets(self.user_id, *session["window"]):
+            if monotonic() >= deadline:
+                break
+            quote = self.native.recording_quote(Instrument.model_validate(trade["instrument"]), now)
+            if quote is not None:
+                self.store.observe_exit_study(
+                    self.user_id, trade["id"], quote, now, session["window"][1], calendar["id"]
+                )
 
     def reports(self, now=None):
         """Report generation and email delivery on their own job; SMTP never delays exits."""
@@ -543,6 +753,7 @@ class NiftyRunner:
 
     def close(self):
         self.closed = True
+        self.recording_feed = None
         if self.client is not None and self.cache_callback is not None:
             self.client.unregister_callback("market_data", self.cache_callback)
         self.store.release_runner(self.user_id, self.owner)
@@ -619,9 +830,21 @@ def _attach_runner(app, scheduler, user_id):
             misfire_grace_time=30,
             replace_existing=True,
         )
+        added.append(prefix + ":reports")
+        scheduler.add_job(
+            scoped(runner.capture),
+            "interval",
+            seconds=5,
+            id=prefix + ":capture",
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=1,
+            replace_existing=True,
+        )
     except Exception:
         for job_id in reversed(added):
             scheduler.remove_job(job_id)
+        runner.close()
         raise
     runners[user_id] = runner
     return runner
@@ -643,7 +866,7 @@ def restore_runners(app, scheduler):
         def shutdown():
             for user_id, runner in list(app.extensions.get("nifty_algo_runners", {}).items()):
                 prefix = "nifty-paper:" + sha256(user_id.encode()).hexdigest()[:24]
-                for suffix in (":reports", ":entries", ":protect"):
+                for suffix in (":capture", ":reports", ":entries", ":protect"):
                     if scheduler.get_job(prefix + suffix):
                         scheduler.remove_job(prefix + suffix)
                 runner.close()

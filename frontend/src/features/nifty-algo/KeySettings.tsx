@@ -52,6 +52,35 @@ export function KeySettings({
   return (
     <div className="nifty-key-settings">
       <div className="nifty-form">
+        {['Liquidity', 'Spread', 'Delta', 'Net reward-to-risk', 'Capital efficiency'].map(
+          (factor, index) => (
+            <div key={factor}>
+              <Label htmlFor={`nifty-weight-${index}`}>{factor} weight (%)</Label>
+              <Input
+                id={`nifty-weight-${index}`}
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                value={
+                  Array.isArray(value.selector_weights)
+                    ? String(value.selector_weights[index] ?? '')
+                    : ['30', '25', '15', '20', '10'][index]
+                }
+                onChange={(event) => {
+                  const weights = Array.isArray(value.selector_weights)
+                    ? [...value.selector_weights]
+                    : ['30', '25', '15', '20', '10']
+                  weights[index] = event.target.value
+                  set('selector_weights', weights)
+                }}
+              />
+            </div>
+          )
+        )}
+        <p className="nifty-muted">
+          Weights must sum to 100. Risk limits remain enforced before ranking.
+        </p>
         <Label htmlFor="nifty-selection">Contract moneyness</Label>
         <select
           id="nifty-selection"

@@ -38,6 +38,9 @@ def initial_protection(entry, tick, config, confidence):
         "initial_stop": str(stop),
         "stop_price": str(stop),
         "highest_bid": None,
+        "lowest_bid": None,
+        "observation_count": 0,
+        "max_observation_gap_seconds": 0,
         "trailing_active": False,
         "trailing_stop": None,
         "profit_lock_active": False,
@@ -97,15 +100,18 @@ def profit_floor_stop(entry_price, quantity, entry_fees, floor_net, tick, config
     estimate += D(config.slippage_ticks) * tick
     candidate = ceiling_tick(estimate, tick)
     for _ in range(1000):
-        if modeled_exit_net(
-            entry_price, quantity, candidate, entry_fees, tick, config, charges
-        ) < floor_net:
+        if (
+            modeled_exit_net(entry_price, quantity, candidate, entry_fees, tick, config, charges)
+            < floor_net
+        ):
             candidate += tick
             continue
         previous = candidate - tick
-        if previous > 0 and modeled_exit_net(
-            entry_price, quantity, previous, entry_fees, tick, config, charges
-        ) >= floor_net:
+        if (
+            previous > 0
+            and modeled_exit_net(entry_price, quantity, previous, entry_fees, tick, config, charges)
+            >= floor_net
+        ):
             candidate = previous
             continue
         return candidate
@@ -154,6 +160,22 @@ def observe_bid(
     result.setdefault("profit_lock_activation", None)
     result.setdefault("estimated_net", None)
     result["new_events"] = []
+    result["lowest_bid"] = str(
+        min(D(protection["lowest_bid"]) if protection.get("lowest_bid") else bid, bid)
+    )
+    if source_time is not None:
+        from datetime import datetime
+
+        observed_time = (
+            datetime.fromisoformat(source_time) if isinstance(source_time, str) else source_time
+        )
+        previous = protection.get("last_source_time")
+        gap = (observed_time - datetime.fromisoformat(previous)).total_seconds() if previous else 0
+        result["max_observation_gap_seconds"] = max(
+            protection.get("max_observation_gap_seconds", 0), gap
+        )
+        result["observation_count"] = protection.get("observation_count", 0) + 1
+        result.setdefault("first_observed_at", observed_time.isoformat())
     high = max(D(protection["highest_bid"]) if protection.get("highest_bid") else bid, bid)
     active = protection.get("trailing_active", False) or high >= (
         entry + config.trailing_activation_points
@@ -210,9 +232,7 @@ def observe_bid(
                 }
                 if floor_stop >= bid:
                     result["exit_reason"] = "PROFIT_FLOOR_UNREPRESENTABLE"
-                    result["new_events"] = [
-                        {"kind": "PROFIT_FLOOR_UNREPRESENTABLE", **event}
-                    ]
+                    result["new_events"] = [{"kind": "PROFIT_FLOOR_UNREPRESENTABLE", **event}]
                     floor_stop = None
                 else:
                     result["profit_lock_active"] = True
@@ -226,12 +246,31 @@ def observe_bid(
         floor_stop if floor_stop is not None else initial_stop,
     )
     result["stop_price"] = str(stop)
+    if source_time is not None and stop != previous_stop:
+        history = [
+            *protection.get("stop_history", []),
+            {
+                "source_time": observed_time.isoformat(),
+                "stop_price": str(stop),
+                "trailing_stop": result.get("trailing_stop"),
+                "profit_floor_stop": result.get("profit_floor_stop"),
+            },
+        ]
+        result["stop_history_omitted"] = protection.get("stop_history_omitted", 0) + max(
+            0, len(history) - 256
+        )
+        result["stop_history"] = history[-256:]
     reason = None
     if bid <= stop:
-        if floor_stop is not None and stop == floor_stop and floor_stop >= max(
-            initial_stop,
-            previous_stop,
-            trailing_stop if trailing_stop is not None else initial_stop,
+        if (
+            floor_stop is not None
+            and stop == floor_stop
+            and floor_stop
+            >= max(
+                initial_stop,
+                previous_stop,
+                trailing_stop if trailing_stop is not None else initial_stop,
+            )
         ):
             reason = "PROFIT_LOCK_STOP"
         else:
@@ -273,7 +312,10 @@ def momentum_weakening(previous_snapshot, snapshot, direction):
         ):
             return False
         previous_macd, current_macd = previous_snapshot.get("macd"), snapshot.get("macd")
-        previous_price, current_price = D(str(previous_snapshot["price"])), D(str(snapshot["price"]))
+        previous_price, current_price = (
+            D(str(previous_snapshot["price"])),
+            D(str(snapshot["price"])),
+        )
         if not isinstance(previous_macd, dict) or not isinstance(current_macd, dict):
             return False
         previous_histogram = previous_macd.get("histogram")

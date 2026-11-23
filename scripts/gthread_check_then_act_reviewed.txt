@@ -36,6 +36,10 @@ upgrade/migrate_smtp_simple.py::setup_unicode_output::sys.stdout  # benign: a on
 # --- NIFTY transaction and object ownership ---------------------------------
 # _lock executes an UPDATE before reading mutable state; its SQLite write lock
 # or PostgreSQL row lock lasts through the enclosing sessions.begin() commit.
+database/nifty_algo_db.py::NiftyStore.acknowledge_safety_incident::row.revision  # benign: _lock(db, user_id) covers the incident lookup, revision/status checks and acknowledged mutation through commit
+database/nifty_algo_db.py::NiftyStore.append_recording::row.size_bytes  # benign: _lock(db, user_id) holds the owner transaction lock through cursor/size checks, observation inserts, manifest mutation and commit; two-writer and rollback tests cover the write
+database/nifty_algo_db.py::NiftyStore.resolve_safety_incident::row.revision  # benign: _lock(db, user_id) covers the incident lookup, revision checks and resolved mutation through commit
+database/nifty_algo_db.py::NiftyStore.resolve_safety_incident::state.revision  # benign: _lock(db, user_id) covers state/evidence reads and the resolution revision increment through commit; no implicit resume
 database/nifty_algo_db.py::NiftyStore.recover_legacy::order.payload  # benign: _lock(db, user_id) serialises legacy order mutation within the transaction
 database/nifty_algo_db.py::NiftyStore.fill::account.daily_entries  # benign: _lock(db, user_id) serialises fill accounting within the transaction
 database/nifty_algo_db.py::NiftyStore.fill::account.available  # benign: _lock(db, user_id) serialises fill accounting within the transaction
@@ -44,3 +48,4 @@ database/nifty_algo_db.py::NiftyStore.fill::position.quantity  # benign: _lock(d
 database/nifty_algo_db.py::NiftyStore.fill::order.payload  # benign: _lock(db, user_id) serialises order mutation within the transaction
 database/nifty_algo_db.py::NiftyStore.link_milestone_report::row.milestone_report_ids  # benign: _lock(db, user_id) serialises the membership check and append within the transaction
 services/nifty_algo/market_data.py::CandleBuilder.push::current.volume  # benign: single-owner builder with no call sites or shared instance; re-review before wiring into concurrent ingestion
+database/nifty_notifications.py::NotificationStore.save_discord_configuration::row.revision  # benign: _lock(db, user_id) covers the revision comparison, encrypted settings replacement and revision increment until commit; competing-store test proves one winner

@@ -81,6 +81,7 @@ class ShadowBook:
             config,
             confidence["score"],
             _charges,
+            now=now,
         )
         if sizing.instrument is None:
             reasons = list(dict.fromkeys(reason for _, _, reason in sizing.rejections))
@@ -99,6 +100,11 @@ class ShadowBook:
             "snapshot": decision.get("snapshot"),
         }
         protection["sizing_plan"] = {
+            "ranking": list(sizing.ranking),
+            "rejections": [
+                {"token": token, "lots": lots, "reason": reason}
+                for token, lots, reason in sizing.rejections
+            ],
             "lots": sizing.lots,
             "planned_loss": str(sizing.planned_loss),
             "projected_net_reward": str(sizing.projected_net_reward),

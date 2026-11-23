@@ -46,13 +46,15 @@ class EntryPlan:
     projected_net_reward: Decimal
     cash_required: Decimal
     rejections: tuple[tuple[str | None, int, str], ...] = ()
+    ranking: tuple[dict, ...] = ()
 
 
-def plan_entry(account, candidates, config, confidence_score, charges):
-    """Select the first candidate and lot count meeting frozen risk constraints."""
+def plan_entry(account, candidates, config, confidence_score, charges, *, now=None):
+    """Rank every eligible lot proposal without relaxing frozen risk constraints."""
     from .protection import initial_protection
+    from .selection_scoring import score_plan
 
-    rejected = []
+    rejected, eligible = [], []
     candidates = list(candidates or [])
     score = Decimal(str(confidence_score))
     permitted = min(
@@ -61,11 +63,25 @@ def plan_entry(account, candidates, config, confidence_score, charges):
     )
     zero = Decimal("0")
     if not candidates:
-        return EntryPlan(None, 0, 0, zero, zero, zero, zero, zero, zero, zero,
-                         ((None, 0, "NO_SUITABLE_CONTRACT"),))
+        return EntryPlan(
+            None,
+            0,
+            0,
+            zero,
+            zero,
+            zero,
+            zero,
+            zero,
+            zero,
+            zero,
+            ((None, 0, "NO_SUITABLE_CONTRACT"),),
+        )
 
     for instrument, quote in candidates:
         token = instrument.token
+        if now is not None and not liquid(instrument, quote, now, config):
+            rejected.append((token, 0, "LIQUIDITY_UNAVAILABLE"))
+            continue
         if config.max_lots > permitted:
             rejected.append((token, config.max_lots, "SCORE_LOT_LIMIT"))
         if permitted == 0:
@@ -96,10 +112,7 @@ def plan_entry(account, candidates, config, confidence_score, charges):
             stop_cost = charges("SELL", stop_exit, quantity, config)
             target_cost = charges("SELL", target, quantity, config)
             planned_loss = (
-                (entry - stop_exit) * quantity
-                + buy_cost
-                + stop_cost
-                + config.planned_loss_buffer
+                (entry - stop_exit) * quantity + buy_cost + stop_cost + config.planned_loss_buffer
             )
             reward = (target - entry) * quantity - buy_cost - target_cost
             cash = entry * quantity + buy_cost + charges("SELL", entry, quantity, config)
@@ -110,15 +123,41 @@ def plan_entry(account, candidates, config, confidence_score, charges):
                 failures.append("NET_REWARD_BELOW_MINIMUM")
             if cash > account.available:
                 failures.append("INSUFFICIENT_FUNDS")
-            if quote.ask_size < quantity:
+            if min(quote.ask_size, quote.bid_size) < quantity:
                 failures.append("INSUFFICIENT_DEPTH")
             rejected.extend((token, lots, reason) for reason in failures)
             if not failures:
-                return EntryPlan(
-                    instrument, quantity, lots, entry, stop, stop_exit, target,
-                    planned_loss, reward, cash, tuple(rejected)
+                proposal = EntryPlan(
+                    instrument,
+                    quantity,
+                    lots,
+                    entry,
+                    stop,
+                    stop_exit,
+                    target,
+                    planned_loss,
+                    reward,
+                    cash,
                 )
-    return EntryPlan(None, 0, 0, zero, zero, zero, zero, zero, zero, zero, tuple(rejected))
+                eligible.append((proposal, score_plan(proposal, quote, config, now)))
+    if not eligible:
+        return EntryPlan(None, 0, 0, zero, zero, zero, zero, zero, zero, zero, tuple(rejected))
+    eligible.sort(
+        key=lambda pair: (
+            -Decimal(pair[1]["total"]),
+            pair[0].planned_loss,
+            pair[0].cash_required,
+            str(pair[0].instrument.expiry),
+            pair[0].instrument.strike,
+            pair[0].instrument.token,
+            pair[0].lots,
+        )
+    )
+    from dataclasses import replace
+
+    return replace(
+        eligible[0][0], rejections=tuple(rejected), ranking=tuple(row for _, row in eligible)
+    )
 
 
 def entry_reasons(account, instrument, quote, now, config, *, session_open, data_healthy):

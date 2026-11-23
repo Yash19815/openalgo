@@ -1,5 +1,23 @@
 # NIFTY ALGO changelog
 
+## 0.5.0 — 2026-11-23 (unreleased)
+
+### Feature
+
+- Added risk-approved Decimal weighted contract/quantity proposals, configurable
+  weights, explicit missing-Delta coverage and stored scoring explanations.
+- Extended owned realized analytics with trade inspection, sampled excursion
+  and bounded stop-history evidence, post-exit sampling through effective close,
+  and additional performance dimensions without another P&L ledger.
+- Added immutable quote-coverage inspection results and receipt-time replay
+  controls. Incomplete execution data continues to refuse financial backtests.
+- Added a dedicated Discord REST bot, encrypted configuration, signed authorized
+  monitoring commands, durable attempts/reminders, independent Gmail fallback
+  and a management panel. Delivery uses a separate optional process.
+- Added feature architecture, setup, testing and readiness documentation. Live
+  transport, full-fidelity execution replay and remaining operational acceptance
+  are explicitly unfinished; this version is not a production-readiness claim.
+
 ## 0.4.0 — 2026-11-21
 
 ### Paper-trading system (Phases 0–7, `feat/nifty-paper-trading-system`)

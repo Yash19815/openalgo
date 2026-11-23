@@ -322,10 +322,11 @@ def test_scheduler_attaches_once_with_independent_exit_job(store):
     scheduler = Mock()
     runner = attach_runner(app, scheduler, USER)
     assert attach_runner(app, scheduler, USER) is runner
-    assert scheduler.add_job.call_count == 3
+    assert scheduler.add_job.call_count == 4
     calls = scheduler.add_job.call_args_list
     assert calls[0].kwargs["seconds"] == 1 and calls[1].kwargs["seconds"] == 5
     assert calls[2].kwargs["id"].endswith(":reports") and calls[2].kwargs["seconds"] == 60
+    assert calls[3].kwargs["id"].endswith(":capture") and calls[3].kwargs["seconds"] == 5
     assert all(c.kwargs["max_instances"] == 1 and c.kwargs["coalesce"] for c in calls)
 
 

@@ -18,11 +18,319 @@ export interface NiftyStatus {
 }
 
 export const niftyKeys = { all: ['nifty-algo'] as const }
+
+export const discordChannels = [
+  'critical-alerts',
+  'system-warnings',
+  'bot-status',
+  'live-trades',
+  'paper-trades',
+  'shadow-trades',
+  'risk-management',
+  'daily-summary',
+  'monthly-summary',
+  'research-insights',
+] as const
+export interface DiscordConfiguration {
+  enabled: boolean
+  application_id: string
+  guild_id: string
+  public_key: string
+  channels: Record<string, string>
+  authorized_users: string[]
+  authorized_roles: string[]
+  critical_role: string | null
+  preferences: Record<string, boolean>
+  reminder_interval_seconds: number
+}
+export interface DiscordCenter {
+  settings: {
+    revision: number
+    configuration: DiscordConfiguration
+    token_configured: boolean
+    verified: boolean
+    verification: { errors: string[] } | null
+    updated_at: string
+    rate_limit_until: string | null
+  } | null
+  health: {
+    counts: Record<string, number>
+    attempts: {
+      delivery_id: number
+      attempt: number
+      result: { outcome: string; code: string }
+      at: string
+    }[]
+  }
+  incidents: SafetyIncident[]
+  deliveries: { id: number; destination: string; status: string; attempts: number }[]
+}
+export async function saveDiscordSettings(
+  revision: number,
+  configuration: DiscordConfiguration,
+  token: string
+) {
+  const response = await webClient.post(`${base}/discord`, {
+    revision,
+    configuration,
+    ...(token ? { token } : {}),
+    confirm: 'SAVE_DISCORD_SETTINGS',
+  })
+  return response.data
+}
+export async function discordSetupAction(
+  action: 'validate' | 'register-commands' | 'test',
+  revision: number
+) {
+  const confirmation = {
+    validate: 'VALIDATE',
+    'register-commands': 'REGISTER_READ_ONLY',
+    test: 'QUEUE_TEST',
+  }
+  const response = await webClient.post(`${base}/discord/${action}`, {
+    revision,
+    confirm: confirmation[action],
+  })
+  return response.data
+}
 const base = '/api/nifty-algo'
+
+export async function inspectExperiment(id: string) {
+  const response = await webClient.post(
+    `${base}/research/experiments/${encodeURIComponent(id)}/inspection`,
+    { confirm: 'INSPECT_EVIDENCE_ONLY' }
+  )
+  return response.data.data
+}
+
+export async function readAnalyticsPdf(params: string): Promise<Blob> {
+  const response = await webClient.get(`${base}/analytics.pdf?${params}`, { responseType: 'blob' })
+  if (response.data.type !== 'application/pdf') throw new Error('PDF export unavailable')
+  return response.data
+}
+
+export interface SelectorRecord {
+  id: number
+  created_at: string
+  payload: {
+    mode: 'PAPER' | 'SHADOW'
+    status?: 'RANKED' | 'REJECTED' | 'UNAVAILABLE'
+    reasons?: string[]
+    policy: string
+    configuration_id: string
+    decision_id: string
+    evaluated_at: string
+    spot_reference: string | null
+    atm_strike: string | null
+    expiry: string | null
+    ranked_tokens: string[]
+    omitted_candidates: number
+    quantity_ranking?: {
+      evaluated_at: string
+      ranking: {
+        token: string
+        lots: number
+        quantity: number
+        capital_required: string
+        planned_loss: string
+        projected_net_reward: string
+        total: string
+        scores: Record<string, string>
+        coverage: { delta: boolean }
+      }[]
+      rejections: { token: string | null; lots: number; reason: string }[]
+    }
+    candidates: {
+      instrument: {
+        token: string
+        symbol: string
+        exchange: string
+        kind: string
+        expiry: string
+        strike: string
+        lot_size: number
+        tick_size: string
+      }
+      moneyness: string
+      rank: number | null
+      reasons: string[]
+      quote: {
+        bid: string | null
+        ask: string | null
+        bid_size: number
+        ask_size: number
+        volume: number | null
+        source_time: string
+        provider: string
+      } | null
+    }[]
+  }
+}
+
+export interface SafetyIncident {
+  id: number
+  mode: 'PAPER' | 'LIVE' | 'SHADOW' | 'RESEARCH'
+  code: string
+  severity: 'WARNING' | 'CRITICAL'
+  status: 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED'
+  revision: number
+  created_at: string
+  acknowledged_at: string | null
+  acknowledged_by: string | null
+}
+
+export interface SafetyStatus {
+  entry_blocked: boolean
+  reasons: string[]
+  recovery_available: boolean
+  state_revision: number | null
+  incidents: SafetyIncident[]
+}
+
+export async function acknowledgeSafetyIncident({
+  id,
+  revision,
+}: {
+  id: number
+  revision: number
+}) {
+  const response = await webClient.post(`${base}/safety/incidents/${id}/acknowledge`, { revision })
+  return response.data
+}
 
 export async function readNifty<T>(resource: string): Promise<T> {
   const response = await webClient.get<{ status: string; data: T }>(`${base}/${resource}`)
   return response.data.data
+}
+
+export interface ResearchRecording {
+  id: string
+  mode: 'RESEARCH'
+  schema_version: number
+  status: 'RECORDING' | 'SEALED'
+  starts_at: string
+  ends_at: string
+  last_available_at: string | null
+  count: number
+  size_bytes: number
+  max_observations: number
+  configuration_id: string
+  content_sha256: string
+  sealed_at: string | null
+  execution_eligible: false
+  limitations: string[]
+  capture: {
+    scope_sha256: string | null
+    scope: {
+      broker: string
+      frozen_at: string
+      instruments: {
+        token: string
+        symbol: string
+        exchange: string
+      }[]
+    } | null
+  } | null
+}
+
+export interface RecordingList {
+  items: ResearchRecording[]
+  capture_status: 'NOT_CONNECTED' | 'NATIVE_CAPTURE_REQUESTED'
+}
+
+export interface RecordingRequest {
+  duration_minutes: number
+  max_observations: number
+  native_capture: boolean
+}
+
+export interface ExperimentSummary {
+  id: string
+  sha256: string
+  created_at: string
+  status: 'DEFINED'
+  execution_eligible: false
+}
+
+export interface ExperimentDefinition extends ExperimentSummary {
+  mode: 'RESEARCH'
+  performance: null
+  snapshot: DataRecord
+  limitations: string[]
+}
+
+export interface ExperimentRequest {
+  recording_id: string
+  expected_count: number
+  expected_sha256: string
+  train_end: string
+  validation_end: string
+  configuration_overrides: { adx_min?: number; atr_period?: number }
+}
+
+export async function defineExperiment({
+  recording_id,
+  expected_count,
+  expected_sha256,
+  train_end,
+  validation_end,
+  configuration_overrides,
+}: ExperimentRequest): Promise<ExperimentDefinition> {
+  const response = await webClient.post(`${base}/research/experiments`, {
+    recording_id,
+    expected_count,
+    expected_sha256,
+    train_end,
+    validation_end,
+    configuration_overrides,
+    confirm: 'DEFINE_ONLY',
+  })
+  return response.data.data
+}
+
+export async function createRecording({
+  duration_minutes,
+  max_observations,
+  native_capture,
+}: RecordingRequest): Promise<ResearchRecording> {
+  const response = await webClient.post(`${base}/research/recordings`, {
+    duration_minutes,
+    max_observations,
+    native_capture,
+    confirm: 'RESEARCH_ONLY',
+  })
+  return response.data.data
+}
+
+export async function sealRecording({
+  id,
+  expected_count,
+}: {
+  id: string
+  expected_count: number
+}): Promise<ResearchRecording> {
+  const response = await webClient.post(
+    `${base}/research/recordings/${encodeURIComponent(id)}/seal`,
+    { expected_count, confirm: 'SEAL_ONLY' }
+  )
+  return response.data.data
+}
+
+export async function resolveSafetyIncident({
+  id,
+  revision,
+  state_revision,
+}: {
+  id: number
+  revision: number
+  state_revision: number
+}) {
+  const response = await webClient.post(`${base}/safety/incidents/${id}/resolve`, {
+    revision,
+    state_revision,
+    confirm: 'RESOLVE_ONLY',
+  })
+  return response.data
 }
 
 export interface ConfigurationResponse {

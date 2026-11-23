@@ -308,6 +308,7 @@ def daily_content(store, user_id, period_key):
     )
     sections.append(("Locks and cooldown", _lock_rows(inputs), None))
     sections.append(_shadow_section(inputs))
+    sections.append(_advanced_operations(inputs))
     summary = {
         "session": period_key,
         "trades": totals["trades"],
@@ -317,6 +318,24 @@ def daily_content(store, user_id, period_key):
     }
     title = f"NIFTY paper daily report {period_key}" + (" (zero-trade session)" if zero else "")
     return ("ZERO_TRADE" if zero else "STANDARD"), title, sections, summary
+
+
+def _advanced_operations(inputs):
+    kinds = (
+        "safety_incident",
+        "safety_acknowledged",
+        "safety_resolved",
+        "PROFIT_LOCK_ACTIVATED",
+        "PROFIT_FLOOR_UNREPRESENTABLE",
+        "paper_fill_verified",
+    )
+    counts = {kind: sum(event["kind"] == kind for event in inputs["events"]) for kind in kinds}
+    return (
+        "Protection and safety event evidence",
+        [[kind, str(count)] for kind, count in counts.items()],
+        "Recorded events in this report interval only. Acknowledgement is not resolution. "
+        "Notification acceptance does not establish human acknowledgement or a verified exit.",
+    )
 
 
 def milestone_content(store, user_id, period_key):
@@ -436,6 +455,7 @@ def month_content(store, user_id, period_key, sessions):
         )
     )
     sections.append(_shadow_section(inputs))
+    sections.append(_advanced_operations(inputs))
     summary = {
         "month": period_key,
         "sessions": len(sessions),
@@ -580,7 +600,8 @@ class ReportService:
 
     def eligible_sessions(self, month_key):
         return [
-            day for day in _month_days(month_key)
+            day
+            for day in _month_days(month_key)
             if self._session(day)["status"] == "TRADING"
             and self._session(day).get("window") is not None
         ]
@@ -606,8 +627,10 @@ class ReportService:
         stored = self.store.report_scan_cursor(self.user_id, since)
         first = max(since, date.fromisoformat(stored))
         due = []
-        months = {today.strftime("%Y-%m"),
-                  (today.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")}
+        months = {
+            today.strftime("%Y-%m"),
+            (today.replace(day=1) - timedelta(days=1)).strftime("%Y-%m"),
+        }
         unknown = {"CALENDAR_UNAPPROVED", "SESSION_WINDOW_UNAVAILABLE", "UNAVAILABLE"}
 
         # The forward cursor never blocks on a historical unknown day. Instead,
@@ -633,9 +656,7 @@ class ReportService:
 
         # Previously blocked dates are rechecked oldest-attempt-first. Only
         # delete a block AFTER ensure_report has reserved any newly due period.
-        for blocked in self.store.report_scan_blocks(
-            self.user_id, BLOCKED_RECHECKS_PER_TICK
-        ):
+        for blocked in self.store.report_scan_blocks(self.user_id, BLOCKED_RECHECKS_PER_TICK):
             blocked_day = date.fromisoformat(blocked["day"])
             if blocked_day > today:
                 continue
@@ -662,9 +683,12 @@ class ReportService:
             if any(row["status"] in unknown for row in sessions):
                 continue
             last = next(
-                (d for d in reversed(list(_month_days(month)))
-                 if self._session(d)["status"] == "TRADING"
-                 and self._session(d).get("window")), None,
+                (
+                    d
+                    for d in reversed(list(_month_days(month)))
+                    if self._session(d)["status"] == "TRADING" and self._session(d).get("window")
+                ),
+                None,
             )
             if last is not None and last >= since and now >= self._closes_at(last):
                 due.append(("MONTH_END", month))

@@ -182,8 +182,9 @@ def test_fill_waits_when_spot_unavailable(store):
             return super().get_all_data(symbol, exchange)
 
     running(store)
-    exe = executor(store, market=NoSpot(), config=StrategyConfig(latency_ms=1))
+    exe = executor(store, market=FakeMarket(), config=StrategyConfig(latency_ms=1))
     exe.admit(buy_intent())
+    exe.market_data = NoSpot()
     assert exe.process(now=NOW + timedelta(seconds=1)) == []
     assert [row["status"] for row in store.pending_orders(USER)] == ["PENDING"]
 
@@ -266,8 +267,9 @@ def test_fill_waits_for_valid_source_spot_not_display_fallback(store, fault):
             }
 
     running(store)
-    exe = executor(store, market=InvalidSpot(), config=StrategyConfig(latency_ms=1))
+    exe = executor(store, market=FakeMarket(), config=StrategyConfig(latency_ms=1))
     exe.admit(buy_intent())
+    exe.market_data = InvalidSpot()
     assert exe.process(NOW + timedelta(seconds=1)) == []
     assert store.positions(USER) == []
     assert len(store.pending_orders(USER)) == 1

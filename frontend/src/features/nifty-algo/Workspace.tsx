@@ -15,7 +15,7 @@ import {
   Telescope,
   Zap,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { useSocketContext } from '@/components/socket/SocketProvider'
 import { Button } from '@/components/ui/button'
@@ -27,6 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { AnalyticsPanel } from './AnalyticsPanel'
 import {
   assessNativeHistory,
   type ConfigurationResponse,
@@ -43,9 +44,24 @@ import { KeySettings } from './KeySettings'
 import { Panel } from './parts'
 import { ReportsPanel } from './ReportsPanel'
 import { RiskLocksPanel } from './RiskLocksPanel'
+import { SafetyCenterPanel } from './SafetyCenterPanel'
+import { SelectorPanel } from './SelectorPanel'
 import { OpportunitiesPanel, ShadowPanel } from './ShadowResearchPanel'
 import { TradingModePanel } from './TradingModePanel'
 import './workspace.css'
+
+const RecordingsPanel = lazy(() =>
+  import('./RecordingsPanel').then((module) => ({ default: module.RecordingsPanel }))
+)
+const ExperimentsPanel = lazy(() =>
+  import('./ExperimentsPanel').then((module) => ({ default: module.ExperimentsPanel }))
+)
+const DiscordPanel = lazy(() =>
+  import('./DiscordPanel').then((module) => ({ default: module.DiscordPanel }))
+)
+const ReplayPanel = lazy(() =>
+  import('./ReplayPanel').then((module) => ({ default: module.ReplayPanel }))
+)
 
 const pages = [
   ['overview', 'Dashboard', LayoutDashboard],
@@ -409,6 +425,7 @@ export default function Workspace() {
               {assessment.isSuccess && <output>Assessment recorded.</output>}
             </div>
             <Resource name="indicators" title="Five-indicator state" />
+            <SelectorPanel />
             <Resource name="signals" title="Persisted decisions" records />
           </>
         )}
@@ -424,14 +441,18 @@ export default function Workspace() {
             <Resource name="trades" title="Trade journal" records />
           </>
         )}
-        {page === 'performance' && (
-          <>
-            <Resource name="performance" title="Paper performance" />
-            <Resource name="trades" title="Trade journal" records />
-          </>
-        )}
+        {page === 'performance' && <AnalyticsPanel />}
         {page === 'research' && (
           <>
+            <Suspense fallback={<output>Loading research recordings...</output>}>
+              <RecordingsPanel />
+            </Suspense>
+            <Suspense fallback={<output>Loading experiment definitions...</output>}>
+              <ExperimentsPanel />
+            </Suspense>
+            <Suspense fallback={<output>Loading replay lab...</output>}>
+              <ReplayPanel />
+            </Suspense>
             <ShadowPanel />
             <OpportunitiesPanel />
           </>
@@ -440,6 +461,7 @@ export default function Workspace() {
         {page === 'configuration' && <Configuration />}
         {page === 'risk' && (
           <>
+            <SafetyCenterPanel />
             <RiskLocksPanel />
             <Resource name="risk" title="Risk controls & current utilization" />
           </>
@@ -447,6 +469,9 @@ export default function Workspace() {
         {page === 'calendar' && <CalendarPanel />}
         {page === 'connections' && (
           <>
+            <Suspense fallback={<output>Loading Discord center...</output>}>
+              <DiscordPanel />
+            </Suspense>
             <TradingModePanel />
             <Panel title="Startup readiness">
               <ul className="nifty-readiness">

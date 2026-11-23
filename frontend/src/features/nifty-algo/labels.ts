@@ -7,6 +7,8 @@ const LABELS: Record<string, string> = {
   MONTHLY_PROFIT_LOCK: 'Monthly profit target reached',
   CALENDAR_UNAPPROVED: 'No approved NFO calendar for this year',
   DAILY_ENTRY_USED: 'Session entry allowance already used',
+  SPOT_REFERENCE_UNAVAILABLE:
+    'Fresh NIFTY spot is unavailable. Check the market feed before the next assessment.',
   // Live readiness (Phase 5)
   BROKER_STATUS_UNAVAILABLE: 'Broker status could not be read',
   API_MISSING: 'Broker or OpenAlgo API key missing',

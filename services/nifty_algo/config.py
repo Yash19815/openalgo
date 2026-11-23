@@ -41,6 +41,13 @@ class StrategyConfig(Model):
     selection: Literal["ATM", "ITM", "DELTA"] = "ATM"
     candidate_strike_window: int = Field(default=2, ge=0, le=5)
     delta_target: float = Field(default=0.5, gt=0, lt=1)
+    selector_weights: tuple[Decimal, Decimal, Decimal, Decimal, Decimal] = (
+        Decimal("30"),
+        Decimal("25"),
+        Decimal("15"),
+        Decimal("20"),
+        Decimal("10"),
+    )
     avoid_expiry_day: bool = True
     max_spread_bps: float = Field(default=150, gt=0, le=1000)
     min_volume: int = Field(default=1000, ge=1)
@@ -98,6 +105,11 @@ class StrategyConfig(Model):
 
     @model_validator(mode="after")
     def ordered(self):
+        if (
+            any(weight < 0 or weight > 100 for weight in self.selector_weights)
+            or sum(self.selector_weights) != 100
+        ):
+            raise ValueError("Selector weights must be nonnegative and sum to 100")
         if self.macd_fast >= self.macd_slow or self.pcr_bear >= self.pcr_bull:
             raise ValueError("Invalid indicator bounds")
         if not self.entry_after < self.entry_before < self.exit_by:
@@ -134,7 +146,12 @@ class StrategyConfig(Model):
     @property
     def version_id(self):
         """Content identity for immutable strategy settings."""
-        return sha256(self.model_dump_json().encode()).hexdigest()
+        # Default ranking weights are identified by the stored ranking-policy
+        # version. Preserve existing v3.1 strategy identities and held protection
+        # during this additive extension; edited weights create a new identity.
+        default_weights = type(self).model_fields["selector_weights"].default
+        excluded = {"selector_weights"} if self.selector_weights == default_weights else None
+        return sha256(self.model_dump_json(exclude=excluded).encode()).hexdigest()
 
 
 def migrate_configuration(values):

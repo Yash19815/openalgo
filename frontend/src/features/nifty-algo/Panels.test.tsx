@@ -14,6 +14,10 @@ const api = vi.hoisted(() => ({
   resend: vi.fn(),
 }))
 vi.mock('./api', () => ({
+  createRecording: vi.fn(),
+  sealRecording: vi.fn(),
+  acknowledgeSafetyIncident: vi.fn(),
+  resolveSafetyIncident: vi.fn(),
   updateCalendarEntries: api.patch,
   niftyKeys: { all: ['nifty-algo'] },
   readNifty: api.read,

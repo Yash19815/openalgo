@@ -363,10 +363,10 @@ def test_config_change_between_risk_check_and_write_is_refused(store, monkeypatc
     exe = executor(store)
     original = store.admit_order
 
-    def race(user_id, order):
+    def race(user_id, order, **kwargs):
         state = store.read(USER)
         store.change(USER, state["revision"], action="pause")
-        return original(user_id, order)
+        return original(user_id, order, **kwargs)
 
     monkeypatch.setattr(store, "admit_order", race)
     with pytest.raises(OrderRefused, match="ENTRIES_DISABLED"):
