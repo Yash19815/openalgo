@@ -133,11 +133,34 @@ def event_projection(event, incident=None):
         "COOLDOWN_SCHEDULED",
         "trailing_stop_updated",
         "TRAILING_STOP_UPDATED",
+        "PROFIT_FLOOR_UNREPRESENTABLE",
     ):
         category, route = "RISK", "risk-management"
-        detail = {key: data.get(key) for key in ("token", "stop_price", "month", "realized_net")}
+        detail = {
+            key: data.get(key)
+            for key in (
+                "token",
+                "stop_price",
+                "month",
+                "realized_net",
+                "stop_before",
+                "stop_after",
+                "estimated_net",
+                "floor_net",
+                "activation_net",
+                "bid",
+                "bid_size",
+                "source_time",
+            )
+        }
     elif kind == "discord_test":
         detail = {"code": "OPERATOR_TEST"}
+    elif kind in ("start", "pause", "stop", "kill-switch", "configuration", "mode_changed"):
+        detail = {"revision": data.get("revision"), "control": kind}
+    elif kind in ("data_blocked", "reconciliation_blocked", "configuration_incompatible"):
+        category, route = "WARNING", "system-warnings"
+        # Provider exception text and configuration values are never projected.
+        detail = {"code": kind.upper()}
     else:
         return None
     occurred = (
@@ -373,13 +396,19 @@ def command_response(store, user_id, settings, interaction, now):
         result = {
             "mode": "PAPER",
             "state": state["state"],
-            "entry_blocked": safety["entry_blocked"],
-            "runner": store.runner_status(user_id),
+            "entry_blocked": safety["entry_blocked"] or state["entry_blocked"],
+            "runner": store.runner_status(user_id, now),
             "live": "LIVE_NOT_READY",
         }
         # Runner internals/configuration never leave through Discord.
+        result["entry_blocked"] = result["entry_blocked"] or not (
+            result["runner"].get("operational") and result["runner"].get("entries_ready")
+        )
         result["runner"] = (
-            {k: result["runner"].get(k) for k in ("state", "updated_at")}
+            {
+                k: result["runner"].get(k)
+                for k in ("operational", "entries_ready", "reason", "assessed_at", "expires_at")
+            }
             if isinstance(result["runner"], dict)
             else None
         )

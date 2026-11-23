@@ -1,5 +1,11 @@
 # Phases 1–7 Gap Audit
 
+Historical phase audit. For the current 23 November corrective working-tree
+review and test results, see [READINESS_REPORT.md](READINESS_REPORT.md).
+The five features are now partially implemented; the final "inactive" statement
+below describes the earlier checkpoint only. Current feature limitations are
+listed in [ADVANCED_FEATURES_READINESS.md](ADVANCED_FEATURES_READINESS.md).
+
 Working audit of the NIFTY paper-trading subsystem across Phases 1–7.
 Each finding is classified: **FIXED** (defect confirmed and remediated with
 regression tests), **VERIFIED** (audited, no defect found), or **DEFERRED**

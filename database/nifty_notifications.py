@@ -92,13 +92,32 @@ class NotificationStore:
             return 0
 
     def discord_status_snapshot(self, user_id, now):
-        from database.nifty_algo_db import NiftyMonth, NiftyState, _month_key
+        from zoneinfo import ZoneInfo
+
+        from database.nifty_algo_db import NiftyAccount, NiftyMonth, NiftyState, _month_key
 
         with self.sessions() as db:
             state = db.get(NiftyState, user_id)
             month = db.get(NiftyMonth, (user_id, _month_key(now)))
+            account = db.get(NiftyAccount, user_id)
+            cooldown = self._cooldown_reasons(
+                db, user_id, now.astimezone(ZoneInfo("Asia/Kolkata")).date().isoformat()
+            )
             return {
                 "state": state.state if state is not None else "UNAVAILABLE",
+                "entry_blocked": bool(
+                    state is None
+                    or state.state != "RUNNING"
+                    or state.killed
+                    or state.daily_locked
+                    or account is None
+                    or not account.reconciled
+                    or cooldown
+                    or (
+                        month is not None
+                        and (month.loss_locked_at is not None or month.profit_locked_at is not None)
+                    )
+                ),
                 "month": {
                     "realized_net": str(month.realized_net) if month else "0",
                     "loss_locked": month is not None and month.loss_locked_at is not None,

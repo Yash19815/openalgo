@@ -1078,10 +1078,19 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
             row = db.get(NiftyRunnerLease, user_id)
             if row is None:
                 return {"operational": False, "reason": "RUNNER_NOT_ATTACHED"}
+            now = now or datetime.now(UTC)
+            state = db.get(NiftyState, user_id)
+            ready = (
+                state is not None
+                and self._fresh_runner_assessment(row, state.configuration_id, now) is not None
+            )
             return {
                 **row.payload,
-                "operational": datetime.fromisoformat(_instant(row.expires_at))
-                > (now or datetime.now(UTC)),
+                "entries_ready": ready,
+                "reason": "READINESS_EVIDENCE_STALE"
+                if row.payload.get("entries_ready") and not ready
+                else row.payload.get("reason"),
+                "operational": datetime.fromisoformat(_instant(row.expires_at)) > now,
                 "expires_at": _instant(row.expires_at),
             }
 
@@ -2512,7 +2521,7 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
                     quote.bid is None
                     or quote.bid <= 0
                     or quote.bid >= quote.ask
-                    or quote.bid_size < instrument.lot_size
+                    or quote.bid_size < quantity
                     or (quote.ask - quote.bid) / quote.ask * 10000 > config.max_spread_bps
                     or quote.volume is None
                     or quote.volume < config.min_volume

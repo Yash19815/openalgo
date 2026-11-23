@@ -16,8 +16,9 @@ identity. Broker labels and hashes do not authenticate provenance.
 Native opt-in appends require current runner ownership, a frozen token, native
 source classification and a source timestamp at or after scope freeze time.
 Scope conflicts and storage failures roll back atomically without renewing
-runner readiness. The sidecar has no trading authority. HTTP opt-in and
-scheduler/feed integration remain unwired.
+runner readiness. The sidecar has no trading authority. The current explicit
+recording controls and separate runner capture job use the existing cache;
+they never authorize orders or upgrade missing execution evidence.
 
 The native research reader uses only identified mode-3 source snapshots from
 the existing supplied cache. Display fallbacks, missing sides, stale timestamps,
@@ -33,8 +34,8 @@ An internal native-capture append can also require the current runner owner.
 That lease is checked under the existing owner lock, before deduplication or
 evidence writes. A missing, expired, released or replaced lease refuses the
 append without renewing the heartbeat or changing entry readiness.
-Feed capture and its scheduler are not connected yet. Sealing does not make
-quote-only data complete or execution-eligible; Live remains blocked.
+The optional capture job is connected to the runner scheduler. Sealing does
+not make quote-only data complete or execution-eligible; Live remains blocked.
 
 ## Execution boundary
 

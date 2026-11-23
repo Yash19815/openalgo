@@ -1,7 +1,12 @@
 # Strategy assumptions and rule provenance
 
-Version 2.0.0, 19 November 2026. The strategy is a research hypothesis, not a
+Current strategy configuration: 3.1.0. The strategy is a research hypothesis, not a
 calibrated probability model or a claim of historical profitability.
+
+The current phase requirements in PAPER_SYSTEM_DESIGN.md supersede the older
+v2 sizing and entry-window assumptions. Advanced feature limitations are
+recorded in ADVANCED_FEATURES_READINESS.md; earlier audit counts do not certify
+later changes.
 
 ## Explicit user requirements
 
@@ -30,11 +35,16 @@ support starts at 1.5; bearish support is below 1.0. The midpoint does not pass.
 The exact complete-market coverage and subscription entitlement require real
 broker verification. Unknown master freshness or missing source fields block.
 
-Default risk is 0.5% of equity including entry/exit costs and adverse ticks.
-One position, one lot, three daily entries, 1.5% daily loss threshold and a
-45-minute holding limit remain. Default entry window is 09:30–14:45 IST, with
-exit requests from 15:10 or five minutes before an earlier native NFO close.
-Special sessions and holidays come from OpenAlgo's calendar.
+New paper accounts start with ₹20,000; existing balances never reset. Sizing
+permits 1–3 lots subject to confidence, capital, depth, at most ₹400 planned
+loss including estimated costs and buffer, and at least ₹350 projected net
+reward. Only one primary entry per session is allowed. The retained 1.5% daily
+loss gate is additional protection. Primary entry is 10:30–before 14:45 IST;
+the holding limit is 45 minutes and exits are requested by 15:10 or five minutes
+before an earlier native NFO close. The approved NFO calendar is required;
+special sessions remain disabled. A loss blocks the next eligible session.
+Monthly loss locks at ₹2,000; an optional configured profit target latches its
+own monthly lock. Locks do not block exits or reset equity.
 
 ## Strength method: five-indicator-v1
 
@@ -52,7 +62,7 @@ to [0,1], receives weight 0.2 and contributes at most 20 points:
 Contributions retain normalized values, weights, points and explanations.
 The sum, rounded to six decimals, is a strength score from 0 to 100.
 Nominal target fraction is `target_min + (target_max-target_min)*score/100`.
-Higher strength cannot increase size or relax risk. Invalid scoring rejects
+Higher strength permits the configured lot-score tiers but never relaxes risk. Invalid scoring rejects
 entry. Tick rounding preserves target bounds; if no valid tick exists inside
 them, entry is rejected. Both nominal and tick-adjusted target fractions are
 retained with the trade.

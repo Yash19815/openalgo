@@ -188,7 +188,7 @@ class NiftyPaperExecutor:
                 else []
             )
             decision = decisions[0] if decisions else {}
-            from .contract_resolver import moneyness
+            from .contract_resolver import liquid, moneyness
 
             supplied_metadata = intent.get("candidate_metadata") or []
             metadata = {
@@ -245,6 +245,15 @@ class NiftyPaperExecutor:
             locks = self.entry_lock_reasons(now, config)
             if locks:
                 raise OrderRefused(locks)
+            if any(
+                candidate.kind != decision.get("side")
+                or candidate.exchange != "NFO"
+                or candidate.expiry != instrument.expiry
+                or not candidate.tradable
+                or candidate.master_date != now.astimezone(IST).date()
+                for candidate in candidate_instruments
+            ):
+                raise OrderRefused(["INSTRUMENT_RESTRICTED"])
             entry_session_open = bool(
                 session["status"] == "TRADING"
                 and session["window"]
@@ -269,7 +278,7 @@ class NiftyPaperExecutor:
                 (
                     (candidate, candidate_quote)
                     for candidate, candidate_quote in candidate_quotes
-                    if candidate_quote is not None
+                    if liquid(candidate, candidate_quote, now, config)
                 ),
                 (instrument, None),
             )
@@ -293,12 +302,20 @@ class NiftyPaperExecutor:
                 now=now,
             )
             self.store.record_event(
-                self.user_id, 'contract_quantities:PAPER',
-                {'decision_id': intent.get('decision_id'), 'configuration_id': config.version_id,
-                 'evaluated_at': now.isoformat(), 'policy': 'risk-approved-weighted-v1',
-                 'ranking': list(sizing.ranking),
-                 'rejections': [{'token': token, 'lots': lots, 'reason': reason}
-                                for token, lots, reason in sizing.rejections]}, now,
+                self.user_id,
+                "contract_quantities:PAPER",
+                {
+                    "decision_id": intent.get("decision_id"),
+                    "configuration_id": config.version_id,
+                    "evaluated_at": now.isoformat(),
+                    "policy": "risk-approved-weighted-v1",
+                    "ranking": list(sizing.ranking),
+                    "rejections": [
+                        {"token": token, "lots": lots, "reason": reason}
+                        for token, lots, reason in sizing.rejections
+                    ],
+                },
+                now,
             )
             if sizing.instrument is None:
                 reasons = list(dict.fromkeys(reason for _, _, reason in sizing.rejections))
@@ -397,6 +414,27 @@ class NiftyPaperExecutor:
                 raise OrderRefused(["SPOT_REFERENCE_UNAVAILABLE"])
             if moneyness(instrument, spot) == "OTM":
                 raise OrderRefused(["OTM_PROHIBITED"])
+            # The cache can change between ranking and this locked reservation.
+            # Re-price the selected proposal; changed approvals require a new decision.
+            current_quote = self._depth(instrument, now, config)
+            if not liquid(instrument, current_quote, now, config):
+                raise OrderRefused(["LIQUIDITY_UNAVAILABLE"])
+            current_plan = plan_entry(
+                risk,
+                [(instrument, current_quote)],
+                config,
+                confidence["score"],
+                _charges,
+                now=now,
+            )
+            if (
+                current_plan.instrument is None
+                or current_plan.quantity != sizing.quantity
+                or current_plan.entry_price != sizing.entry_price
+                or current_plan.planned_loss > sizing.planned_loss
+                or current_plan.cash_required > sizing.cash_required
+            ):
+                raise OrderRefused(["SELECTION_CHANGED"])
 
         return self.store.admit_order(
             self.user_id, order, validate_entry=validate_entry if side == "BUY" else None
@@ -598,6 +636,21 @@ class NiftyPaperExecutor:
                 continue  # Reconciliation reports legacy exposure as blocked.
             config = StrategyConfig.model_validate(protection["configuration"])
             quote = self._depth(held["instrument"], now, config)
+            if quote is None or quote.bid is None or quote.bid_size <= 0:
+                # One durable incident per lost observation episode. A fresh
+                # observation advances this identity without clearing old incidents.
+                from hashlib import sha256
+
+                episode = protection.get("last_source_time") or held["opened_at"]
+                key = sha256(f"{held['entry_order_id']}:{episode}".encode()).hexdigest()
+                self.store.raise_safety_incident(
+                    self.user_id,
+                    f"stale-position:{key}",
+                    mode="PAPER",
+                    code="STALE_DATA",
+                    severity="CRITICAL",
+                    now=now,
+                )
             local = now.astimezone(IST)
             try:
                 window = _window(local.date(), self.session_reader or _session)

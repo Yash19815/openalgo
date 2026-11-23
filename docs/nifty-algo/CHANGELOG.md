@@ -2,6 +2,21 @@
 
 ## 0.5.0 — 2026-11-23 (unreleased)
 
+### Fix
+
+- Revalidate runner readiness age in status responses and report actual health
+  through Discord, including paused/unavailable state, persisted monthly and
+  cooldown holds, kill/daily locks and unreconciled accounts without writes.
+- Validate every fallback contract against signal side and current metadata;
+  allow liquid fallback candidates and recheck quote/price at locked admission.
+- Require exit-side depth for the entire selected quantity at BUY fill.
+- Persist idempotent critical incidents for unavailable held-position bids while
+  retaining protective exit attempts. Include profit-lock transitions, existing
+  control events and data warnings in sanitized Discord projections.
+- Add corrective regression coverage and replace obsolete v2 risk/window text
+  in strategy assumptions. Current verification is recorded separately from
+  historical test evidence.
+
 ### Feature
 
 - Added risk-approved Decimal weighted contract/quantity proposals, configurable
