@@ -49,17 +49,25 @@ question owned elsewhere; no indicator logic or configuration changed.
 | Item | Value |
 | --- | --- |
 | New file | `test/test_nifty_algo_offline_acceptance.py` |
-| Collected | 132 (62 test functions, parametrised) |
-| Passed | 129 |
-| Expected failures (strict `xfail`, each a documented defect) | 3 |
+| Collected | 147 (69 test functions, parametrized) |
+| Passed | 146 |
+| Expected failures (strict `xfail`, each a documented defect) | 1 (D-1) |
 | Failed | 0 |
 | Run | Windows, Python 3.12.11, `pytest -o addopts=""` with `--basetemp` |
 
-The three strict `xfail` tests assert the behavior the specification asks for
-and fail today. They are strict: when the defect is fixed they start to pass,
-the run fails with XPASS, and whoever fixed it removes the marker. They name the
-defect in their `reason` and are restricted to the expected failure type
-(`raises=`), so an unrelated error cannot hide behind them.
+The first run of this file (baseline `a89854a5`) collected 132 tests: 129 passed
+and 3 were strict `xfail` (D-1, D-2, D-3). After the D-2 and D-3 fixes on
+`fix/nifty-paper-safety` the figures above apply. All `test/test_nifty_algo_*.py`
+files together, plus `test/test_ci_docker_publish_policy.py`: 1111 passed,
+1 xfailed, 0 failed (5 min 24 s). With the production fixes temporarily reverted
+to `HEAD`, 12 of the new D-2 and D-3 tests fail, so they detect the original
+defects.
+
+The remaining strict `xfail` test asserts the behavior the specification asks
+for and fails today. It is strict: when the defect is fixed it starts to pass,
+the run fails with XPASS, and whoever fixes it removes the marker. It names the
+defect in its `reason` and is restricted to the expected failure type
+(`raises=`), so an unrelated error cannot hide behind it.
 
 Status words below: PASS means asserted and green; FAIL means a defect is
 demonstrated by a strict xfail; UNVERIFIED means it cannot be checked offline.
@@ -100,12 +108,12 @@ demonstrated by a strict xfail; UNVERIFIED means it cannot be checked offline.
 | --- | --- | --- |
 | Entries refused before 10:30 and from 14:45 IST, accepted at 10:30:00 and 14:44:59 | `test_primary_entries_are_admitted_only_from_1030_until_before_1445_ist` (8) | PASS |
 | An entry admitted in the last second cannot fill at or after 14:45 | `test_an_entry_admitted_in_the_last_second_never_fills_at_or_after_1445` | PASS |
-| That entry's stored expiry is the same instant read back | `test_the_cutoff_expiry_is_the_same_instant_after_it_is_stored` | FAIL (D-3) |
+| That entry's stored expiry is the same instant read back, on the cutoff and TTL paths, across a restart, and expires at exactly 14:45:00 IST with no fresh depth | `test_the_cutoff_expiry_is_the_same_instant_after_it_is_stored`, `test_every_persisted_expiry_is_the_intended_utc_instant` (4), `test_a_cutoff_expiry_survives_a_restart_and_expires_exactly_at_1445_ist`, `test_an_entry_admitted_in_the_last_second_is_expired_by_the_sweep_at_1445` | PASS (D-3 fixed) |
 | Maximum hold: no forced exit at 44:59, forced exit at 45:00 | `test_a_position_is_force_exited_after_exactly_45_minutes` | PASS |
 | Mandatory exit at 15:10, or five minutes before an earlier effective close; precedence; a missing window fails closed | `test_the_1510_session_exit_wins_when_the_hold_limit_is_later`, `test_an_earlier_effective_close_pulls_the_exit_to_five_minutes_before_it`, `test_mandatory_exit_precedence_and_missing_session_window_fail_closed` | PASS |
 | Weekends, approved holidays, an unapproved calendar and special sessions never permit entries | `test_entries_are_refused_on_weekends_and_approved_holidays` (2), `test_an_unapproved_calendar_blocks_entries_and_special_sessions_never_enable_them` | PASS |
 | An exit never invents a fill when the real session is closed | `test_exits_are_still_governed_by_the_real_session_when_the_calendar_says_closed` | PASS |
-| No new entry inside the exit buffer of an early close | `test_an_entry_is_not_opened_inside_the_final_exit_buffer_of_an_early_close` | FAIL (D-2) |
+| No new entry at or after the effective close minus five minutes; a pending entry cannot outlive that boundary; exits stay permitted; a normal day is unchanged | `test_an_entry_is_not_opened_inside_the_final_exit_buffer_of_an_early_close`, `test_early_close_entry_buffer_boundary_is_exactly_five_minutes_before_the_close` (6), `test_an_entry_admitted_just_before_the_early_close_buffer_never_fills_inside_it`, `test_an_early_close_buffer_does_not_block_the_exit_of_a_held_position`, `test_a_normal_full_day_entry_window_is_unchanged_by_the_exit_buffer` | PASS (D-2 fixed) |
 | A position carried over a session boundary is closed at the next open; day counters reset and carried equity is the baseline | `test_a_position_carried_over_a_session_boundary_is_closed_on_the_next_open` | PASS |
 
 ### 4. Market-data rejection paths
@@ -174,12 +182,32 @@ Items the existing suites did not assert as whole-system invariants:
 ## Defects discovered
 
 None of these changes any ledger amount for an order that fills, and none is a
-route to a real order. Production files were not changed; each has a strict
-`xfail` test and a suggested patch for the owner to review.
+route to a real order. The acceptance branch changed no production file. Each
+defect had a strict `xfail` test and a suggested patch. D-3 and D-2 were then
+fixed on `fix/nifty-paper-safety` (see "Fix record" under each) and their
+markers removed; D-1 is deliberately unfixed and awaits a policy decision.
 
 ### D-3: an entry admitted in the last 10 seconds before 14:45 IST expires at the wrong instant
 
-Severity: low. Never fills after 14:45; the harm is a lingering PENDING order.
+Status: FIXED on `fix/nifty-paper-safety`.
+
+Fix record: `paper_executor.admit` now converts every persisted order instant to
+UTC (`_utc`): `expires_at` on both the TTL path and the 14:45 IST cutoff path,
+and also `eligible_at` and `created_at`, which share the same zone-dropping
+column. The 14:45 cutoff is compared and stored as a UTC instant, so a naive
+SQLite read-back (always taken as UTC) is the intended instant. The fill's own
+hard cutoff in the store is unchanged and still runs as a second layer.
+Behavioral consequence: an order admitted in the last ten seconds is now swept
+as `EXPIRED` / `ORDER_TTL` at 14:45:00 IST by `expire_pending`, where before it
+sat PENDING until 20:15 IST unless a fill was attempted with fresh depth.
+An order already stored by an earlier build is not rewritten (no migration: it
+is at most one pending order per account, from the last ten seconds of a single
+session). It keeps its wrong stored instant, so it stays PENDING until a fill
+is attempted, when the fill cutoff expires it, or until that stored instant
+passes. It never fills after 14:45 IST either way.
+
+Original finding (kept for the record): severity low. Never fills after 14:45;
+the harm is a lingering PENDING order.
 
 `NiftyPaperExecutor.admit` (`services/nifty_algo/paper_executor.py`, the block
 that begins `if side == "BUY": cutoff = datetime.combine(...)`) caps the
@@ -235,9 +263,86 @@ if lower is None or upper is None or upper - lower > MAX_LADDER_STEP:  # 100 for
 The step constant is a product decision (NIFTY lists 50-point steps near the
 money and wider further out), so it is left to the owner.
 
+Status: NOT FIXED. The strict `xfail` stays. Nothing in `contract_resolver.py`
+changed; no threshold was added without approval.
+
+#### D-1 policy recommendation (pending approval)
+
+Findings from the investigation:
+
+- The same nearest-strike rule lives in two places that must agree.
+  `current_moneyness` (admission and fill) brackets spot first. `Resolver.assess`
+  takes `nearest_listed_strike(strikes, spot)` with no bracketing check at all
+  and puts that strike into the candidate list as the ATM candidate. A rule added
+  to admission alone would make the selector offer candidates admission then
+  refuses (`test_every_strike_the_selector_offers_is_one_admission_will_not_call_otm`
+  guards exactly that), so both sites need the same helper.
+- The defect is a distance problem, not a bracket problem. With a correctly
+  listed ladder the nearest strike is at most half a step from spot. A large
+  distance therefore means strikes are missing, or the master is partial.
+- Failing closed is cheap here. A strike with no ATM label falls back to the
+  strict comparison (a CE below spot is ITM, a CE above is OTM and is refused).
+  The only cost is that a legitimate ATM-but-slightly-OTM contract on a sparse
+  ladder is refused.
+
+Recommended rule: label a strike ATM by nearness only when the two listed
+strikes that bracket spot are at most `MAX_ATM_BRACKET_GAP` apart, with the
+constant defaulting to 100 index points (two NIFTY 50-point steps, so the nearest
+strike is never more than 50 points away). Otherwise return `atm = None` and use
+the strict spot comparison. Put it in one shared helper used by both
+`current_moneyness` and `Resolver.assess`, and make the constant a frozen
+`StrategyConfig` field that cannot be loosened above a hard ceiling, like the
+other risk ceilings. Add a master-completeness refusal as a second, independent
+layer (the root cause): refuse the whole selection when listed strikes within
+about 500 points of spot are not contiguous at the expected step.
+
+Why 100 and not 50: an exact 50-point bracket would refuse a ladder with one
+missing strike at the money even though the nearest strike is still at most 50
+points away. 100 admits that case and refuses two missing strikes in a row.
+
+Impact on valid NIFTY contracts (offline arithmetic over synthetic ladders, spots
+every 12.5 points; the script is in the session scratchpad, not in the repo):
+
+| Ladder | Spots whose label changes |
+| --- | --- |
+| 50-point steps within 1,000 of spot, 100-point steps beyond | 0 of 481 |
+| 100-point steps throughout | 0 of 481 |
+| 50-point ladder with 22050 to 22250 missing | 23 of 81, the spots between the gap's neighbors |
+| Only 22000 and 22500 listed (the D-1 case) | 39 of 41, all but the two exact strikes |
+| 100-point near the money, 500-point beyond 1,000 | 0 within 1,000 of the money; changes only for spots far outside it |
+
+Open points that this offline work cannot settle and the owner must confirm
+against a real instrument master before approving a number:
+
+1. The real NIFTY strike spacing by expiry (weekly, monthly, far months) and how
+   it changes with distance from spot. The 50 and 100 figures above are an
+   assumption from the exchange's published practice, not read from a master.
+2. Whether any listed expiry has 100-point spacing at the money. If so, a bracket
+   gap of 100 is still allowed, but a missing strike there would refuse, which is
+   the intended fail-closed behavior.
+3. Whether a refused ATM-by-nearness is acceptable for entry frequency; the
+   strict comparison still permits every ITM strike.
+
 ### D-2: no entry buffer before an early close
 
-Severity: low. Only matters on a day with a shortened effective window.
+Status: FIXED on `fix/nifty-paper-safety`.
+
+Fix record: `risk_manager.entry_reasons` takes an optional `session_close`, the
+effective close from the authoritative market-calendar window (`nifty_session`),
+and refuses with the existing `ENTRY_WINDOW` reason when
+`now >= session_close - 5 minutes` (`SESSION_EXIT_BUFFER`, the same five minutes
+as `protection.mandatory_exit_reason`). `paper_executor.admit` and
+`execution_replay` pass the window close. A BUY's expiry is also capped at that
+boundary so a pending entry can never fill inside the buffer. Exit admission,
+the 14:45 entry window, the loss and monthly locks, disabled special sessions
+(`SPECIAL_SESSION_DISABLED`, no window) and the missing-window fail-closed path
+are unchanged; when `session_close` is omitted only the configured entry window
+applies, so a direct caller keeps its earlier behavior. On a normal 15:30 or
+15:40 close the buffer (15:25 or 15:35) is after the 14:45 cutoff and changes
+nothing.
+
+Original finding (kept for the record): severity low. Only matters on a day
+with a shortened effective window.
 
 `risk_manager.entry_reasons` accepts an entry while the session is open
 (`window[0] <= now < window[1]`) and before 14:45. The mandatory exit is five
