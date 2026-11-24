@@ -288,6 +288,7 @@ class NotificationOperations:
             return count
 
     def defer_discord_report(self, user_id, settings, interaction, period, now):
+        from database import sqlite_lock_deadline
         from database.auth_db import encrypt_token
         from database.nifty_algo_db import NiftyDiscordReportRequest, NiftyReport
         from services.nifty_algo.discord_bot import (
@@ -311,10 +312,10 @@ class NotificationOperations:
         except (ValueError, TypeError):
             permission = 0
         limit = min(limit, 8 * 1024 * 1024) if permission & (1 << 15) else 0
-        with self.sessions.begin() as db:
-            if db.bind.dialect.name == "sqlite":
-                db.connection().exec_driver_sql("PRAGMA busy_timeout=500")
-            elif db.bind.dialect.name == "postgresql":
+        # Leave time for Discord's three-second acknowledgement. Atomic owner
+        # locking and deduplication remain inside the same transaction.
+        with sqlite_lock_deadline(1.0), self.sessions.begin() as db:
+            if db.bind.dialect.name == "postgresql":
                 db.connection().exec_driver_sql("SET LOCAL lock_timeout = '500ms'")
             self._lock(db, user_id)
             existing = db.get(NiftyDiscordReportRequest, (user_id, interaction["id"]))

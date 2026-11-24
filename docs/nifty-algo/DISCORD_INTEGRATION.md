@@ -59,9 +59,30 @@ Continuation tokens are encrypted, expire after 14 minutes and are scrubbed on
 terminal outcomes. An abandoned in-flight edit becomes ambiguous and is not replayed.
 Tokens remain opaque strings and are percent-encoded as one URL path segment;
 their alphabet is not assumed and their raw values are never logged.
-Initial handling performs no provider call or PDF read. Its queue lock wait is
-bounded to 500 ms; real deployment must still demonstrate Discord's three-second
+Initial handling performs no provider call or PDF read. SQLite lock retries share
+a one-second context-local deadline across signature-settings reads and command
+handling. The normal short C timeout and cooperative polling remain in place;
+other ledger writers retain their normal 15-second retry budget. PostgreSQL report
+queue locking retains its server-side 500 ms timeout. The public interaction
+route applies deployment-wide limits of 20 requests/second and 120/minute before
+owner lookup or signature work. A constant limiter key bounds storage even when
+callers vary application IDs. PING still requires a valid signature.
+Real deployment must still demonstrate Discord's three-second
 acknowledgement deadline and 15-minute continuation lifetime.
+
+Both `nifty_algo_discord_settings.token_encrypted` and
+`nifty_algo_discord_report_request.token_encrypted` use auth Fernet and participate
+in SQLite salt and pepper migrations. Report requests have the composite key
+`(user_id, interaction_id)`; settings use string `user_id`. Neither migration
+promotes unknown NIFTY ciphertext to plaintext. Stop the app, proxy and optional
+workers and retain matched database/.env backups before rotating keys. Caught
+salt-migration failures restore the previous settings file and roll back the DB,
+and the app then starts on the legacy salt the two still agree on and retries
+the migration on the next start. Startup stops only if that restore itself
+fails. A process or host crash between the two commits still requires backup
+recovery.
+Automatic salt migration remains SQLite-only; other backends require an explicit
+operator migration. No production credential rotation is part of verification.
 
 ## Delivery and escalation
 

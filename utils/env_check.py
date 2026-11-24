@@ -661,11 +661,12 @@ def _ensure_fernet_salt(env_path: str) -> None:
               and silently brick every stored broker token / API key / TOTP
               secret a second time.
 
-    Crash safety: .env is written before the DB migration in cases C and D.
-    If the process dies mid-migration, the next boot sees ``FERNET_SALT`` in
-    .env and falls into case A or B — un-migrated DB rows will fail decrypt
-    under the new key and trigger forced re-login. Same failure mode as the
-    daily 3 AM IST broker-token expiry. No data loss.
+    Failure handling: .env is written before the DB migration in cases C and D.
+    A caught migration failure restores the previous file, and the app boots on
+    the legacy static salt the database still matches; the next boot retries.
+    Startup aborts only if that restore itself fails. The filesystem and database commits are not crash-atomic. An interruption
+    between them requires a matched database/settings backup; the next boot's
+    case A/B fast path cannot repair credentials encrypted with the old key.
 
     Cross-platform: pure Python, sqlite3, and atomic file-write helpers all
     work identically on Windows, Ubuntu, Ubuntu Server, macOS.
@@ -738,10 +739,9 @@ def _ensure_fernet_salt(env_path: str) -> None:
         except OSError as e:
             _warn_fernet_write_failed("Could not rotate FERNET_SALT placeholder", e)
             return  # legacy static salt remains in effect via auth_db fallback
-        os.environ["FERNET_SALT"] = new_salt
         # No DB migration on fresh install (no rows yet) — but we still call
         # the migration helper which is a no-op when rows can't be found.
-        _migrate_fernet_db(env_path, pepper, new_salt)
+        _migrate_salt_or_restore(env_path, pepper, new_salt, content)
         return
 
     # ---- Case B: existing valid hex, but on the wrong line → MOVE it.
@@ -827,9 +827,7 @@ def _ensure_fernet_salt(env_path: str) -> None:
     except OSError as e:
         _warn_fernet_write_failed("Could not write FERNET_SALT to .env", e)
         return  # legacy static salt remains in effect via auth_db fallback
-    os.environ["FERNET_SALT"] = new_salt
-
-    _migrate_fernet_db(env_path, pepper, new_salt)
+    _migrate_salt_or_restore(env_path, pepper, new_salt, content)
 
 
 def _move_fernet_line_after_pepper(
@@ -897,6 +895,8 @@ def _sample_ciphertexts(db_path: str, limit: int = 20) -> list:
         ("broker_keys", "api_key_market"),
         ("broker_keys", "api_secret_market"),
         ("alert_channels", "webhook_url"),
+        ("nifty_algo_discord_settings", "token_encrypted"),
+        ("nifty_algo_discord_report_request", "token_encrypted"),
     ]
     samples: list = []
     try:
@@ -930,7 +930,7 @@ def _try_decrypt(fernet, ct, invalid_token_exc) -> bool:
         return False
 
 
-def _migrate_fernet_db(env_path: str, pepper: str, new_salt: str) -> None:
+def _migrate_fernet_db(env_path: str, pepper: str, new_salt: str) -> bool | None:
     """Re-encrypt every Fernet-protected column in openalgo.db.
 
     Decrypts each ciphertext with the legacy static-salt key and re-encrypts
@@ -938,6 +938,10 @@ def _migrate_fernet_db(env_path: str, pepper: str, new_salt: str) -> None:
     decrypted with the static salt are left untouched — they'll fail decrypt
     under the new key and trigger forced re-login (same outcome as daily
     token expiry).
+
+    NIFTY Discord columns have always been ciphertext. An unreadable value
+    aborts the transaction instead of being promoted or skipped. Values already
+    using this new key are retained unchanged on a repeated pass.
 
     Skips silently for non-SQLite ``DATABASE_URL`` and for fresh installs
     where the DB file doesn't exist yet.
@@ -980,6 +984,8 @@ def _migrate_fernet_db(env_path: str, pepper: str, new_salt: str) -> None:
         ("broker_keys", "id", "api_secret_market"),
         # Slack and Discord alert webhooks (database/alert_channels_db.py).
         ("alert_channels", "channel", "webhook_url"),
+        ("nifty_algo_discord_settings", "user_id", "token_encrypted"),
+        ("nifty_algo_discord_report_request", ("user_id", "interaction_id"), "token_encrypted"),
     ]
 
     migrated = skipped = 0
@@ -999,13 +1005,13 @@ def _migrate_fernet_db(env_path: str, pepper: str, new_salt: str) -> None:
                 # present but the column is not — there is nothing to migrate,
                 # so skip it instead of letting the SELECT raise and abort the
                 # whole rotation with a "no such column" warning.
-                existing_cols = {
-                    r[1] for r in conn.execute(f"PRAGMA table_info({table})")
-                }
+                existing_cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
                 if col not in existing_cols:
                     continue
+                keys = (pk,) if isinstance(pk, str) else pk
+                key_fields = ", ".join(f"{key} AS pk_{i}" for i, key in enumerate(keys))
                 cur = conn.execute(
-                    f"SELECT {pk} AS pk, {col} AS ct FROM {table} "
+                    f"SELECT {key_fields}, {col} AS ct FROM {table} "
                     f"WHERE {col} IS NOT NULL AND {col} != ''"
                 )
                 for row in cur.fetchall():
@@ -1015,24 +1021,28 @@ def _migrate_fernet_db(env_path: str, pepper: str, new_salt: str) -> None:
                             ct.encode() if isinstance(ct, str) else ct
                         ).decode()
                     except (InvalidToken, AttributeError, ValueError):
+                        if table.startswith("nifty_algo_discord_"):
+                            if _try_decrypt(new_fernet, ct, InvalidToken):
+                                continue
+                            raise ValueError("NIFTY credential salt migration refused") from None
                         skipped += 1
                         continue
                     new_ct = new_fernet.encrypt(plaintext.encode()).decode()
                     conn.execute(
-                        f"UPDATE {table} SET {col}=? WHERE {pk}=?",
-                        (new_ct, row["pk"]),
+                        f"UPDATE {table} SET {col}=? WHERE "
+                        + " AND ".join(f"{key}=?" for key in keys),
+                        (new_ct, *(row[f"pk_{i}"] for i in range(len(keys)))),
                     )
                     migrated += 1
             conn.commit()
-    except sqlite3.Error as e:
+    except sqlite3.Error:
         sys.stderr.write(
             "\n\033[93m\033[1m[OpenAlgo Fernet salt]\033[0m "
-            f"\033[93mDB error during salt migration: {e}.\n"
-            "FERNET_SALT was already persisted; rows that did not get\n"
-            "re-encrypted will fail decrypt under the new key and trigger\n"
-            "forced re-login. No data loss.\033[0m\n"
+            "\033[93mDB error during salt migration.\n"
+            "The database transaction was rolled back. Keep the previous\n"
+            "encryption settings and a matched database/settings backup.\033[0m\n"
         )
-        return
+        return False
 
     flask_debug = os.getenv("FLASK_DEBUG", "").lower() in ("true", "1", "t")
     is_reloader_parent = flask_debug and os.environ.get("WERKZEUG_RUN_MAIN") != "true"
@@ -1046,6 +1056,44 @@ def _migrate_fernet_db(env_path: str, pepper: str, new_salt: str) -> None:
             "appear again on subsequent runs.\033[0m\n",
             flush=True,
         )
+    return True
+
+
+def _migrate_salt_or_restore(env_path, pepper, new_salt, previous_content):
+    """Restore the old salt file on a caught migration failure; never continue blind.
+
+    SQLite rolls the failed transaction back, so after the restore the .env and
+    the database agree again on the legacy static salt and the app boots as it
+    did before this upgrade, retrying on the next start. Only a failed restore
+    leaves them disagreeing, and that aborts startup rather than run with
+    credentials that no longer decrypt.
+
+    This does not make a filesystem write and database commit crash-atomic:
+    operators must retain a matched database/.env backup and stop all
+    processes during key changes.
+    """
+    try:
+        migrated = _migrate_fernet_db(env_path, pepper, new_salt)
+    except Exception:
+        migrated = False
+    if migrated is False:
+        try:
+            with ENV_WRITE_LOCK:
+                _atomic_replace_text(env_path, previous_content)
+        except OSError:
+            raise RuntimeError(
+                "Fernet salt migration failed and the previous settings file could not be "
+                "restored; restore .env and the database from a matched backup"
+            ) from None
+        os.environ.pop("FERNET_SALT", None)
+        sys.stderr.write(
+            "\n\033[93m\033[1m[OpenAlgo Fernet salt]\033[0m "
+            "\033[93mThe salt migration did not complete. The previous .env was\n"
+            "restored and the legacy salt stays in use; stored credentials are\n"
+            "unchanged. The migration is retried on the next start.\033[0m\n"
+        )
+        return
+    os.environ["FERNET_SALT"] = new_salt
 
 
 def _generate_keys_on_first_run(env_path: str) -> None:

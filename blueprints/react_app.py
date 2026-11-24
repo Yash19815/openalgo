@@ -111,6 +111,11 @@ def react_index():
     return serve_react_app()
 
 
+@react_bp.route("/nifty-algo", strict_slashes=False)
+def react_nifty_algo():
+    return serve_react_app()
+
+
 # Login route
 @react_bp.route("/login")
 def react_login():

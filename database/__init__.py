@@ -56,6 +56,8 @@ the db/ directory on NFS/SMB mounts.
 import sqlite3
 import sqlite3.dbapi2
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
@@ -73,6 +75,25 @@ LOCK_RETRY_BUDGET_S = 15.0
 #: point: it lets the lock holder run and commit.
 LOCK_RETRY_POLL_S = 0.05
 
+_lock_deadline = ContextVar("sqlite_lock_deadline", default=None)
+
+
+@contextmanager
+def sqlite_lock_deadline(seconds):
+    """Bound one operation's cooperative lock waits without changing other callers.
+
+    Nested operations share the earlier deadline. Context-local state keeps a
+    short request budget out of unrelated scheduler jobs and worker threads.
+    The connection's existing short C-level timeout remains unchanged.
+    """
+    deadline = time.monotonic() + seconds
+    previous = _lock_deadline.get()
+    token = _lock_deadline.set(min(previous, deadline) if previous is not None else deadline)
+    try:
+        yield
+    finally:
+        _lock_deadline.reset(token)
+
 
 def _is_locked(exc: sqlite3.OperationalError) -> bool:
     """True for the transient write-lock errors, not for real failures."""
@@ -87,12 +108,17 @@ def _retrying(call, *args):
     a lock error is re-raised untouched, as is a lock error that outlives the
     budget, so a genuine problem still surfaces exactly as it does today.
     """
+    operation_deadline = _lock_deadline.get()
+    if operation_deadline is not None and time.monotonic() >= operation_deadline:
+        raise sqlite3.OperationalError("database is locked (operation deadline exceeded)")
     try:
         return call(*args)
     except sqlite3.OperationalError as exc:
         if not _is_locked(exc):
             raise
     deadline = time.monotonic() + LOCK_RETRY_BUDGET_S
+    if operation_deadline is not None:
+        deadline = min(deadline, operation_deadline)
     while True:
         time.sleep(LOCK_RETRY_POLL_S)
         try:
@@ -168,6 +194,11 @@ def _set_sqlite_pragmas(dbapi_connection, connection_record):
         return
     cursor = dbapi_connection.cursor()
     try:
+        # Set the short C wait before WAL setup, which can itself meet a lock.
+        try:
+            cursor.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
+        except sqlite3.OperationalError:
+            pass
         # A pragma failure must never break the connection: if another
         # process holds a legacy-mode lock during first-time conversion the
         # connection simply continues in the journal mode already on disk.
@@ -177,10 +208,6 @@ def _set_sqlite_pragmas(dbapi_connection, connection_record):
             pass
         try:
             cursor.execute("PRAGMA synchronous=NORMAL")
-        except sqlite3.OperationalError:
-            pass
-        try:
-            cursor.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
         except sqlite3.OperationalError:
             pass
     finally:

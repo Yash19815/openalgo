@@ -9,6 +9,10 @@ const LABELS: Record<string, string> = {
   DAILY_ENTRY_USED: 'Session entry allowance already used',
   SPOT_REFERENCE_UNAVAILABLE:
     'Fresh NIFTY spot is unavailable. Check the market feed before the next assessment.',
+  DATA_PIPELINE_UNAVAILABLE:
+    'Market data is unavailable. Check your broker connection and market feed, then wait for the next assessment.',
+  RUNNER_RESTORE_FAILED:
+    'Position monitoring could not restart. Check the server logs and restore monitoring before starting entries.',
   // Live readiness (Phase 5)
   BROKER_STATUS_UNAVAILABLE: 'Broker status could not be read',
   API_MISSING: 'Broker or OpenAlgo API key missing',

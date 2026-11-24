@@ -21,10 +21,27 @@ _DATE = re.compile(
     r")\b"
 )
 _YEAR = re.compile(r"\b20\d{2}\b")
-_MONTHS = {name.lower(): number for number, name in enumerate(
-    ("", "January", "February", "March", "April", "May", "June", "July",
-     "August", "September", "October", "November", "December")
-) if name}
+_MONTHS = {
+    name.lower(): number
+    for number, name in enumerate(
+        (
+            "",
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        )
+    )
+    if name
+}
 
 
 class CalendarImportError(ValueError):
@@ -53,8 +70,11 @@ def _years(text):
 
 
 def _segment(text):
-    if re.search(r"\b(equity\s+derivatives|f\s*&\s*o|futures\s*(?:&|and)\s*options|nfo)\b",
-                 text, re.IGNORECASE):
+    if re.search(
+        r"\b(equity\s+derivatives|f\s*&\s*o|futures\s*(?:&|and)\s*options|nfo)\b",
+        text,
+        re.IGNORECASE,
+    ):
         return "NFO"
     return "UNKNOWN"
 
@@ -138,9 +158,17 @@ def _finalize(entries, years, base_issues, circular_year=None):
         for entry in entries:
             entry["ambiguous"] = True
             entry["issue"] = ",".join(filter(None, (entry["issue"], "MULTIPLE_YEARS")))
-    year = circular_year if circular_year is not None else (
-        years[0] if len(years) == 1 else None if years else next(
-            (date.fromisoformat(entry["date"]).year for entry in entries if entry["date"]), None
+    year = (
+        circular_year
+        if circular_year is not None
+        else (
+            years[0]
+            if len(years) == 1
+            else None
+            if years
+            else next(
+                (date.fromisoformat(entry["date"]).year for entry in entries if entry["date"]), None
+            )
         )
     )
     seen = set()
@@ -216,21 +244,29 @@ def parse_holiday_csv(data: bytes) -> CalendarParse:
             if parsed.isoformat() != raw_date:
                 raise ValueError
         except ValueError:
-            entries.append({
-                "date": None, "weekday": None, "name": raw_name, "ambiguous": True,
-                "issue": "DATE_INVALID", "raw": raw_date,
-            })
+            entries.append(
+                {
+                    "date": None,
+                    "weekday": None,
+                    "name": raw_name,
+                    "ambiguous": True,
+                    "issue": "DATE_INVALID",
+                    "raw": raw_date,
+                }
+            )
             issues.append("DATE_INVALID")
             continue
         years.append(parsed.year)
-        entries.append({
-            "date": raw_date,
-            "weekday": parsed.strftime("%A"),
-            "name": raw_name,
-            "ambiguous": False,
-            "issue": None,
-            "raw": f"{raw_date},{raw_name}",
-        })
+        entries.append(
+            {
+                "date": raw_date,
+                "weekday": parsed.strftime("%A"),
+                "name": raw_name,
+                "ambiguous": False,
+                "issue": None,
+                "raw": f"{raw_date},{raw_name}",
+            }
+        )
     result = _finalize(entries, sorted(set(years)), issues)
     return CalendarParse(result.year, "NFO", result.entries, result.issues)
 
@@ -259,14 +295,16 @@ def recompute_entries(entries, year):
             if parsed.weekday() >= 5:
                 issues.append("WEEKEND_HOLIDAY")
             entry["date"] = parsed.isoformat()
-        normalized.append({
-            "date": entry.get("date"),
-            "weekday": entry.get("weekday"),
-            "name": str(entry.get("name", "")),
-            "ambiguous": any(issue != "WEEKEND_HOLIDAY" for issue in issues),
-            "issue": ",".join(issues) or None,
-            "raw": str(entry.get("raw", "")),
-        })
+        normalized.append(
+            {
+                "date": entry.get("date"),
+                "weekday": entry.get("weekday"),
+                "name": str(entry.get("name", "")),
+                "ambiguous": any(issue != "WEEKEND_HOLIDAY" for issue in issues),
+                "issue": ",".join(issues) or None,
+                "raw": str(entry.get("raw", "")),
+            }
+        )
     seen = set()
     all_issues = []
     for entry in normalized:

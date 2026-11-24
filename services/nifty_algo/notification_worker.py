@@ -7,7 +7,12 @@ Tests inject both providers; this module never sends at import time.
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from utils.logging import get_logger
+
 from .discord_bot import DiscordREST, DiscordSettings, message_payload
+from .safe_logging import log_failure
+
+logger = get_logger(__name__)
 
 
 class NotificationWorker:
@@ -171,7 +176,8 @@ class NotificationWorker:
                 "outcome": "DELIVERED" if sent else "AMBIGUOUS",
                 "code": "SMTP_ACCEPTED" if sent else "SMTP_UNKNOWN",
             }
-        except Exception:
+        except Exception as error:
+            log_failure(logger, "NIFTY SMTP fallback", error)
             return {"outcome": "AMBIGUOUS", "code": "SMTP_UNKNOWN"}
 
 
@@ -209,9 +215,9 @@ def main():
         while not stopping:
             try:
                 worker.tick()
-            except Exception:
+            except Exception as error:
                 # Provider errors cannot print credentials or untrusted response bodies.
-                print("NIFTY notification cycle failed; durable records retained", flush=True)
+                log_failure(logger, "NIFTY notification cycle; durable records retained", error)
             if args.once:
                 break
             time.sleep(1)

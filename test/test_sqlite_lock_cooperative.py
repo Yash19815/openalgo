@@ -179,6 +179,63 @@ def test_an_error_that_is_not_a_lock_is_raised_at_once():
     assert "OK" in result.stdout, result.stderr
 
 
+@pytest.mark.parametrize("hold_seconds,success", [(0.5, True), (2.0, False)])
+def test_nifty_private_report_contention_keeps_hub_alive_and_deadline(hold_seconds, success):
+    """CI-only eventlet proof for the real report-request transaction."""
+    result = run(
+        f"HOLD = {hold_seconds!r}\nEXPECT_SUCCESS = {success!r}\n"
+        + textwrap.dedent("""
+        from datetime import UTC, datetime
+        from types import SimpleNamespace
+        from sqlalchemy import func, select
+        from sqlalchemy.exc import OperationalError
+        from database.engine_factory import create_db_engine
+        from database.nifty_algo_db import NiftyStore, NiftyDiscordReportRequest
+
+        engine = create_db_engine("sqlite:///" + DB)
+        store = NiftyStore(engine)
+        store.initialize()
+        store.ensure_user("synthetic-owner")
+        interaction = {
+            "id": "300000000000000001", "token": "synthetic-private-token",
+            "attachment_size_limit": 0, "guild_id": "100000000000000002",
+            "channel_id": "200000000000000001",
+            "member": {"user": {"id": "100000000000000003"}, "roles": []},
+        }
+        settings = SimpleNamespace(application_id="100000000000000001", authorized_roles=[])
+        beat = eventlet.spawn(_beat)
+        holder = eventlet.spawn(hold_then_commit, HOLD)
+        eventlet.sleep(0.1)
+        start, before = time.monotonic(), len(ticks)
+        try:
+            response = store.defer_discord_report(
+                "synthetic-owner", settings, interaction, "daily", datetime.now(UTC)
+            )
+            succeeded = True
+            assert response == {"type": 5, "data": {"flags": 64}}
+        except OperationalError:
+            succeeded = False
+        elapsed, during = time.monotonic() - start, len(ticks) - before
+        holder.wait()
+        beat.kill()
+        assert succeeded is EXPECT_SUCCESS, (succeeded, elapsed)
+        assert elapsed < 1.8, elapsed
+        assert during > 2, (during, elapsed)
+        # A timed-out transaction leaves no row. Retrying after the holder exits
+        # remains safe, and a duplicate request never creates a second delivery.
+        for _ in range(2):
+            store.defer_discord_report(
+                "synthetic-owner", settings, interaction, "daily", datetime.now(UTC)
+            )
+        with store.sessions() as db:
+            assert db.scalar(select(func.count()).select_from(NiftyDiscordReportRequest)) == 1
+        engine.dispose()
+        print("OK")
+        """)
+    )
+    assert result.returncode == 0 and "OK" in result.stdout, result.stderr
+
+
 def test_a_scheduler_keeps_firing_while_the_lock_outlasts_the_budget():
     """The budget running out used to end the Flow scheduler for good.
 

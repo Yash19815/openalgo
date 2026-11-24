@@ -26,11 +26,25 @@ def analytics_pdf(snapshot, generated_at):
             [
                 ["Trades with exits", str(metrics["trades"])],
                 ["Realized fills", str(metrics["fills"])],
-                ["Winners / losers / breakeven", f"{metrics['wins']} / {metrics['losses']} / {metrics['breakeven']}"],
-                ["Gross / costs / net (Rs)", f"{metrics['total_gross']} / {metrics['costs']} / {metrics['total_net']}"],
+                [
+                    "Winners / losers / breakeven",
+                    f"{metrics['wins']} / {metrics['losses']} / {metrics['breakeven']}",
+                ],
+                [
+                    "Gross / costs / net (Rs)",
+                    f"{metrics['total_gross']} / {metrics['costs']} / {metrics['total_net']}",
+                ],
                 ["Best / worst (Rs)", f"{metrics['best']} / {metrics['worst']}"],
-                ["Win rate", "Unavailable" if metrics["win_rate"] is None else f"{metrics['win_rate']:.2%}"],
-                ["Profit factor", str(metrics["profit_factor"]) if metrics["profit_factor"] is not None else "Unavailable"],
+                [
+                    "Win rate",
+                    "Unavailable" if metrics["win_rate"] is None else f"{metrics['win_rate']:.2%}",
+                ],
+                [
+                    "Profit factor",
+                    str(metrics["profit_factor"])
+                    if metrics["profit_factor"] is not None
+                    else "Unavailable",
+                ],
                 ["Realized maximum drawdown (Rs)", metrics["maximum_drawdown"]],
                 ["Average realized R", metrics["average_realized_r"] or "Unavailable"],
                 ["Planned risk coverage", f"{risk['available']} of {risk['total']}"],
@@ -40,7 +54,8 @@ def analytics_pdf(snapshot, generated_at):
         ),
         (
             "Daily realized net (IST)",
-            [["Session", "Trades", "Net (Rs)"]] + [
+            [["Session", "Trades", "Net (Rs)"]]
+            + [
                 [day, str(values["trades"]), values["net"]]
                 for day, values in sorted(metrics["groups"]["daily"].items())
             ],
@@ -48,9 +63,8 @@ def analytics_pdf(snapshot, generated_at):
         ),
         (
             "Selected fill page",
-            [["Contract", "Quantity", "Net (Rs)"]] + [
-                [row["symbol"], str(row["quantity"]), row["net"]] for row in details["items"]
-            ],
+            [["Contract", "Quantity", "Net (Rs)"]]
+            + [[row["symbol"], str(row["quantity"]), row["net"]] for row in details["items"]],
             f"{len(details['items'])} of {details['total']} fills; offset {details['offset']}. "
             "This detail page is not the full ledger. Use the analytics page to navigate other fills.",
         ),

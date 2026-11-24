@@ -15,7 +15,13 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
+from utils.logging import get_logger
+from utils.version import VERSION
+
 from .models import Model
+from .safe_logging import log_failure
+
+logger = get_logger(__name__)
 
 CHANNELS = (
     "critical-alerts",
@@ -270,7 +276,7 @@ class DiscordREST:
             "https://discord.com/api/v10" + path,
             headers={
                 "Authorization": "Bot " + self.token,
-                "User-Agent": "OpenAlgoNiftyBot (https://github.com/Yash19815/openalgo, 1)",
+                "User-Agent": f"DiscordBot (https://github.com/marketcalls/openalgo, {VERSION})",
             },
             timeout=5,
             follow_redirects=False,
@@ -371,7 +377,8 @@ class DiscordREST:
                 return {"outcome": "DEAD", "code": "HTTP_" + str(response.status_code)}
             # An HTTP 5xx or lost response may follow remote acceptance.
             return {"outcome": "AMBIGUOUS", "code": "REMOTE_OUTCOME_UNKNOWN"}
-        except Exception:
+        except Exception as error:
+            log_failure(logger, "NIFTY Discord delivery", error)
             return {"outcome": "AMBIGUOUS", "code": "TRANSPORT_OUTCOME_UNKNOWN"}
 
     @staticmethod
@@ -427,7 +434,8 @@ class DiscordREST:
             if 400 <= response.status_code < 500:
                 return {"outcome": "DEAD", "code": "HTTP_" + str(response.status_code)}
             return {"outcome": "AMBIGUOUS", "code": "PRIVATE_REPORT_UNKNOWN"}
-        except Exception:
+        except Exception as error:
+            log_failure(logger, "NIFTY Discord private report delivery", error)
             return {"outcome": "AMBIGUOUS", "code": "PRIVATE_REPORT_UNKNOWN"}
 
 

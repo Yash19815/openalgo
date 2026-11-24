@@ -6,7 +6,9 @@ from json import loads
 from flask import current_app, jsonify, request, session
 from werkzeug.exceptions import RequestEntityTooLarge
 
+from database import sqlite_lock_deadline
 from database.nifty_algo_db import StateConflict
+from limiter import limiter
 from services.nifty_algo.discord_bot import (
     DiscordREST,
     DiscordSettings,
@@ -15,7 +17,11 @@ from services.nifty_algo.discord_bot import (
     private_response,
     verify_interaction,
 )
+from services.nifty_algo.safe_logging import log_failure
+from utils.logging import get_logger
 from utils.session import check_session_validity
+
+logger = get_logger(__name__)
 
 
 def register_discord_routes(bp):
@@ -135,7 +141,8 @@ def register_discord_routes(bp):
                 datetime.now(UTC),
             )
             return success({"state": "PROVIDER_ACCEPTED", "human_acknowledged": False})
-        except Exception:
+        except Exception as error:
+            log_failure(logger, "NIFTY Discord setup", error)
             return jsonify(
                 status="error",
                 message="Discord setup request failed; verify configuration and provider health",
@@ -181,6 +188,8 @@ def register_discord_routes(bp):
         return success(result)
 
     @bp.route("/discord/interactions/<application_id>", methods=["POST"])
+    @limiter.limit("120 per minute;20 per second", key_func=lambda: "nifty-discord-interactions")
+    @sqlite_lock_deadline(1.0)
     def discord_interaction(application_id):
         # This route alone is CSRF exempt. Ed25519 is mandatory, even for PING.
         if request.args:
@@ -188,8 +197,12 @@ def register_discord_routes(bp):
         if request.content_length is not None and request.content_length > 65536:
             raise RequestEntityTooLarge
         raw = request.stream.read(65537)
-        owner = store().discord_owner(application_id)
-        configuration = store().discord_configuration(owner) if owner else None
+        try:
+            owner = store().discord_owner(application_id)
+            configuration = store().discord_configuration(owner) if owner else None
+        except Exception as error:
+            log_failure(logger, "NIFTY Discord signature settings lookup", error)
+            return jsonify(error="Verification temporarily unavailable"), 503
         now = datetime.now(UTC)
         if configuration is None or not verify_interaction(
             configuration["configuration"]["public_key"],
@@ -217,7 +230,8 @@ def register_discord_routes(bp):
                 interaction,
                 now,
             )
-        except Exception:
+        except Exception as error:
+            log_failure(logger, "NIFTY Discord interaction", error)
             response = private_response(
                 "Verified information unavailable. Check OpenAlgo; trading state is unchanged."
             )

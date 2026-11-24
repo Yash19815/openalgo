@@ -23,6 +23,7 @@ from .native_data import NativeDataAdapter
 from .paper_executor import NiftyPaperExecutor, OrderRefused, _charges
 from .protection import early_booking_exit, momentum_weakening
 from .research import opportunity_from_decision, recording_scope
+from .safe_logging import log_failure
 from .shadow import ShadowBook
 
 _ATTACH_LOCKS = KeyedLocks(name="nifty-paper-attach")
@@ -129,8 +130,8 @@ class NiftyRunner:
                     # This profile supplies read-only feed parameters only.
                     # Existing exposure keeps its own valid entry configuration.
                     self._native_feed(StrategyConfig(), now)
-                except Exception:
-                    pass
+                except Exception as error:
+                    log_failure(logger, "NIFTY protection feed bootstrap", error)
             self._lease(now)
             return None
         if self.assessed_configuration_id != config.version_id:
@@ -144,9 +145,10 @@ class NiftyRunner:
                 issue = (
                     ", ".join(exc.reasons)
                     if isinstance(exc, OrderRefused)
-                    else "DATA_PIPELINE_UNAVAILABLE:" + type(exc).__name__
+                    else "DATA_PIPELINE_UNAVAILABLE"
                 )
                 if issue != self.last_issue:
+                    log_failure(logger, "NIFTY data pipeline", exc)
                     self.store.record_event(self.user_id, "data_blocked", {"reason": issue}, now)
                 self.ready, self.last_issue = False, issue
                 self._lease(now)
@@ -297,8 +299,9 @@ class NiftyRunner:
             self.store.record_event(self.user_id, "entry_rejected", {"reasons": exc.reasons}, now)
         except Exception as exc:
             # Never log broker credentials, API bodies or arbitrary error strings.
+            log_failure(logger, "NIFTY assessment pipeline", exc)
             self.ready = False
-            self.last_issue = "DATA_PIPELINE_UNAVAILABLE:" + type(exc).__name__
+            self.last_issue = "DATA_PIPELINE_UNAVAILABLE"
             self.store.record_event(self.user_id, "data_blocked", {"reason": self.last_issue}, now)
         finally:
             # Shadows follow the primary attempt, so a pending primary BUY takes precedence.
@@ -935,18 +938,19 @@ def _attach_runner(app, scheduler, user_id):
             runner.reports()
 
     prefix = "nifty-paper:" + sha256(user_id.encode()).hexdigest()[:24]
-    scheduler.add_job(
-        scoped(runner.protect),
-        "interval",
-        seconds=1,
-        id=prefix + ":protect",
-        max_instances=1,
-        coalesce=True,
-        misfire_grace_time=1,
-        replace_existing=True,
-    )
-    added = [prefix + ":protect"]
+    added = []
     try:
+        scheduler.add_job(
+            scoped(runner.protect),
+            "interval",
+            seconds=1,
+            id=prefix + ":protect",
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=1,
+            replace_existing=True,
+        )
+        added.append(prefix + ":protect")
         scheduler.add_job(
             scoped(runner.evaluate),
             "interval",
@@ -982,11 +986,17 @@ def _attach_runner(app, scheduler, user_id):
             replace_existing=True,
         )
     except Exception:
+        runner.ready = False
+        runner.closed = True
         for job_id in reversed(added):
-            scheduler.remove_job(job_id)
+            try:
+                scheduler.remove_job(job_id)
+            except Exception as error:
+                log_failure(logger, "NIFTY partial job cleanup", error)
         runner.close()
         raise
     runners[user_id] = runner
+    app.extensions.get("nifty_algo_restore_failed", set()).discard(user_id)
     return runner
 
 
@@ -996,10 +1006,18 @@ def restore_runners(app, scheduler):
     from database.nifty_algo_db import NiftyState
 
     store = app.extensions["nifty_algo_store"]
+    app.extensions["nifty_algo_restore_unavailable"] = True
+    failures = app.extensions["nifty_algo_restore_failed"] = set()
     with store.sessions() as db:
         users = list(db.scalars(select(NiftyState.user_id)))
     for user_id in users:
-        attach_runner(app, scheduler, user_id)
+        try:
+            attach_runner(app, scheduler, user_id)
+        except Exception as error:
+            failures.add(user_id)
+            # No account, position or readiness state is cleared on a failed
+            # attachment. Other owners must still recover their protection.
+            log_failure(logger, "NIFTY owner runner restoration", error)
     if not app.extensions.get("nifty_algo_shutdown_registered"):
         from utils.shutdown import register_shutdown_hook
 
@@ -1014,3 +1032,5 @@ def restore_runners(app, scheduler):
 
         register_shutdown_hook(shutdown, name="nifty-paper", budget_s=5, early=True)
         app.extensions["nifty_algo_shutdown_registered"] = True
+    app.extensions["nifty_algo_restore_unavailable"] = False
+    return {"restored": len(users) - len(failures), "failed": len(failures)}

@@ -238,6 +238,9 @@ packages = []
 [tool.pytest.ini_options]
 # The repo root must be importable: tests import `services`, `database`, and
 # `utils` directly, which otherwise only works if PYTHONPATH is set by hand.
+# Keep this application root without __init__.py: otherwise prepend collection
+# names tests openalgo.test.*, colliding with the installed openalgo SDK.
+# `test` supports packaged NIFTY helpers; its path retains legacy bare imports.
 pythonpath = [".", "test"]
 testpaths = ["test"]
 python_files = ["test_*.py"]

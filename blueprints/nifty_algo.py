@@ -19,6 +19,7 @@ from services.nifty_algo.analytics_report import analytics_pdf
 from services.nifty_algo.config import StrategyConfig
 from services.nifty_algo.ledger_analytics import AnalyticsDataError
 from services.nifty_algo.paper_executor import NiftyPaperExecutor
+from services.nifty_algo.safe_logging import log_failure
 from utils.logging import get_logger
 from utils.session import check_session_validity
 
@@ -36,7 +37,8 @@ def _socket_room():
     try:
         user = session.get("user")
         return f"nifty_algo:{user}" if user and is_session_valid() else None
-    except Exception:
+    except Exception as error:
+        log_failure(logger, "NIFTY socket session validation", error)
         return None
 
 
@@ -69,13 +71,32 @@ def store():
     return current_app.extensions["nifty_algo_store"]
 
 
+def _runner_status(user_id):
+    local = current_app.extensions.get("nifty_algo_runners", {}).get(user_id)
+    restore_failed = current_app.extensions.get(
+        "nifty_algo_restore_unavailable"
+    ) or user_id in current_app.extensions.get("nifty_algo_restore_failed", ())
+    if restore_failed and (local is None or local.closed):
+        return {"operational": False, "entries_ready": False, "reason": "RUNNER_RESTORE_FAILED"}
+    status = store().runner_status(user_id)
+    if local is not None and (local.closed or not local.ready):
+        # A manually reattached monitor must warm up even if a previous
+        # process's lease still carries fresh entry-readiness evidence.
+        return {**status, "entries_ready": False, "reason": local.last_issue}
+    return status
+
+
 def success(data):
     return jsonify(status="success", data=data)
 
 
 @nifty_algo_bp.errorhandler(StateConflict)
 def conflict(error):
-    return jsonify(status="error", code="REVISION_CONFLICT", message=str(error)), 409
+    return jsonify(
+        status="error",
+        code="REVISION_CONFLICT",
+        message="Information changed. Reload the page and try again.",
+    ), 409
 
 
 @nifty_algo_bp.errorhandler(ValidationError)
@@ -94,7 +115,7 @@ def invalid_configuration(error):
 def status():
     state = store().read(session["user"])
     state.pop("configuration")
-    runner = store().runner_status(session["user"])
+    runner = _runner_status(session["user"])
     safety = store().safety_status(session["user"])
     ready = bool(
         runner.get("operational")
@@ -194,7 +215,7 @@ def configuration():
 def control(action):
     if action == "start":
         state = store().read(session["user"])
-        runner = store().runner_status(session["user"])
+        runner = _runner_status(session["user"])
         if not (
             runner.get("operational")
             and runner.get("entries_ready")
@@ -288,7 +309,7 @@ def assessment():
         return jsonify(
             status="error",
             code="HISTORY_INVALID",
-            message="Native history failed input validation.",
+            message="Market history could not be verified. Check the broker connection and try again.",
         ), 422
     return success(store().record_decision(session["user"], decision))
 
@@ -554,7 +575,9 @@ def research_recording_seal(recording_id):
         or type(body["expected_count"]) is not int
         or not 0 <= body["expected_count"] <= 10000
     ):
-        return jsonify(status="error", message="Recording count and SEAL_ONLY required"), 400
+        return jsonify(
+            status="error", message="Refresh the recording and confirm that you want to seal it."
+        ), 400
     if store().recording_page(session["user"], recording_id, limit=1) is None:
         return jsonify(status="error", message="Recording not found"), 404
     try:
@@ -689,7 +712,10 @@ def experiment_replay(experiment_id):
     from services.nifty_algo.replay_lab import replay_page
 
     if fullmatch(r"[a-f0-9]{32}", experiment_id) is None or set(request.args) != {"as_of", "after"}:
-        return jsonify(status="error", message="Provide bounded replay clock and cursor"), 400
+        return jsonify(
+            status="error",
+            message="Choose a valid replay time and refresh the recording before continuing.",
+        ), 400
     if len(request.args["as_of"]) > 64 or fullmatch(r"[0-9]{1,5}", request.args["after"]) is None:
         return jsonify(status="error", message="Invalid replay controls"), 400
     try:

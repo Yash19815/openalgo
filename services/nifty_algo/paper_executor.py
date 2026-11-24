@@ -496,11 +496,11 @@ class NiftyPaperExecutor:
 
     def _spot(self, now, config=None):
         """Current NIFTY index LTP for fill-time moneyness revalidation."""
-        if self.market_data is None:
-            from services.market_data_service import get_market_data_service
-
-            self.market_data = get_market_data_service()
         try:
+            if self.market_data is None:
+                from services.market_data_service import get_market_data_service
+
+                self.market_data = get_market_data_service()
             cached = self.market_data.get_all_data("NIFTY", "NSE_INDEX")
         except Exception:
             return None

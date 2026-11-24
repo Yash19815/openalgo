@@ -18,6 +18,17 @@
 
 ### Fix
 
+- Correct pytest application/SDK namespace separation while retaining packaged
+  and legacy test helpers. Preserve all Python and operating-system CI cells.
+- Bound Discord SQLite lock retries cooperatively, isolate runner restoration
+  failures, rotate both encrypted Discord columns with their correct keys, and
+  exclude private runtime files from ordinary staging and image builds.
+- Register direct NIFTY page access, sanitize failure logs and trader messages,
+  limit public interactions, and keep spot-cache failures from delaying exits.
+  These are unreleased corrections; strategy and Live gates are unchanged.
+- See [the compliance record](COMPLIANCE_REMEDIATION.md) for current verification,
+  intentional terminology exceptions and the deferred database recommendation.
+
 - Refuse future or corrupt replay evidence, unsupported identities, unobserved
   protection periods and unsafe split boundaries. Preserve unknown financial
   metrics and delivery outcomes instead of substituting zero or retrying blindly.

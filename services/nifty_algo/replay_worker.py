@@ -2,8 +2,13 @@
 
 from datetime import UTC, datetime
 
+from utils.logging import get_logger
+
 from .execution_replay import compare, identity, instant
 from .research import recording_cursor
+from .safe_logging import log_failure
+
+logger = get_logger(__name__)
 
 
 def run_experiment(store, user_id, experiment_id):
@@ -104,8 +109,8 @@ def main():
         while not stopping:
             try:
                 worker.tick()
-            except Exception:
-                print("NIFTY research cycle failed; durable claim retained", flush=True)
+            except Exception as error:
+                log_failure(logger, "NIFTY research cycle; durable claim retained", error)
             if args.once:
                 break
             time.sleep(1)

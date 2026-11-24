@@ -46,6 +46,8 @@ Columns rotated:
     - flow_workflows.api_key   (was plaintext for some installs)
     - broker_keys.api_key, api_secret, api_key_market, api_secret_market
     - alert_channels.webhook_url (Slack and Discord alert webhooks)
+    - nifty_algo_discord_settings.token_encrypted
+    - nifty_algo_discord_report_request.token_encrypted (temporary continuation)
   apikeys.api_key_hash:
     - re-derived from the decrypted api_key plaintext (Argon2 + new pepper)
   telegram_db Fernet (PBKDF2-SHA256, salt=TELEGRAM_KEY_SALT):
@@ -277,6 +279,8 @@ class Rotator:
             "flow_workflows.api_key_plaintext_promoted": 0,
             "broker_keys": 0,
             "alert_channels.webhook_url": 0,
+            "nifty_algo_discord_settings.token_encrypted": 0,
+            "nifty_algo_discord_report_request.token_encrypted": 0,
         }
 
     def _table_exists(self, name: str) -> bool:
@@ -320,6 +324,41 @@ class Rotator:
         return rotated, promoted_plaintext if allow_plaintext else (rotated, 0)
 
     def rotate_all(self):
+        # NIFTY columns have always been ciphertext. Refuse the entire
+        # transaction on a mismatched key instead of encrypting ciphertext as
+        # plaintext or letting the operator replace the pepper anyway.
+        for table, keys in (
+            ("nifty_algo_discord_settings", ("user_id",)),
+            ("nifty_algo_discord_report_request", ("user_id", "interaction_id")),
+        ):
+            if not self._table_exists(table):
+                continue
+            columns = {row[1] for row in self.conn.execute(f"PRAGMA table_info({table})")}
+            if "token_encrypted" not in columns:
+                continue
+            rows = self.conn.execute(
+                f"SELECT {', '.join(keys)}, token_encrypted FROM {table}"
+            ).fetchall()
+            for row in rows:
+                value = row[-1]
+                if not value:
+                    continue
+                try:
+                    plaintext = self.old_auth.decrypt(value.encode()).decode()
+                except (InvalidToken, AttributeError, ValueError):
+                    # A repeated pass with these exact keys is harmless.
+                    try:
+                        self.new_auth.decrypt(value.encode())
+                    except (InvalidToken, AttributeError, ValueError):
+                        raise ValueError("NIFTY credential pepper rotation refused") from None
+                    continue
+                self.conn.execute(
+                    f"UPDATE {table} SET token_encrypted=? WHERE "
+                    + " AND ".join(f"{key}=?" for key in keys),
+                    (_encrypt(self.new_auth, plaintext), *row[:-1]),
+                )
+                self.stats[table + ".token_encrypted"] += 1
+
         # ---- auth.auth ----
         if self._table_exists("auth"):
             cur = self.conn.execute("SELECT id, auth, feed_token, secret_api_key FROM auth")

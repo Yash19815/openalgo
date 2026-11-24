@@ -53,9 +53,7 @@ def nifty_session(user_id, day, *, store):
             return {"status": "SPECIAL_SESSION_DISABLED", "window": None}
         if day.weekday() >= 5:
             return {"status": "WEEKEND", "window": None}
-        if day.isoformat() in {
-            item["date"] for item in calendar["entries"] if item.get("date")
-        }:
+        if day.isoformat() in {item["date"] for item in calendar["entries"] if item.get("date")}:
             return {"status": "HOLIDAY", "window": None}
 
         timing = market.get_effective_session_window(day, "NFO")

@@ -486,6 +486,13 @@ The feature uses OpenAlgo's existing environment and authentication. Live remain
 
 Execution research runs only in a separate optional process: `uv run --no-sync python -m services.nifty_algo.replay_worker --user YOUR_USERNAME` (`--once` processes one queued definition). The Replay Lab pins owned recordings and shows evidence-gated A/B/C results; missing historical depth or signal data produces unavailable performance. Archive/restore controls preserve immutable experiment evidence. See [Historical Replay](docs/nifty-algo/HISTORICAL_REPLAY.md) for authenticated research endpoints, storage bounds and backup requirements. These additions use the existing environment and dependencies and never activate strategy settings or live orders. Local Linux testing is deferred to GitHub CI; the backend matrix includes the offline NIFTY and SMTP suites.
 
+NIFTY reports and uploaded calendars are private runtime files under `db/`.
+Keep the database, these files and matching encryption settings in coordinated
+private backups. The shipped Compose DB volume persists the default paths;
+custom paths and database-only backups do not provide that guarantee. See
+[NIFTY storage and backup requirements](docs/nifty-algo/SETUP.md#private-files-and-backups)
+and the [compliance remediation record](docs/nifty-algo/COMPLIANCE_REMEDIATION.md).
+
 ## Repo Activity
 
 ![Alt](https://repobeats.axiom.co/api/embed/0b6b18194a3089cb47ab8ae588caabb14aa9972b.svg "Repobeats analytics image")

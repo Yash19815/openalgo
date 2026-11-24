@@ -84,6 +84,8 @@ jobs:
       - name: Run offline NIFTY and notification regressions
         run: |
           uv run pytest test/test_nifty_algo_*.py \
+            test/test_pytest_import_resolution.py \
+            test/test_rotate_pepper_salt.py test/test_fernet_salt_warning.py \
             test/test_smtp_error_messages.py test/test_smtp_certificate_verification.py \
             test/test_requirements_parity.py -o addopts='' -q --timeout=120 \
             --basetemp="${{ runner.temp }}/nifty-tests" -p no:cacheprovider
