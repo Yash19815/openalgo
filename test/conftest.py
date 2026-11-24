@@ -28,14 +28,11 @@ import dotenv
 dotenv.load_dotenv = lambda *args, **kwargs: False
 dotenv.main.load_dotenv = dotenv.load_dotenv
 
-# Bind ``openalgo`` to the installed SDK before pytest sets up the repository
-# root. The root carries an ``__init__.py``, so pytest imports it as a package
-# named ``openalgo`` during setup and puts its parent directory first on
-# sys.path. A module that first imported ``openalgo.ta`` after that point got
-# the repository instead of the SDK, and every agent toolkit built on it was
-# silently skipped, so whether a test saw the market tools depended on which
-# test had happened to import the SDK first. Production never has the parent
-# directory on sys.path; this is confined to the test harness.
+# Load the installed SDK during environment setup. The application root must
+# remain without __init__.py so pytest cannot collect these tests under the
+# SDK's openalgo namespace. test/__init__.py and pytest's two pythonpath entries
+# support packaged NIFTY helpers and legacy bare helper imports independently
+# of whether the SDK has already loaded.
 import openalgo  # noqa: E402,F401
 
 # Assigned unconditionally: test isolation must not be overridable from the

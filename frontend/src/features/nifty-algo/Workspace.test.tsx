@@ -7,12 +7,23 @@ import Workspace from './Workspace'
 const api = vi.hoisted(() => ({ read: vi.fn(), control: vi.fn(), assess: vi.fn() }))
 const socketContext = vi.hoisted(() => ({ read: vi.fn() }))
 vi.mock('./api', () => ({
+  createRecording: vi.fn(),
+  defineExperiment: vi.fn(),
+  sealRecording: vi.fn(),
+  acknowledgeSafetyIncident: vi.fn(),
+  resolveSafetyIncident: vi.fn(),
   niftyKeys: { all: ['nifty-algo'] },
   readNifty: api.read,
   controlNifty: api.control,
   saveConfiguration: vi.fn(),
   assessNativeHistory: api.assess,
   preparePaperMonitor: vi.fn(),
+  uploadCalendar: vi.fn(),
+  approveCalendar: vi.fn(),
+  rejectCalendar: vi.fn(),
+  updateCalendarEntries: vi.fn(),
+  requestMode: vi.fn(),
+  MAX_CALENDAR_BYTES: 2 * 1024 * 1024,
 }))
 vi.mock('@/components/socket/SocketProvider', () => ({
   useSocketContext: socketContext.read,
@@ -73,6 +84,13 @@ describe('NIFTY workspace', () => {
     renderPage('signals')
     expect((await screen.findAllByRole('alert')).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/Feed unavailable/).length).toBeGreaterThan(0)
+  })
+
+  it('includes read-only contract evidence in Signal Monitor', async () => {
+    renderPage('signals')
+    expect(
+      await screen.findByRole('heading', { name: 'Smart contract selector' })
+    ).toBeInTheDocument()
   })
 
   it('requests historical assessment only after an explicit click', async () => {

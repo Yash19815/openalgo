@@ -46,7 +46,10 @@ need → drill into the specific file. Don't load everything at once.
 
 | Feature | Entry point |
 |---|---|
-| NIFTY ALGO paper-only extension in this fork, implementation status and setup | [nifty-algo/IMPLEMENTATION_PLAN.md](nifty-algo/IMPLEMENTATION_PLAN.md) · [nifty-algo/SETUP.md](nifty-algo/SETUP.md) |
+| NIFTY ALGO paper-only extension in this fork: system design and phase status, implementation plan, setup | [nifty-algo/PAPER_SYSTEM_DESIGN.md](nifty-algo/PAPER_SYSTEM_DESIGN.md) · [nifty-algo/IMPLEMENTATION_PLAN.md](nifty-algo/IMPLEMENTATION_PLAN.md) · [nifty-algo/SETUP.md](nifty-algo/SETUP.md) |
+| NIFTY gap remediation, verification evidence and outstanding runtime gates | [nifty-algo/PHASES_1_TO_7_GAP_AUDIT.md](nifty-algo/PHASES_1_TO_7_GAP_AUDIT.md) · [nifty-algo/TESTING.md](nifty-algo/TESTING.md) |
+| NIFTY five-feature integration compatibility, reuse and safety gates | [nifty-algo/FIVE_FEATURES_INTEGRATION_AUDIT.md](nifty-algo/FIVE_FEATURES_INTEGRATION_AUDIT.md) |
+| NIFTY advanced selector, analytics, replay, Discord setup and remaining acceptance | [nifty-algo/ADVANCED_FEATURES_ARCHITECTURE.md](nifty-algo/ADVANCED_FEATURES_ARCHITECTURE.md) · [nifty-algo/ADVANCED_FEATURES_READINESS.md](nifty-algo/ADVANCED_FEATURES_READINESS.md) · [nifty-algo/ADVANCED_FEATURES_TESTING.md](nifty-algo/ADVANCED_FEATURES_TESTING.md) · [nifty-algo/DISCORD_INTEGRATION.md](nifty-algo/DISCORD_INTEGRATION.md) |
 | Agent (`/agent`) and voice | [design/55-agent/README.md](design/55-agent/README.md) · [design/56-voice-agent/README.md](design/56-voice-agent/README.md) |
 | The 20 options and portfolio tools, including Strike Profile and Sector Rotation | [userguide/31-tools/README.md](userguide/31-tools/README.md) |
 | Portfolio, SIP and sector-rotation REST APIs | [api/README.md](api/README.md#portfolio-sip-and-sector-analysis) |

@@ -16,7 +16,9 @@ from services.nifty_algo.models import PCR
 from services.nifty_algo.paper_executor import NiftyPaperExecutor, OrderRefused
 from services.nifty_algo.protection import initial_protection, observe_bid
 from services.nifty_algo.runner import NiftyRunner
+from test.nifty_calendar_helpers import seed_nifty_calendar_dependencies
 from test.test_nifty_algo_paper_executor import (
+    IST,
     NOW,
     USER,
     FakeMarket,
@@ -32,7 +34,9 @@ from test.test_nifty_algo_paper_executor import (
 
 @pytest.fixture
 def store(request):
-    return request.getfixturevalue("feature_store")
+    value = request.getfixturevalue("feature_store")
+    seed_nifty_calendar_dependencies(value, USER, NOW.astimezone(IST).year)
+    return value
 
 
 def confidence(score=50):
@@ -214,19 +218,19 @@ def test_stop_from_fill_restart_pause_exit_gap_and_journal(store):
     fills = exe.process(NOW + timedelta(seconds=1))
     assert fills[0]["status"] == "FILLED"
     held = store.positions(USER)[0]
-    assert D(held["entry_price"]) == 100 and D(held["protection"]["initial_stop"]) == 92
+    assert D(held["entry_price"]) == 165 and D(held["protection"]["initial_stop"]) == D("151.8")
     # Pause never disables protection, and active levels survive a new executor.
     state = store.read(USER)
     store.change(USER, state["revision"], action="pause")
-    market.bid, market.ask, market.stamp = "106", "106.5", NOW + timedelta(seconds=2)
+    market.bid, market.ask, market.stamp = "172", "172.5", NOW + timedelta(seconds=2)
     exe.monitor_exits(market.stamp)
-    assert D(store.positions(USER)[0]["protection"]["stop_price"]) == D("104.5")
+    assert D(store.positions(USER)[0]["protection"]["stop_price"]) == D("170.5")
     recovered = executor(store, market=market, config=config)
     recovered.reconcile(NOW + timedelta(seconds=3))
     # Stale data cannot move protection or trigger a price exit.
     market.bid, market.ask = "110", "110.5"
     recovered.monitor_exits(NOW + timedelta(seconds=10))
-    assert D(store.positions(USER)[0]["protection"]["stop_price"]) == D("104.5")
+    assert D(store.positions(USER)[0]["protection"]["stop_price"]) == D("170.5")
     market.bid, market.ask, market.size, market.stamp = "80", "81", 1, NOW + timedelta(seconds=11)
     recovered.monitor_exits(market.stamp)
     assert len(store.pending_orders(USER)) == 1
@@ -276,16 +280,19 @@ def test_entry_snapshot_does_not_follow_later_config(store):
         configuration=StrategyConfig(premium_stop=".04", target_min=".14", target_max=".15"),
     )
     restored = NiftyStore(store.engine).positions(USER)[0]["protection"]
-    assert restored == before and D(restored["initial_stop"]) == 92
+    assert restored == before and D(restored["initial_stop"]) == D("151.8")
 
 
 def test_partial_exit_allocates_entry_fees_and_preserves_trailing(store):
     running(store)
     market = FakeMarket()
-    exe = executor(store, config=StrategyConfig(slippage_ticks=0), market=market)
+    config = StrategyConfig(
+        slippage_ticks=0, max_lots=1, lot_score_thresholds=(D("0"),)
+    )
+    exe = executor(store, config=config, market=market)
     exe.admit(buy_intent())
     exe.process(NOW + timedelta(seconds=1))
-    market.bid, market.ask, market.stamp = "106", "106.5", NOW + timedelta(seconds=2)
+    market.bid, market.ask, market.stamp = "172", "172.5", NOW + timedelta(seconds=2)
     exe.monitor_exits(market.stamp)
     before = store.positions(USER)[0]["protection"]
     exe.admit(buy_intent("partial", side="SELL", quantity=10), now=market.stamp)
@@ -309,7 +316,7 @@ def test_partial_exit_allocates_entry_fees_and_preserves_trailing(store):
     assert not store.positions(USER)
     trades = store.trades(USER)
     net = sum((D(t["net"]) for t in trades), D(0))
-    assert D(store.account(USER, NOW)["equity"]) - 100000 == net
+    assert D(store.account(USER, NOW)["equity"]) - 20000 == net
 
 
 def test_expired_exit_latch_retries_after_restart_and_retains_exposure(store):
@@ -332,19 +339,21 @@ def test_expired_exit_latch_retries_after_restart_and_retains_exposure(store):
     assert not store.positions(USER) and store.trades(USER)[0]["reason"] == "INITIAL_STOP"
 
 
-@pytest.mark.parametrize(("ask", "status"), [("100", "FILLED"), ("120", "REJECTED")])
+@pytest.mark.parametrize(("ask", "status"), [("160", "FILLED"), ("200", "REJECTED")])
 def test_nondefault_tick_slippage_and_fill_risk_budget(store, ask, status):
     running(store)
     market = FakeMarket()
-    exe = executor(store, market=market)
     contract = instrument().model_copy(update={"tick_size": D(".2")})
+    exe = executor(store, market=market, master=lambda now: [contract])
     exe.admit(buy_intent(instrument=contract))
     market.ask = ask
+    market.bid = str(D(ask) - D("0.2"))
+    market.ltp = str(D(ask) - D("0.1"))
     result = exe.process(NOW + timedelta(seconds=1))
     # A changed entry fill cannot exceed its reserved risk or capital.
     assert result[0]["status"] == status
     if status == "FILLED":
-        assert D(result[0]["price"]) == D("100.2")
+        assert D(result[0]["price"]) == D("160.2")
     else:
         assert not store.positions(USER)
 
@@ -354,10 +363,10 @@ def test_config_change_between_risk_check_and_write_is_refused(store, monkeypatc
     exe = executor(store)
     original = store.admit_order
 
-    def race(user_id, order):
+    def race(user_id, order, **kwargs):
         state = store.read(USER)
         store.change(USER, state["revision"], action="pause")
-        return original(user_id, order)
+        return original(user_id, order, **kwargs)
 
     monkeypatch.setattr(store, "admit_order", race)
     with pytest.raises(OrderRefused, match="ENTRIES_DISABLED"):
@@ -393,14 +402,24 @@ def test_legacy_exposure_gets_emergency_protection_without_guessed_target(store)
     assert result["reasons"] == ["LEGACY_PROTECTION_REQUIRES_REVIEW"]
     p = store.positions(USER)[0]["protection"]
     assert p["confidence"] is None and p["target_price"] is None
-    assert D(p["initial_stop"]) == 92 and not store.account(USER, NOW)["reconciled"]
+    assert D(p["initial_stop"]) == D("151.8") and not store.account(USER, NOW)["reconciled"]
 
 
 def test_depth_only_observation_can_fill_without_using_ltp(store):
     running(store)
     raw = FakeMarket().get_all_data("", "")
     raw.pop("ltp")
-    exe = executor(store, market=Mock(get_all_data=Mock(return_value=raw)))
+    index = FakeMarket().get_all_data("NIFTY", "NSE_INDEX")
+    exe = executor(
+        store,
+        market=Mock(
+            get_all_data=Mock(
+                side_effect=lambda symbol, exchange: index
+                if exchange == "NSE_INDEX"
+                else raw
+            )
+        ),
+    )
     exe.admit(buy_intent())
     assert exe.process(NOW + timedelta(seconds=1))[0]["status"] == "FILLED"
 
@@ -467,7 +486,8 @@ def test_realized_gap_loss_locks_day_and_survives_restart(store):
 def test_fee_allocation_conserves_money_across_uneven_partial_exits(store):
     running(store)
     market = FakeMarket()
-    exe = executor(store, market=market)
+    config = StrategyConfig(max_lots=1, lot_score_thresholds=(D("0"),))
+    exe = executor(store, market=market, config=config)
     exe.admit(buy_intent())
     exe.process(NOW + timedelta(seconds=1))
     market.bid, market.ask = "101", "101.5"
@@ -477,7 +497,7 @@ def test_fee_allocation_conserves_money_across_uneven_partial_exits(store):
         assert exe.process(market.stamp + timedelta(seconds=1))[0]["status"] == "FILLED"
     assert not store.positions(USER)
     net = sum((D(t["net"]) for t in store.trades(USER)), D(0))
-    assert D(store.account(USER, NOW)["equity"]) == 100000 + net
+    assert D(store.account(USER, NOW)["equity"]) == 20000 + net
 
 
 def test_performance_aggregates_entire_ledger_beyond_journal_page(store):
@@ -549,12 +569,12 @@ def test_legacy_peak_cannot_restart_at_a_looser_stop(store):
     exe = executor(store, config=StrategyConfig(slippage_ticks=0))
     exe.admit(buy_intent())
     exe.process(NOW + timedelta(seconds=1))
-    store.mark_highest(USER, instrument().token, D("110"))
+    store.mark_highest(USER, instrument().token, D("180"))
     with store.sessions.begin() as db:
         db.delete(db.get(NiftyProtection, (USER, instrument().token)))
     exe.reconcile(NOW + timedelta(seconds=2))
     protection = store.positions(USER)[0]["protection"]
-    assert D(protection["initial_stop"]) == 92
+    assert D(protection["initial_stop"]) == D("151.8")
     assert D(protection["stop_price"]) >= 110
     assert protection["highest_bid"] is None
     assert protection["exit_reason"] == "LEGACY_PROTECTION_REVIEW"

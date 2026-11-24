@@ -482,7 +482,16 @@ The AI Agent at `/agent` is deliberately LLM-agnostic. The agent loop and the pr
 
 The authenticated `/nifty-algo` workspace uses an isolated PAPER_ONLY ledger. The native strategy scheduler manages separate entry and protective jobs, with an 8% maximum filled-premium stop, a 1.5-option-premium-point trail and deterministic 10–15% targets. `POST /api/nifty-algo/runner` attaches the monitor; Start remains gated by backend data and recovery checks. `POST /api/nifty-algo/positions/<token>/close` requests an owned paper exit. Real Angel complete-expiry PCR and production-worker readiness remain unverified. See the [implementation tracker](docs/nifty-algo/IMPLEMENTATION_PLAN.md), [testing evidence](docs/nifty-algo/TESTING.md), and [setup guide](docs/nifty-algo/SETUP.md).
 
-The feature uses OpenAlgo's existing environment and authentication. It adds no broker credentials or deployment service. The initial milestone is paper-only.
+The feature uses OpenAlgo's existing environment and authentication. Live remains blocked. Advanced selector, analytics, research and Discord setup are documented in the [advanced features readiness report](docs/nifty-algo/ADVANCED_FEATURES_READINESS.md). Discord uses encrypted server-side bot settings and a separate optional dispatcher: `uv run --no-sync python -m services.nifty_algo.notification_worker --user YOUR_USERNAME`. Existing Gmail reporting remains in place. See the [Discord setup guide](docs/nifty-algo/DISCORD_INTEGRATION.md) before starting delivery.
+
+Execution research runs only in a separate optional process: `uv run --no-sync python -m services.nifty_algo.replay_worker --user YOUR_USERNAME` (`--once` processes one queued definition). The Replay Lab pins owned recordings and shows evidence-gated A/B/C results; missing historical depth or signal data produces unavailable performance. Archive/restore controls preserve immutable experiment evidence. See [Historical Replay](docs/nifty-algo/HISTORICAL_REPLAY.md) for authenticated research endpoints, storage bounds and backup requirements. These additions use the existing environment and dependencies and never activate strategy settings or live orders. Local Linux testing is deferred to GitHub CI; the backend matrix includes the offline NIFTY and SMTP suites.
+
+NIFTY reports and uploaded calendars are private runtime files under `db/`.
+Keep the database, these files and matching encryption settings in coordinated
+private backups. The shipped Compose DB volume persists the default paths;
+custom paths and database-only backups do not provide that guarantee. See
+[NIFTY storage and backup requirements](docs/nifty-algo/SETUP.md#private-files-and-backups)
+and the [compliance remediation record](docs/nifty-algo/COMPLIANCE_REMEDIATION.md).
 
 ## Repo Activity
 

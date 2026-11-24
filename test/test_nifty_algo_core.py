@@ -15,7 +15,7 @@ from services.nifty_algo.risk_manager import (
     AccountRisk,
     entry_reasons,
     evaluate_premium_exit,
-    size_quantity,
+    plan_entry,
 )
 from services.nifty_algo.signal_engine import Rules
 
@@ -151,17 +151,26 @@ def test_contract_resolver_uses_listed_strikes_and_requires_fresh_depth():
     quotes = {"call": quote(), "higher": quote("higher")}
     config = StrategyConfig()
     assert Resolver().resolve(contracts, quotes, 22040, "CE", NOW, config).token == "call"
-    assert (
-        Resolver()
-        .resolve(contracts, quotes, 22040, "CE", NOW, StrategyConfig(selection="OTM"))
-        .token
-        == "higher"
-    )
+    assert [
+        candidate.token
+        for candidate in Resolver().candidates(
+            contracts, quotes, 22040, "CE", NOW, config
+        )
+    ] == ["call"]
     with pytest.raises(ValueError):
         Resolver().resolve(contracts, quotes, 22040, "FUT", NOW, config)
     with pytest.raises(ValueError):
         Resolver().resolve(
-            contracts, quotes | {"call": quote(bid_size=0)}, 22040, "CE", NOW, config
+            contracts,
+            quotes
+            | {
+                "call": quote(bid_size=0),
+                "higher": quote("higher", bid_size=0),
+            },
+            22040,
+            "CE",
+            NOW,
+            config,
         )
 
 
@@ -186,21 +195,28 @@ def test_signal_determinism_unavailable_and_forming_candle_exclusion():
     assert config.version_id != StrategyConfig(adx_min=30).version_id
 
 
-def test_risk_whole_lot_budget_includes_costs_and_blocks_pending():
+def test_risk_planner_sizes_lots_and_blocks_pending():
     account = AccountRisk(
-        Decimal("100000"),
-        Decimal("100000"),
-        Decimal("100000"),
+        Decimal("20000"),
+        Decimal("20000"),
+        Decimal("20000"),
         reconciled=True,
         entries_enabled=True,
     )
     config = StrategyConfig()
-    assert size_quantity(account, instrument(), quote(), config, Decimal("100")) == 25
-    assert size_quantity(account, instrument(), quote(), config, Decimal("400")) == 0
+    plan = plan_entry(
+        account,
+        [(instrument(), quote().model_copy(update={"ask": Decimal("60"), "bid": Decimal("59")}))],
+        config,
+        50,
+        lambda side, price, quantity, cfg: Decimal("0"),
+    )
+    assert plan.quantity == 50
+    assert plan.lots == 2
     pending = AccountRisk(
-        Decimal("100000"),
-        Decimal("100000"),
-        Decimal("100000"),
+        Decimal("20000"),
+        Decimal("20000"),
+        Decimal("20000"),
         pending_entries=1,
         reconciled=True,
         entries_enabled=True,

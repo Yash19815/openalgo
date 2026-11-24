@@ -169,7 +169,11 @@ def test_api_start_requires_current_lease_config_and_reconciliation(client):
         "alice",
         "offline-lease",
         now,
-        payload={"entries_ready": True, "configuration_id": current["configuration_id"]},
+        payload={
+            "entries_ready": True,
+            "configuration_id": current["configuration_id"],
+            "assessed_at": now.isoformat(),
+        },
     )
     token = client.get("/fixture-csrf").json["token"]
     response = client.post(

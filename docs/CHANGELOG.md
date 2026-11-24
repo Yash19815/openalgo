@@ -6,6 +6,39 @@ Each release adds a stanza here summarising what changed and who contributed.
 The full notes for a release, with commit SHAs and the reasoning behind each
 fix, live in [docs/releases](releases/).
 
+## [Unreleased]
+
+### Security
+
+- **API key and order-mode changes apply only to the signed-in account.**
+  `POST /apikey` and `POST /apikey/mode` took the account to change from the
+  request body's `user_id`, so a signed-in session could rotate another
+  account's key, switch its order mode, or create a key for an account that
+  does not exist. Both now act on the session's own account. A request naming
+  any other `user_id` is refused with 403 and changes nothing; a request that
+  names its own account, or none, works as before. CSRF protection on both is
+  unchanged. Nothing to do on upgrade; a script that posts another account's
+  `user_id` to these routes now receives 403.
+
+### Fix
+
+- Correct NIFTY PAPER test-import compatibility, cooperative Discord queue
+  locking, restart isolation, encrypted-token migration and private-file
+  exclusions. Direct `/nifty-algo` access now resolves through the React shell.
+  The feature retains its isolated ledger and has no live order transport.
+  See [the compliance record](nifty-algo/COMPLIANCE_REMEDIATION.md) for verification
+  limits and [storage/backup requirements](nifty-algo/SETUP.md#private-files-and-backups).
+- The one-time Fernet salt migration at startup now puts the previous `.env`
+  back when its database step fails, and the app starts on the legacy salt
+  with every stored credential unchanged, retrying on the next start. Before,
+  the new salt stayed in `.env` and the rows it could not re-encrypt stopped
+  decrypting. Startup now stops only when that `.env` cannot be restored; restore
+  `.env` and the database from a matched backup in that case.
+- The empty `__init__.py` at the repository root is removed. It made pytest name
+  the test modules `openalgo.test.*`, which collides with the installed `openalgo`
+  SDK. The application never imports itself as `openalgo`; the Groww plugin's
+  `openalgo.database` fallback runs only when `database` itself fails to import.
+
 ## [2.0.3.4] - 2026-11-17
 
 ### Alert Channels and Nuvama Release

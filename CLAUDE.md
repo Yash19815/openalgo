@@ -357,6 +357,11 @@ a tighter trailing stop, or whether a set of positions has run past its combined
 limits. The scalping terminal, the `/strategy` engine, Flow and a REST endpoint
 all sit on it.
 
+The NIFTY paper system is a documented exception: `services/nifty_algo/protection.py`
+is an intentionally isolated, pure Decimal evaluator. The shared-risk invariant
+still governs every shared consumer; do not add a third evaluator or copy NIFTY
+formulas into other modules.
+
 - **`services/risk/` performs no I/O of any kind.** No database, no broker, no
   market data, no clock, no logging. Every input arrives as an argument and every
   decision leaves as a return value. That is what makes it testable without a

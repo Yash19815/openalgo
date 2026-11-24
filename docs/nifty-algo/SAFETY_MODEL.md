@@ -1,5 +1,44 @@
 # NIFTY paper execution safety model
 
+## Research evidence boundary
+
+Recordings are research-only quote evidence, never order admission or fill
+authority. Signed-session controls retain CSRF, owner scoping, bounded bodies
+and count-fenced sealing. The HTTP API accepts no market observations.
+
+Native capture now has an explicit internal opt-in and immutable metadata
+sidecar. Existing recordings are never automatically adopted. Freezing requires
+current runner ownership under the owner lock and occurs before observations.
+The scope contains at most 1,000 unique, tradable NIFTY options from today's
+master and at most 512 KiB of metadata. Its hash is bound into the recording
+identity. Broker labels and hashes do not authenticate provenance.
+
+Native opt-in appends require current runner ownership, a frozen token, native
+source classification and a source timestamp at or after scope freeze time.
+Scope conflicts and storage failures roll back atomically without renewing
+runner readiness. The sidecar has no trading authority. The current explicit
+recording controls and separate runner capture job use the existing cache;
+they never authorize orders or upgrade missing execution evidence.
+
+The native research reader uses only identified mode-3 source snapshots from
+the existing supplied cache. Display fallbacks, missing sides, stale timestamps,
+malformed levels and depth lists over 20 entries are refused. It reuses the
+paper depth parser without changing the paper path's default policy. Native OI
+and packet sequence remain source fields, not a certification of provenance.
+Both paths take OI from that one parser, which accepts it only from the
+contract's own identified source record and never fills a missing value.
+
+Internal sample deduplication persists owner/recording-scoped identities with
+the evidence transaction. Repeated polling retains first availability, including
+after restart. Quota rejection or storage failure must roll back identities and
+observations together. There is no separate in-memory deduplication registry.
+An internal native-capture append can also require the current runner owner.
+That lease is checked under the existing owner lock, before deduplication or
+evidence writes. A missing, expired, released or replaced lease refuses the
+append without renewing the heartbeat or changing entry readiness.
+The optional capture job is connected to the runner scheduler. Sealing does
+not make quote-only data complete or execution-eligible; Live remains blocked.
+
 ## Execution boundary
 
 `NiftyPaperExecutor` changes only NIFTY feature tables. Its generic `submit`
@@ -44,6 +83,64 @@ are canceled. Legacy positions lacking recorded confidence receive emergency
 floor and latches a review exit, rather than restarting at a looser stop. Such
 exposure keeps entries blocked until reviewed/closed; this is not retroactive
 proof that old trades used v2 targets.
+
+## Execution Safety Center
+
+The Risk view exposes durable incidents from the isolated NIFTY ledger.
+Authenticated reads return at most 100 incidents; the entry interlock considers
+all unresolved critical incidents in the current primary mode, not only that
+page. A critical primary incident also persists the existing PAUSED state for
+rollback compatibility. SHADOW and RESEARCH incidents do not control paper
+entries. Protective exits continue regardless of an entry hold.
+
+Acknowledgement records the owning session user, time and new incident revision.
+It does not resolve the incident, clear the entry hold, or resume the runner.
+Resolution is a separate owner/CSRF-protected action requiring incident and
+strategy revisions plus the exact `RESOLVE_ONLY` confirmation. The review
+dialog states that trading remains paused and restores keyboard focus on cancel.
+
+Only PAPER incidents with codes `STALE_DATA`, `MARKET_DATA_DISCONNECTED`, or
+`RECONCILIATION_BLOCKED` support this verified recovery path. The incident must
+already be acknowledged. Resolution requires PAUSED state, no kill or daily
+lock, no pending BUY, and verified nonlegacy protection on any held position.
+It checks the current isolated ledger's cash, fills, positions and reservations
+under the same user lock as admission and fill. A previously saved reconciliation
+flag alone is insufficient.
+
+The runner's assessment must match the active configuration, be no older than
+30 seconds, not precede the incident, and have an unexpired owner lease.
+Heartbeat renewal does not renew assessment evidence. Resolution stores actor,
+time, configuration, runner owner and fresh check timestamps in the committed
+`safety_resolved` event. Status reads recover those fields from the matching
+owner-scoped event, so evidence remains available after refresh and restart.
+Resolution never changes PAUSED to RUNNING and never clears kill, daily,
+monthly, or other incident holds.
+
+Start remains an explicit strategy action with the current strategy revision.
+It rechecks runner evidence, active incidents and current ledger invariants
+under the user lock at the write. Failed recovery rolls back without dropping
+exposure or disabling exits. Unknown conditions, LIVE recovery, broker ambiguity,
+live partial fills and broker protective-order verification remain unsupported.
+
+## Native research capture
+
+Recording controls require the signed session, CSRF, bounded JSON and exact
+`RESEARCH_ONLY` confirmation. The optional `native_capture` flag is a strict
+boolean, default false. It creates an empty sidecar, not feed or order authority.
+Caller-selected instruments, provenance, timestamps, prices and observations
+remain forbidden. Legacy recordings are never silently adopted.
+
+The independent capture job reads only verified, acknowledged native depth
+cache observations within a frozen server-derived master/broker scope.
+It cannot initialize a client, subscribe, reconnect, renew readiness or place
+orders. Owner fencing, count fencing, immutable scope and durable sample
+deduplication apply at append. Lost ownership, changed feed generation and
+concurrent sealing reject stale writes. Protection stays independently scheduled.
+
+Capture is incomplete evidence, not broker-authenticated historical execution
+proof. `NATIVE_CAPTURE_REQUESTED` reports opt-in only, never connection health
+or coverage. Empty or insufficient recordings remain non-executable. Real-feed
+rehearsal, replay, experiments, exit studies and capture UI remain outstanding.
 
 ## STRIDE review
 

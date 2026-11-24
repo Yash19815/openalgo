@@ -19,11 +19,12 @@ Thumbs.db
 .claude/settings.local.json
 .python-version
 config.ini
-.venvv
+.venv
 .cloudflared/*.json
-
+.pytest_tmp*/
 #DB Files, CSV Files and Log/Tmp Files
-
+apply*
+fix*
 # Temporary/debug files
 tmp/
 
@@ -144,6 +145,10 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 .hypothesis/
+
+# Private runtime reports and uploaded exchange calendars.
+/db/nifty_reports/
+/db/nifty_calendar/
 
 # A literal "~" directory in the repo root. On Windows HOME is often unset, so
 # a library that expands "~/.config/..." itself (litellm caches an auth token

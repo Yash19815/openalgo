@@ -7,15 +7,18 @@ closed: orders enter only through ``admit`` after risk-manager checks and
 resolve only through ``process`` against fresh market depth.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from decimal import ROUND_CEILING, Decimal
-from math import isfinite
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from services.nifty_algo.models import Instrument, Quote
+from services.nifty_algo.depth_quote import depth_quote
+from services.nifty_algo.depth_quote import epoch as _epoch
+from services.nifty_algo.models import Instrument
+from utils.logging import get_logger
 
 IST = ZoneInfo("Asia/Kolkata")
+logger = get_logger(__name__)
 
 
 class PaperExecutionUnavailable(ValueError):
@@ -28,47 +31,6 @@ class OrderRefused(ValueError):
     def __init__(self, reasons):
         self.reasons = list(reasons)
         super().__init__(", ".join(self.reasons))
-
-
-def _epoch(value):
-    if value is None or isinstance(value, bool):
-        return None
-    if isinstance(value, datetime):
-        return value.astimezone(UTC) if value.tzinfo else None
-    if isinstance(value, (int, float)):
-        try:
-            return (
-                datetime.fromtimestamp(value / 1000 if value > 10**12 else value, UTC)
-                if isfinite(value)
-                else None
-            )
-        except (ValueError, OverflowError, OSError):
-            return None
-    try:
-        stamp = datetime.fromisoformat(str(value))
-    except ValueError:
-        return None
-    return stamp if stamp.tzinfo else None
-
-
-def _best_level(entries, high=True):
-    """(price, quantity) at the best level of a depth side."""
-    best = None
-    for entry in entries or []:
-        try:
-            if isinstance(entry, dict):
-                price = Decimal(str(entry["price"]))
-                size = int(entry.get("quantity", 0))
-            else:
-                price = Decimal(str(entry[0]))
-                size = int(entry[1])
-        except (KeyError, IndexError, TypeError, ValueError, ArithmeticError):
-            continue
-        if not price.is_finite() or price <= 0 or size <= 0:
-            continue
-        if best is None or (price > best[0] if high else price < best[0]):
-            best = (price, size)
-    return best
 
 
 def _charges(side, price, quantity, config=None):
@@ -98,6 +60,7 @@ class NiftyPaperExecutor:
         market_data=None,
         clock=None,
         session_reader=None,
+        master=None,
     ):
         self.store = store
         self.user_id = user_id
@@ -105,6 +68,24 @@ class NiftyPaperExecutor:
         self.market_data = market_data
         self.clock = clock or (lambda: datetime.now(UTC))
         self.session_reader = session_reader
+        # Callable(now) -> verified current-master instruments. A runner shares
+        # its own adapter; otherwise the native adapter proves master freshness.
+        self.master = master
+
+    def _listed(self, now):
+        """Current verified master contracts, read outside any ledger lock."""
+        try:
+            if self.master is None:
+                from .native_data import NativeDataAdapter
+
+                return NativeDataAdapter(clock=lambda: now).instruments(now)
+            return list(self.master(now))
+        except Exception as error:
+            from .safe_logging import log_failure
+
+            # No master evidence refuses the entry; it never relaxes moneyness.
+            log_failure(logger, "NIFTY contract master read", error)
+            return []
 
     def _bound(self):
         return self.store is not None and self.user_id is not None
@@ -158,7 +139,7 @@ class NiftyPaperExecutor:
     def admit(self, intent, now=None):
         """Validate an intent through the risk manager, then persist it once."""
         from services.nifty_algo.config import StrategyConfig
-        from services.nifty_algo.risk_manager import AccountRisk, entry_reasons, size_quantity
+        from services.nifty_algo.risk_manager import AccountRisk, entry_reasons, plan_entry
 
         now = now or self.clock()
         existing = self.store.order_by_intent(self.user_id, intent["intent_id"])
@@ -177,10 +158,28 @@ class NiftyPaperExecutor:
         side = intent["side"]
         if side not in ("BUY", "SELL"):
             raise OrderRefused(["SIDE_RESTRICTED"])
+        if side == "BUY" and self._live_mode():
+            from .trading_mode import LIVE_ADAPTER
+
+            # No live executor exists: the stub refuses without any transport.
+            LIVE_ADAPTER.submit(intent)
         try:
-            instrument = Instrument.model_validate(intent["instrument"])
+            raw_candidates = intent.get("candidates") if side == "BUY" else None
+            candidate_instruments = [
+                Instrument.model_validate(value)
+                for value in (raw_candidates or [intent["instrument"]])
+            ]
+            instrument = candidate_instruments[0]
+            requested_instrument = Instrument.model_validate(intent["instrument"])
         except (ValueError, TypeError, KeyError):
             raise OrderRefused(["METADATA_INVALID"]) from None
+        if requested_instrument != instrument:
+            raise OrderRefused(["INSTRUMENT_IDENTITY_MISMATCH"])
+        identities = {}
+        for candidate in candidate_instruments:
+            if candidate.token in identities and identities[candidate.token] != candidate:
+                raise OrderRefused(["INSTRUMENT_IDENTITY_MISMATCH"])
+            identities[candidate.token] = candidate
         if (
             intent["token"] != instrument.token
             or intent["symbol"] != instrument.symbol
@@ -189,6 +188,7 @@ class NiftyPaperExecutor:
         ):
             raise OrderRefused(["INSTRUMENT_RESTRICTED"])
         confidence = None
+        candidate_metadata = []
         held = next((row for row in positions if row["token"] == intent["token"]), None)
         if side == "SELL":
             if held is None:
@@ -207,6 +207,8 @@ class NiftyPaperExecutor:
                 else []
             )
             decision = decisions[0] if decisions else {}
+            from .contract_resolver import current_moneyness, liquid
+
             confidence = decision.get("confidence")
             if (
                 not decision.get("eligible")
@@ -225,6 +227,53 @@ class NiftyPaperExecutor:
                     raise ValueError("Decision expired")
             except (ValueError, TypeError, KeyError):
                 raise OrderRefused(["CONFIDENCE_OR_DECISION_INVALID"]) from None
+            from .calendar import nifty_session
+
+            session = nifty_session(self.user_id, now.astimezone(IST).date(), store=self.store)
+            if session["status"] == "CALENDAR_UNAPPROVED":
+                raise OrderRefused(["CALENDAR_UNAPPROVED"])
+            # Loss cooldown and monthly locks refuse before sizing or any intent.
+            # admit_order re-checks both under the user lock.
+            locks = self.entry_lock_reasons(now, config)
+            if locks:
+                raise OrderRefused(locks)
+            if any(
+                candidate.kind != decision.get("side")
+                or candidate.exchange != "NFO"
+                or candidate.expiry != instrument.expiry
+                or not candidate.tradable
+                or candidate.master_date != now.astimezone(IST).date()
+                for candidate in candidate_instruments
+            ):
+                raise OrderRefused(["INSTRUMENT_RESTRICTED"])
+            # Selection-time moneyness labels are never trusted here; this runs
+            # after the cheaper refusals so their reasons still come first. Each
+            # candidate is reclassified against fresh spot and the ATM listed
+            # in today's verified master, so a move away from the contract
+            # between selection and admission refuses it.
+            listed = self._listed(now)
+            admission_spot = self._spot(now, config)
+            for candidate in candidate_instruments:
+                classification, atm_strike, refusal = current_moneyness(
+                    candidate, admission_spot, listed
+                )
+                if refusal:
+                    raise OrderRefused([refusal])
+                if classification not in ("ATM", "ITM"):
+                    raise OrderRefused(["OTM_PROHIBITED"])
+                candidate_metadata.append(
+                    {
+                        "token": candidate.token,
+                        "moneyness": classification,
+                        "spot_reference": str(admission_spot),
+                        "atm_strike": str(atm_strike) if atm_strike is not None else None,
+                    }
+                )
+            entry_session_open = bool(
+                session["status"] == "TRADING"
+                and session["window"]
+                and session["window"][0] <= now < session["window"][1]
+            )
             risk = AccountRisk(
                 equity=Decimal(row["equity"]),
                 available=Decimal(row["available"]),
@@ -237,78 +286,113 @@ class NiftyPaperExecutor:
                 reconciled=row["reconciled"],
                 entries_enabled=state["state"] == "RUNNING",
             )
-            quote = self._depth(instrument, now)
+            candidate_quotes = [
+                (candidate, self._depth(candidate, now)) for candidate in candidate_instruments
+            ]
+            entry_candidate, quote = next(
+                (
+                    (candidate, candidate_quote)
+                    for candidate, candidate_quote in candidate_quotes
+                    if liquid(candidate, candidate_quote, now, config)
+                ),
+                (instrument, None),
+            )
             reasons = entry_reasons(
                 risk,
-                instrument,
+                entry_candidate,
                 quote,
                 now,
                 config,
-                session_open=self._session_open(now),
-                data_healthy=quote is not None,
+                session_open=entry_session_open,
+                data_healthy=any(candidate_quote for _, candidate_quote in candidate_quotes),
             )
             if reasons:
                 raise OrderRefused(reasons)
-            allowed_quantity = size_quantity(
+            sizing = plan_entry(
                 risk,
-                instrument,
-                quote,
+                candidate_quotes,
                 config,
-                round_trip_cost_per_lot=(
-                    _charges(
-                        "BUY",
-                        quote.ask + instrument.tick_size * config.slippage_ticks,
-                        instrument.lot_size,
-                        config,
-                    )
-                    + _charges(
-                        "SELL",
-                        quote.ask + instrument.tick_size * config.slippage_ticks,
-                        instrument.lot_size,
-                        config,
-                    )
-                ),
+                confidence["score"],
+                _charges,
+                now=now,
             )
-            quantity = intent.get("quantity", allowed_quantity)
-            if (
-                type(quantity) is not int
-                or quantity < 1
-                or quantity > allowed_quantity
-                or quantity % instrument.lot_size
-            ):
+            self.store.record_event(
+                self.user_id,
+                "contract_quantities:PAPER",
+                {
+                    "decision_id": intent.get("decision_id"),
+                    "configuration_id": config.version_id,
+                    "evaluated_at": now.isoformat(),
+                    "policy": sizing.ranking[0]["policy"]
+                    if sizing.ranking
+                    else "risk-approved-weighted-v2-oi",
+                    "ranking": list(sizing.ranking),
+                    "rejections": [
+                        {"token": token, "lots": lots, "reason": reason}
+                        for token, lots, reason in sizing.rejections
+                    ],
+                },
+                now,
+            )
+            if sizing.instrument is None:
+                reasons = list(dict.fromkeys(reason for _, _, reason in sizing.rejections))
+                if not reasons:
+                    reasons = ["POSITION_SIZE_ZERO"]
+                raise OrderRefused(reasons)
+            if intent.get("quantity") is not None and intent["quantity"] != sizing.quantity:
                 raise OrderRefused(["POSITION_SIZE_ZERO"])
-            if quote.ask_size < quantity:
-                raise OrderRefused(["INSUFFICIENT_DISPLAYED_DEPTH"])
-        reservation = {}
-        if side == "BUY":
-            price = quote.ask + instrument.tick_size * config.slippage_ticks
-            from .protection import initial_protection
-
-            try:
-                initial_protection(price, instrument.tick_size, config, confidence)
-            except ValueError:
-                raise OrderRefused(["PROTECTION_TICK_INVALID"]) from None
-            costs = _charges("BUY", price, quantity, config) + _charges(
-                "SELL", price, quantity, config
+            instrument = sizing.instrument
+            intent = dict(intent)
+            intent["token"] = instrument.token
+            intent["symbol"] = instrument.symbol
+            quote = next(
+                candidate_quote
+                for candidate, candidate_quote in candidate_quotes
+                if candidate.token == instrument.token
             )
-            # Budget an adverse exit tick as well as entry slippage and costs.
+            quantity = sizing.quantity
+        reservation = {}
+        sizing_plan = None
+        if side == "BUY":
             reservation = {
-                "reserved_capital": str(price * quantity + costs),
-                "reserved_risk": str(
-                    (price * config.premium_stop + instrument.tick_size * config.slippage_ticks)
-                    * quantity
-                    + costs
-                ),
+                "reserved_capital": str(sizing.cash_required),
+                "reserved_risk": str(sizing.planned_loss),
             }
+            sizing_plan = {
+                "instrument": instrument.token,
+                "quantity": sizing.quantity,
+                "lots": sizing.lots,
+                "entry_price": str(sizing.entry_price),
+                "stop_price": str(sizing.stop_price),
+                "stop_exit_price": str(sizing.stop_exit_price),
+                "target_price": str(sizing.target_price),
+                "planned_loss": str(sizing.planned_loss),
+                "projected_net_reward": str(sizing.projected_net_reward),
+                "cash_required": str(sizing.cash_required),
+                "ranking": list(sizing.ranking),
+                "rejections": [
+                    {"token": token, "lots": lots, "reason": reason}
+                    for token, lots, reason in sizing.rejections
+                ],
+                "rejection_details": {
+                    "PLANNED_LOSS_LIMIT": str(config.max_planned_loss),
+                    "NET_REWARD_BELOW_MINIMUM": str(config.min_projected_net_reward),
+                },
+            }
+        expires_at = now + timedelta(seconds=config.order_ttl_seconds)
+        if side == "BUY":
+            cutoff = datetime.combine(now.astimezone(IST).date(), time(14, 45), tzinfo=IST)
+            expires_at = min(expires_at, cutoff)
         order = {
             "order_id": uuid4().hex[:20],
             "intent_id": intent["intent_id"],
             "side": side,
-            "symbol": intent["symbol"],
-            "token": intent["token"],
+            "symbol": instrument.symbol,
+            "token": instrument.token,
             "quantity": quantity,
             "payload": {
                 "instrument": instrument.model_dump(mode="json"),
+                "candidate_metadata": candidate_metadata,
                 "decision_id": intent.get("decision_id"),
                 "exit_reason": intent.get("exit_reason", "SIGNAL_EXIT"),
                 "configuration": config.model_dump(mode="json"),
@@ -317,6 +401,7 @@ class NiftyPaperExecutor:
                 "runner_owner": intent.get("runner_owner"),
                 "protection": held.get("protection") if side == "SELL" else None,
                 "signal_context": decision if side == "BUY" else None,
+                "sizing_plan": sizing_plan,
                 "entry_order_id": held["entry_order_id"] if side == "SELL" else None,
                 "risk_approval": {
                     "approved": True,
@@ -328,10 +413,54 @@ class NiftyPaperExecutor:
                 **reservation,
             },
             "eligible_at": now + timedelta(milliseconds=config.latency_ms),
-            "expires_at": now + timedelta(seconds=config.order_ttl_seconds),
+            "expires_at": expires_at,
             "created_at": now,
         }
-        return self.store.admit_order(self.user_id, order)
+        approved_identity = instrument.model_dump(mode="json")
+
+        def validate_entry():
+            if (
+                order["payload"]["instrument"] != approved_identity
+                or order["token"] != instrument.token
+                or order["symbol"] != instrument.symbol
+            ):
+                raise OrderRefused(["INSTRUMENT_IDENTITY_MISMATCH"])
+            # Cache-only spot read at the locked write; never reuse selection-time
+            # ATM. The master ladder was read before the lock (no database or
+            # network read is added under it) and is today's dated evidence.
+            spot = self._spot(now, config)
+            if spot is None:
+                raise OrderRefused(["SPOT_REFERENCE_UNAVAILABLE"])
+            classification, _, refusal = current_moneyness(instrument, spot, listed)
+            if refusal:
+                raise OrderRefused([refusal])
+            if classification == "OTM":
+                raise OrderRefused(["OTM_PROHIBITED"])
+            # The cache can change between ranking and this locked reservation.
+            # Re-price the selected proposal; changed approvals require a new decision.
+            current_quote = self._depth(instrument, now, config)
+            if not liquid(instrument, current_quote, now, config):
+                raise OrderRefused(["LIQUIDITY_UNAVAILABLE"])
+            current_plan = plan_entry(
+                risk,
+                [(instrument, current_quote)],
+                config,
+                confidence["score"],
+                _charges,
+                now=now,
+            )
+            if (
+                current_plan.instrument is None
+                or current_plan.quantity != sizing.quantity
+                or current_plan.entry_price != sizing.entry_price
+                or current_plan.planned_loss > sizing.planned_loss
+                or current_plan.cash_required > sizing.cash_required
+            ):
+                raise OrderRefused(["SELECTION_CHANGED"])
+
+        return self.store.admit_order(
+            self.user_id, order, validate_entry=validate_entry if side == "BUY" else None
+        )
 
     # Fills ----------------------------------------------------------------
 
@@ -374,38 +503,50 @@ class NiftyPaperExecutor:
             return None
         source = cached.get("source_observations", {}).get("3")
         depth = (source.get("depth") or source) if source else (cached.get("depth") or {})
-        bid = _best_level(depth.get("buy") or depth.get("bids"))
-        ask = _best_level(depth.get("sell") or depth.get("asks"), high=False)
-        stamp = _epoch(
-            source.get("ltt") if source else (depth.get("source_time") or depth.get("ltt"))
-        )
-        ltp = source.get("ltp") if source else cached.get("ltp")
-        if isinstance(ltp, dict):
-            ltp = ltp.get("value")
         config = config or self.config
         max_age = getattr(config, "quote_max_age", 5) if config else 5
-        if stamp is None or stamp > now or (now - stamp).total_seconds() > max_age:
+        raw = source or {
+            "depth": depth,
+            "ltt": depth.get("source_time") or depth.get("ltt"),
+            "received_time": cached.get("last_update"),
+            "ltp": cached.get("ltp"),
+            "volume": cached.get("volume"),
+        }
+        return depth_quote(instrument, raw, now, max_age)
+
+    def _spot(self, now, config=None):
+        """Current NIFTY index LTP for fill-time moneyness revalidation."""
+        try:
+            if self.market_data is None:
+                from services.market_data_service import get_market_data_service
+
+                self.market_data = get_market_data_service()
+            cached = self.market_data.get_all_data("NIFTY", "NSE_INDEX")
+        except Exception:
             return None
-        received = _epoch(source.get("received_time") if source else cached.get("last_update"))
-        if received is None or received < stamp or received > now:
+        if not isinstance(cached, dict):
             return None
-        if any(level and level[0] % instrument.tick_size != 0 for level in (bid, ask)):
+        sources = cached.get("source_observations")
+        if not isinstance(sources, dict):
+            return None
+        raw = sources.get("3") or sources.get("2") or sources.get("1")
+        if not isinstance(raw, dict):
+            return None
+        source, received = _epoch(raw.get("ltt")), _epoch(raw.get("received_time"))
+        config = config or self.config
+        max_age = getattr(config, "quote_max_age", 5)
+        if (
+            source is None
+            or received is None
+            or not source <= received <= now
+            or not 0 <= (now - source).total_seconds() <= max_age
+        ):
             return None
         try:
-            return Quote(
-                token=instrument.token,
-                source_time=stamp,
-                received_time=received,
-                ltp=Decimal(str(ltp)) if ltp is not None and Decimal(str(ltp)) > 0 else None,
-                bid=None if bid is None else bid[0],
-                ask=None if ask is None else ask[0],
-                bid_size=0 if bid is None else bid[1],
-                ask_size=0 if ask is None else ask[1],
-                volume=source.get("volume") if source else cached.get("volume"),
-                provider="native_depth",
-            )
-        except (ValueError, TypeError, ArithmeticError):
+            spot = Decimal(str(raw.get("ltp")))
+        except (TypeError, ValueError, ArithmeticError):
             return None
+        return spot if spot.is_finite() and spot > 0 else None
 
     def process(self, now=None):
         """Expire stale intents, then fill eligible pending orders on depth."""
@@ -423,9 +564,20 @@ class NiftyPaperExecutor:
             quote = self._depth(order["payload"]["instrument"], now, config)
             if quote is None:
                 continue
-            if not self._session_open(now):
+            if order["side"] == "BUY":
+                from .calendar import nifty_session
+
+                session = nifty_session(self.user_id, now.astimezone(IST).date(), store=self.store)
+                if (
+                    session["status"] != "TRADING"
+                    or not session["window"]
+                    or not session["window"][0] <= now < session["window"][1]
+                ):
+                    continue
+            elif not self._session_open(now):
                 continue
             tick = Decimal(str(order["payload"]["instrument"]["tick_size"]))
+            spot = fill_atm_strike = None
             if order["side"] == "BUY":
                 instrument = Instrument.model_validate(order["payload"]["instrument"])
                 if (
@@ -434,6 +586,16 @@ class NiftyPaperExecutor:
                     or instrument.master_date != now.astimezone(IST).date()
                     or instrument.expiry < now.astimezone(IST).date()
                 ):
+                    continue
+                spot = self._spot(now, config)
+                if spot is None:
+                    continue
+                from .contract_resolver import current_moneyness
+
+                # Fill-time revalidation against fresh spot and today's master.
+                # Without that evidence the BUY waits; it never fills on a label.
+                _, fill_atm_strike, refusal = current_moneyness(instrument, spot, self._listed(now))
+                if refusal:
                     continue
                 price = quote.ask + tick * config.slippage_ticks
                 size = quote.ask_size
@@ -460,14 +622,40 @@ class NiftyPaperExecutor:
                     snapshot_id=snapshot_id,
                     displayed_size=size,
                     observation=quote.model_dump(mode="json"),
+                    spot=spot,
+                    atm_strike=fill_atm_strike,
                 )
             )
+        if any(row["side"] == "SELL" and row["status"] == "FILLED" for row in resolved):
+            try:
+                self.store.resolve_cooldowns(self.user_id, now)
+            except Exception:
+                # Never let calendar lookups disturb exits. An unresolved
+                # cooldown keeps entries blocked until admission resolves it.
+                logger.exception("Cooldown resolution after exit fill failed")
         return resolved
 
-    def monitor_exits(self, now=None, technical_invalidations=None, operator_close=False):
+    def entry_lock_reasons(self, now, config):
+        """Resolve pending cooldowns, latch monthly locks, return refusals."""
+        modes = ["LIVE_NOT_READY"] if self._live_mode() else []
+        self.store.resolve_cooldowns(self.user_id, now)
+        return modes + self.store.entry_locks(self.user_id, now, config)
+
+    def _live_mode(self):
+        """Any mode other than PAPER. Exits of paper positions stay simulated."""
+        return self.store.trading_mode(self.user_id)["mode"] != "PAPER"
+
+    def monitor_exits(
+        self,
+        now=None,
+        technical_invalidations=None,
+        operator_close=False,
+        discretionary_exits=None,
+    ):
         """Protect exposure independently of entry controls. Failed exits stay latched."""
         from .assessment import _session, _window
         from .config import StrategyConfig
+        from .protection import mandatory_exit_reason
 
         now = now or self.clock()
         intents = []
@@ -478,28 +666,37 @@ class NiftyPaperExecutor:
                 continue  # Reconciliation reports legacy exposure as blocked.
             config = StrategyConfig.model_validate(protection["configuration"])
             quote = self._depth(held["instrument"], now, config)
-            forced = None
+            if quote is None or quote.bid is None or quote.bid_size <= 0:
+                # One durable incident per lost observation episode. A fresh
+                # observation advances this identity without clearing old incidents.
+                from hashlib import sha256
+
+                episode = protection.get("last_source_time") or held["opened_at"]
+                key = sha256(f"{held['entry_order_id']}:{episode}".encode()).hexdigest()
+                self.store.raise_safety_incident(
+                    self.user_id,
+                    f"stale-position:{key}",
+                    mode="PAPER",
+                    code="STALE_DATA",
+                    severity="CRITICAL",
+                    now=now,
+                )
             local = now.astimezone(IST)
             try:
                 window = _window(local.date(), self.session_reader or _session)
             except Exception:
                 window = None
-            if (now - _epoch(held["opened_at"])).total_seconds() >= config.max_hold_minutes * 60:
-                forced = "MAX_HOLD"
-            elif (
-                config.technical_exit
-                and technical_invalidations
-                and held["token"] in technical_invalidations
-            ):
-                forced = "TECHNICAL_INVALIDATION"
-            elif (
-                local.time().replace(tzinfo=None) >= config.exit_by
-                or (window and now >= window[1] - timedelta(minutes=5))
-                or not window
-            ):
-                forced = "SESSION_EXIT"
-            elif operator_close:
-                forced = "OPERATOR_CLOSE"
+            forced = mandatory_exit_reason(
+                _epoch(held["opened_at"]),
+                now,
+                config,
+                window,
+                technical=bool(
+                    technical_invalidations and held["token"] in technical_invalidations
+                ),
+                operator=operator_close,
+                discretionary=(discretionary_exits or {}).get(held["token"]),
+            )
             protection = self.store.observe_position(
                 self.user_id, held["token"], quote, now, forced
             )

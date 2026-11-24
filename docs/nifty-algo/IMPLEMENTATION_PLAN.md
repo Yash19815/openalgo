@@ -1,5 +1,9 @@
 # NIFTY ALGO implementation tracker
 
+> The paper-trading system's phase ledger (Phases 0–7 with commits and test
+> counts) now lives in [PAPER_SYSTEM_DESIGN.md](PAPER_SYSTEM_DESIGN.md) §5.
+> This file tracks the earlier v2 hardening work (phases A–F).
+
 ## Audit baseline and updated requirements
 
 On 19 November 2026, work began on clean `main` at `d25122f2f`.

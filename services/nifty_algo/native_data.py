@@ -9,6 +9,9 @@ from decimal import Decimal
 from math import isfinite
 from zoneinfo import ZoneInfo
 
+from .depth_quote import depth_quote
+from .models import Instrument, Quote
+
 IST = ZoneInfo("Asia/Kolkata")
 FIELDS = (
     "symbol",
@@ -198,6 +201,66 @@ class NativeDataAdapter:
             for row in self._instruments(now or self.clock())
             if row["kind"] != "SPOT" and row.get("master_freshness") == "VERIFIED"
         ]
+
+    def recording_quote(self, instrument, now=None):
+        """Read only identified mode-3 source evidence; never subscribe or reconnect."""
+        if not isinstance(instrument, Instrument) or self.market_data is None:
+            return None
+        try:
+            cached = self.market_data.get_all_data(instrument.symbol, instrument.exchange)
+            sources = cached.get("source_observations", {})
+            raw = sources.get("3")
+            if not isinstance(raw, dict) or (
+                raw.get("symbol") != instrument.symbol or raw.get("exchange") != instrument.exchange
+            ):
+                return None
+            depth = raw.get("depth", raw)
+            if not isinstance(depth, dict) or any(
+                not isinstance(depth[key], (list, tuple)) or len(depth[key]) > 20
+                for key in ("buy", "sell", "bids", "asks")
+                if depth.get(key) is not None
+            ):
+                return None
+            quote = depth_quote(instrument, raw, now or self.clock(), self.max_age, strict=True)
+            if quote is None or quote.bid is None or quote.ask is None:
+                return None
+            # OI comes from depth_quote, the parser PAPER selection also uses,
+            # so replay and PAPER rank equivalent snapshots identically.
+            return Quote.model_validate(
+                {**quote.model_dump(), "sequence": raw.get("sequence_number", 0)}
+            )
+        except (AttributeError, TypeError, ValueError, RuntimeError):
+            return None
+
+    def recording_spot(self, now):
+        """Native source snapshot only; never use the display observation fallback."""
+        from .models import Quote
+
+        if self.market_data is None:
+            return None, None
+        instrument = next((r for r in self._instruments(now) if r["kind"] == "SPOT"), None)
+        if instrument is None:
+            return None, None
+        try:
+            raw = self.market_data.get_all_data("NIFTY", "NSE_INDEX").get("source_observations", {})
+            raw = raw.get("3") or raw.get("2") or raw.get("1")
+            if not isinstance(raw, dict):
+                return instrument, None
+            source, received = _timestamp(raw.get("ltt")), _timestamp(raw.get("received_time"))
+            price = _number(raw.get("ltp"), positive=True)
+            if source is None or received is None or price is None or not source <= received <= now:
+                return instrument, None
+            if not 0 <= (now - source).total_seconds() <= self.max_age:
+                return instrument, None
+            return instrument, Quote(
+                token=instrument["token"],
+                source_time=source,
+                received_time=received,
+                ltp=price,
+                provider="NATIVE_SOURCE_CACHE",
+            )
+        except (TypeError, ValueError, AttributeError):
+            return instrument, None
 
     def quote(self, instrument, now=None, max_age=None):
         """Read causal source fields, never display defaults, for PCR and selection."""

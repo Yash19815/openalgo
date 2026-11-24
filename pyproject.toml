@@ -180,6 +180,8 @@ dependencies = [
   "litellm==1.106.6",
   "agno==3.0.5",
   "ddgs>=9.16.0",
+  "reportlab==5.1.0",
+  "pypdf==7.0.1",
 ]
 
 [tool.uv]
@@ -236,7 +238,10 @@ packages = []
 [tool.pytest.ini_options]
 # The repo root must be importable: tests import `services`, `database`, and
 # `utils` directly, which otherwise only works if PYTHONPATH is set by hand.
-pythonpath = ["."]
+# Keep this application root without __init__.py: otherwise prepend collection
+# names tests openalgo.test.*, colliding with the installed openalgo SDK.
+# `test` supports packaged NIFTY helpers; its path retains legacy bare imports.
+pythonpath = [".", "test"]
 testpaths = ["test"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]

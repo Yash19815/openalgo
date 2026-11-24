@@ -3,14 +3,39 @@
 Use the existing OpenAlgo installation and `/nifty-algo` route. No second
 frontend, database server, broker account or Analyzer setting is needed.
 
+## Paper-mode startup (the only supported mode)
+
+Prerequisites before the first session:
+
+- **Approved NSE calendar.** Upload the year's NSE trading-holiday PDF through
+  the workspace calendar panel (`POST /api/nifty-algo/calendar/upload`, then
+  review and `.../approve`). Entries refuse `CALENDAR_UNAPPROVED` until a
+  version is approved; uploads are never auto-approved.
+- **SMTP settings (reports only).** Configure SMTP under OpenAlgo settings
+  (`settings_db`) and a user email for daily/milestone/month-end PDF delivery.
+  Without it reports still generate and are listed, marked `SKIPPED_NO_SMTP`;
+  `POST /api/nifty-algo/reports/<id>/resend` retries after SMTP is fixed.
+  `DELIVERY_OUTCOME_UNKNOWN` means an acknowledgement was lost or a delivery
+  claim expired after interruption. Automatic retry stops because the message
+  may already be in the mailbox. Check the mailbox before requesting a manual
+  resend. An SMTP acceptance followed by a failed `QUIT` remains `SENT`.
+- **Native scheduler and market data.** The Python strategy host's APScheduler
+  must be running (normal app startup) and the native Angel market-data
+  connection authenticated with today's full NFO master downloaded.
+- **Trading mode.** Default is PAPER. `GET /api/nifty-algo/mode` shows the
+  mode, revision and masked Live readiness; LIVE stays `LIVE_NOT_READY` —
+  the workspace cannot enable it.
+
+Then:
+
 1. Back up the existing main database through the normal OpenAlgo procedure.
 2. Build production assets with the existing `npm run build --prefix frontend` command, then start the existing application with its declared Python/frontend environment.
 3. Configure the native Angel market-data connection and download today's full NFO master.
 4. Verify the OpenAlgo NFO calendar, source timestamps, genuine futures volume, and complete CE/PE expiry subscriptions.
 5. Open the NIFTY workspace and review the migrated v2 configuration. Migration preserves history and pauses entries.
-6. Select **Connect paper monitor**. This calls the authenticated, CSRF-protected `POST /api/nifty-algo/runner` endpoint and attaches named jobs on the native Python strategy scheduler.
+6. Select **Connect paper monitor**. This calls the authenticated, CSRF-protected `POST /api/nifty-algo/runner` endpoint and attaches four named jobs per user on the native scheduler: `:protect` every second, `:entries` and `:capture` every five seconds, `:reports` every minute.
 7. Review readiness, five indicator states, PCR scope and rejection reasons. Start remains disabled until the backend's current readiness passes.
-8. Start during the allowed session/window. New entries still require a newly completed qualifying bar and final atomic risk approval.
+8. Start during the allowed session/window (entries 10:30–14:45 IST, flat by 15:10). New entries still require a newly completed qualifying bar and final atomic risk approval — at most one primary BUY and ₹400 planned loss per session.
 
 `POST /api/nifty-algo/strategy/start` checks revision, runner lease, data
 readiness, configuration identity, reconciliation and persistent controls.
@@ -24,6 +49,40 @@ killed users with exposure. A new process waits for a prior lease to expire,
 reconciles durable state, warms indicators, and skips old signals. No generic
 Python strategy upload is required. Stopping the whole application suspends
 paper protection until recovery; shutdown itself does not flatten exposure.
+
+Python strategy recovery and NIFTY recovery have separate failure boundaries.
+A recoverable Python strategy error does not block NIFTY when the shared scheduler
+is running. A failed owner attachment leaves its positions and ledger intact and
+does not prevent other owners from recovering. Status and Start report failed
+restoration as unavailable; successful attachment still begins unready until
+reconciliation and fresh data qualify it. Repeated restoration reuses named jobs.
+
+## Private files and backups
+
+Runtime PDFs live in `db/nifty_reports/`; uploaded calendars live in
+`db/nifty_calendar/`. Git excludes both roots, and the Docker build context already
+excludes all `db/` content. Ignore rules do not protect files copied elsewhere or
+files force-added to Git. No tracked artifact was found under either root during
+the compliance review; existing files and records were retained.
+
+The shipped `docker-compose.yaml` mounts `openalgo_db` at `/app/db`, preserving
+both default directories across container replacement. Volume deletion, a new
+Compose project name or an unmounted installation does not preserve them. The
+application and both optional workers must use the same working directory and
+storage mount. The default paths are relative to that directory, independent of
+`DATABASE_URL`; moving the database alone does not relocate these files. Custom
+constructor paths outside the mount have no deployment persistence guarantee.
+
+Back up a consistent main database, both private directories, research archives,
+and the protected `.env` containing matching `API_KEY_PEPPER` and `FERNET_SALT`.
+Stop all writers or use a coordinated SQLite backup/snapshot; copying only a live
+WAL-mode `.db` file can omit committed WAL data. A database-only backup cannot
+restore report PDFs or calendar blobs. The supplied volume is persistence, not
+a scheduled or off-host backup. No automatic complete-backup guarantee is made.
+Keep backups private and verify restoration without using production credentials.
+Report ownership, path confinement and SHA-256 verification remain mandatory.
+
+## Market-data checks
 
 A full expiry scope may exceed the broker's subscription quota. The runner
 reports `FULL_PCR_SCOPE_EXCEEDS_NATIVE_SUBSCRIPTION_QUOTA` rather than treating

@@ -7,10 +7,12 @@ design. The implemented NIFTY path uses `NiftyPaperExecutor` and feature-owned
 accounts, orders, positions, protection and journals in the existing main
 database. It does not dispatch through shared Sandbox order/fund managers.
 Native broker data, calendar, authentication, scheduler, event transport,
-engine factory and frontend components are reused. The percentage-based shared
-RMS was reviewed; NIFTY uses a focused Decimal option-premium adapter for the
-requested point trail. See [ARCHITECTURE.md](ARCHITECTURE.md) and
-[TESTING.md](TESTING.md) for the current implementation and evidence.
+engine factory and frontend components are reused. Shared consumers continue
+to use `services/risk/`; NIFTY paper protection is an intentional exception
+implemented only by the isolated, pure Decimal evaluator in
+`services/nifty_algo/protection.py`. Its formulas must not be copied elsewhere.
+See [ARCHITECTURE.md](ARCHITECTURE.md) and [TESTING.md](TESTING.md) for the
+current implementation and evidence.
 
 | Feature | Existing file or service | Reuse | Required change | Risk | Test plan |
 | --- | --- | --- | --- | --- | --- |
@@ -30,7 +32,7 @@ requested point trail. See [ARCHITECTURE.md](ARCHITECTURE.md) and
 | Positions and P&L | `sandbox/position_manager.py`, `database/sandbox_db.py` | Yes | Strategy/account ownership and reconciliation | Shared exposure | Fill and cash invariants |
 | Paper funds | `sandbox/fund_manager.py` | Partial | Isolate NIFTY capital without resetting another account | Cross-strategy balance | Isolation tests |
 | Fees and fills | `sandbox/execution_engine.py`, `order_manager.py` | Partial | Effective fees, bid/ask-only, latency, expiry, supported partials | Misleading results | Hand accounting and quote-event replay |
-| Risk | `services/risk/` | Yes | NIFTY entry caps and sizing | Bypass or stale approval | Concurrent entry and stop/target tests |
+| Risk and protection | `services/risk/`, `services/nifty_algo/protection.py` | Shared consumers use the common core; NIFTY paper protection remains isolated | Pure Decimal floor, trail and discretionary-booking evaluator; DB and runner persist/translate results | Formula drift or cross-domain duplication | Decimal boundaries, monotonic stops, restart recovery and event tests |
 | Persistence | `database/engine_factory.py` | Yes | Add feature tables within main DB | Leaks and lost updates | Repeated operations and CAS tests |
 | Events and logs | `events/`, `extensions.py`, `utils/logging.py` | Yes | Publish feature decisions and fills | Secrets and subscriptions | Redaction and cleanup tests |
 | React shell | `frontend/src/App.tsx`, `components/layout/` | Yes | Authenticated NIFTY workspace | Navigation regressions | Routes and empty/error states |

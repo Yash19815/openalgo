@@ -60,7 +60,17 @@ def test_the_eventlet_worker_keeps_todays_topology_and_limits():
         assert runtime.gthread_active() is False
 
         import websocket_proxy.app_integration as ai
-        assert ai.resolve_proxy_mode() == "subprocess"
+        # This case models a direct gunicorn install, even when pytest itself
+        # runs inside Docker (where the real topology is correctly external).
+        import os
+        from unittest.mock import patch
+        path_exists = os.path.exists
+        with patch.dict(os.environ, {"APP_MODE": "", "WEBSOCKET_PROXY_MODE": ""}):
+            with patch.object(
+                os.path, "exists",
+                side_effect=lambda path: False if path == "/.dockerenv" else path_exists(path),
+            ):
+                assert ai.resolve_proxy_mode() == "subprocess"
         assert ai._supervised() is False
 
         from utils.shutdown import start_drain_watcher

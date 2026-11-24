@@ -876,13 +876,26 @@ def setup_environment(app):
             # Initialize schedulers AFTER database initialization
             try:
                 init_python_strategy()
+                logger.debug("Python strategy scheduler initialized")
+            except Exception as error:
+                from services.nifty_algo.safe_logging import log_failure
+
+                log_failure(logger, "Python strategy scheduler initialization", error)
+
+            # Python strategy recovery can fail after the shared scheduler starts.
+            # NIFTY protection must still recover independently when it is usable.
+            try:
+                app.extensions["nifty_algo_restore_unavailable"] = True
                 from blueprints.python_strategy import SCHEDULER as nifty_scheduler
                 from services.nifty_algo.runner import restore_runners
 
+                if nifty_scheduler is None or not nifty_scheduler.running:
+                    raise RuntimeError("Shared strategy scheduler unavailable")
                 restore_runners(app, nifty_scheduler)
-                logger.debug("Python strategy scheduler initialized")
-            except Exception as e:
-                logger.error(f"Failed to initialize Python strategy scheduler: {e}")
+            except Exception as error:
+                from services.nifty_algo.safe_logging import log_failure
+
+                log_failure(logger, "NIFTY runner restoration", error)
 
             try:
                 from services.flow_scheduler_service import init_flow_scheduler

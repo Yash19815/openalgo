@@ -3,16 +3,19 @@ import {
   Activity,
   BarChart3,
   BookOpen,
+  CalendarDays,
   CandlestickChart,
+  FileText,
   FlaskConical,
   LayoutDashboard,
   Play,
   Settings2,
   ShieldCheck,
   Square,
+  Telescope,
   Zap,
 } from 'lucide-react'
-import { type ReactNode, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { useSocketContext } from '@/components/socket/SocketProvider'
 import { Button } from '@/components/ui/button'
@@ -24,6 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { AnalyticsPanel } from './AnalyticsPanel'
 import {
   assessNativeHistory,
   type ConfigurationResponse,
@@ -35,7 +39,29 @@ import {
   readNifty,
   saveConfiguration,
 } from './api'
+import { CalendarBanner, CalendarPanel } from './CalendarPanel'
+import { KeySettings } from './KeySettings'
+import { Panel } from './parts'
+import { ReportsPanel } from './ReportsPanel'
+import { RiskLocksPanel } from './RiskLocksPanel'
+import { SafetyCenterPanel } from './SafetyCenterPanel'
+import { SelectorPanel } from './SelectorPanel'
+import { OpportunitiesPanel, ShadowPanel } from './ShadowResearchPanel'
+import { TradingModePanel } from './TradingModePanel'
 import './workspace.css'
+
+const RecordingsPanel = lazy(() =>
+  import('./RecordingsPanel').then((module) => ({ default: module.RecordingsPanel }))
+)
+const ExperimentsPanel = lazy(() =>
+  import('./ExperimentsPanel').then((module) => ({ default: module.ExperimentsPanel }))
+)
+const DiscordPanel = lazy(() =>
+  import('./DiscordPanel').then((module) => ({ default: module.DiscordPanel }))
+)
+const ReplayPanel = lazy(() =>
+  import('./ReplayPanel').then((module) => ({ default: module.ReplayPanel }))
+)
 
 const pages = [
   ['overview', 'Dashboard', LayoutDashboard],
@@ -43,8 +69,11 @@ const pages = [
   ['terminal', 'Paper Trading', Play],
   ['positions', 'Positions & Orders', BookOpen],
   ['performance', 'Performance', BarChart3],
+  ['research', 'Shadow & Research', Telescope],
+  ['reports', 'Reports', FileText],
   ['configuration', 'Strategy Settings', Settings2],
   ['risk', 'Risk Management', ShieldCheck],
+  ['calendar', 'Session Calendar', CalendarDays],
   ['connections', 'Connections & Setup', Zap],
 ] as const
 
@@ -53,15 +82,6 @@ function valueText(value: unknown): string {
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
   if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
-}
-
-function Panel({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="nifty-panel">
-      <h2>{title}</h2>
-      {children}
-    </section>
-  )
 }
 
 function Fields({ data }: { data: DataRecord | undefined }) {
@@ -196,6 +216,15 @@ function Configuration() {
       queryClient.invalidateQueries({ queryKey: niftyKeys.all })
     },
   })
+  const text = draft || JSON.stringify(query.data?.configuration ?? {}, null, 2)
+  let current: DataRecord | null = null
+  try {
+    const parsed: unknown = JSON.parse(text)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+      current = parsed as DataRecord
+  } catch {
+    current = null
+  }
   function submit() {
     try {
       const parsed: unknown = JSON.parse(draft || JSON.stringify(query.data?.configuration))
@@ -216,11 +245,15 @@ function Configuration() {
         <p role="alert">{query.error.message}</p>
       ) : (
         <>
+          <KeySettings
+            value={current}
+            onChange={(next) => setDraft(JSON.stringify(next, null, 2))}
+          />
           <label htmlFor="nifty-config">Versioned research parameters</label>
           <textarea
             id="nifty-config"
             className="nifty-config"
-            value={draft || JSON.stringify(query.data?.configuration, null, 2)}
+            value={text}
             onChange={(event) => setDraft(event.target.value)}
             spellCheck={false}
           />
@@ -330,6 +363,7 @@ export default function Workspace() {
         {status.error && <p role="alert">Status unavailable. {status.error.message}</p>}
         {action.error && <p role="alert">{action.error.message}</p>}
         {monitor.error && <p role="alert">{monitor.error.message}</p>}
+        {page !== 'calendar' && <CalendarBanner />}
         {(page === 'overview' || page === 'terminal') && (
           <div className="nifty-controls">
             <Button variant="outline" disabled={monitor.isPending} onClick={() => monitor.mutate()}>
@@ -391,6 +425,7 @@ export default function Workspace() {
               {assessment.isSuccess && <output>Assessment recorded.</output>}
             </div>
             <Resource name="indicators" title="Five-indicator state" />
+            <SelectorPanel />
             <Resource name="signals" title="Persisted decisions" records />
           </>
         )}
@@ -406,16 +441,38 @@ export default function Workspace() {
             <Resource name="trades" title="Trade journal" records />
           </>
         )}
-        {page === 'performance' && (
+        {page === 'performance' && <AnalyticsPanel />}
+        {page === 'research' && (
           <>
-            <Resource name="performance" title="Paper performance" />
-            <Resource name="trades" title="Trade journal" records />
+            <Suspense fallback={<output>Loading research recordings...</output>}>
+              <RecordingsPanel />
+            </Suspense>
+            <Suspense fallback={<output>Loading experiment definitions...</output>}>
+              <ExperimentsPanel />
+            </Suspense>
+            <Suspense fallback={<output>Loading replay lab...</output>}>
+              <ReplayPanel />
+            </Suspense>
+            <ShadowPanel />
+            <OpportunitiesPanel />
           </>
         )}
+        {page === 'reports' && <ReportsPanel />}
         {page === 'configuration' && <Configuration />}
-        {page === 'risk' && <Resource name="risk" title="Risk controls & current utilization" />}
+        {page === 'risk' && (
+          <>
+            <SafetyCenterPanel />
+            <RiskLocksPanel />
+            <Resource name="risk" title="Risk controls & current utilization" />
+          </>
+        )}
+        {page === 'calendar' && <CalendarPanel />}
         {page === 'connections' && (
           <>
+            <Suspense fallback={<output>Loading Discord center...</output>}>
+              <DiscordPanel />
+            </Suspense>
+            <TradingModePanel />
             <Panel title="Startup readiness">
               <ul className="nifty-readiness">
                 {status.data?.readiness?.map((item, index) => (

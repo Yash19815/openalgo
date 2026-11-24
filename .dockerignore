@@ -1,4 +1,5 @@
-# Ignore stateful content (these will be generated again)
+# Exclude runtime state, including private NIFTY reports and calendar uploads.
+# Persist and back up db/ separately; an image rebuild cannot restore this data.
 db/
 log/
 tmp/

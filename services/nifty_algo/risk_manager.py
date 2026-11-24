@@ -33,22 +33,131 @@ class AccountRisk:
             raise ValueError("Nonnegative integer account counts required")
 
 
-def size_quantity(account, instrument, quote, config, round_trip_cost_per_lot):
-    """Floor whole lots after adverse stop tick and conservative round-trip cost."""
-    money = (account.equity, account.available, round_trip_cost_per_lot)
-    if any(not value.is_finite() or value < 0 for value in money) or not quote.ask:
-        return 0
-    premium = quote.ask + instrument.tick_size * config.slippage_ticks
-    loss_per_unit = premium * config.premium_stop + instrument.tick_size * config.slippage_ticks
-    for lots in range(config.max_lots, 0, -1):
-        quantity = lots * instrument.lot_size
-        costs = round_trip_cost_per_lot * lots
-        if (
-            loss_per_unit * quantity + costs <= account.equity * config.risk_fraction
-            and premium * quantity + costs <= account.available
-        ):
-            return quantity
-    return 0
+@dataclass(frozen=True)
+class EntryPlan:
+    instrument: object | None
+    quantity: int
+    lots: int
+    entry_price: Decimal
+    stop_price: Decimal
+    stop_exit_price: Decimal
+    target_price: Decimal
+    planned_loss: Decimal
+    projected_net_reward: Decimal
+    cash_required: Decimal
+    rejections: tuple[tuple[str | None, int, str], ...] = ()
+    ranking: tuple[dict, ...] = ()
+
+
+def plan_entry(account, candidates, config, confidence_score, charges, *, now=None):
+    """Rank every eligible lot proposal without relaxing frozen risk constraints."""
+    from .protection import initial_protection
+    from .selection_scoring import score_plan
+
+    rejected, eligible = [], []
+    candidates = list(candidates or [])
+    score = Decimal(str(confidence_score))
+    permitted = min(
+        config.max_lots,
+        sum(threshold <= score for threshold in config.lot_score_thresholds),
+    )
+    zero = Decimal("0")
+    if not candidates:
+        return EntryPlan(
+            None,
+            0,
+            0,
+            zero,
+            zero,
+            zero,
+            zero,
+            zero,
+            zero,
+            zero,
+            ((None, 0, "NO_SUITABLE_CONTRACT"),),
+        )
+
+    for instrument, quote in candidates:
+        token = instrument.token
+        if now is not None and not liquid(instrument, quote, now, config):
+            rejected.append((token, 0, "LIQUIDITY_UNAVAILABLE"))
+            continue
+        if config.max_lots > permitted:
+            rejected.append((token, config.max_lots, "SCORE_LOT_LIMIT"))
+        if permitted == 0:
+            continue
+        if quote is None or quote.ask is None or quote.ask <= 0:
+            rejected.append((token, 0, "INSUFFICIENT_DEPTH"))
+            continue
+        entry = quote.ask + instrument.tick_size * config.slippage_ticks
+        try:
+            protection = initial_protection(
+                entry,
+                instrument.tick_size,
+                config,
+                {"score": confidence_score, "method": config.confidence_method},
+            )
+        except (ValueError, ArithmeticError):
+            rejected.append((token, permitted, "PROTECTION_TICK_INVALID"))
+            continue
+        stop = Decimal(protection["initial_stop"])
+        target = Decimal(protection["target_price"])
+        stop_exit = stop - instrument.tick_size * config.slippage_ticks
+        if stop_exit <= 0:
+            rejected.append((token, permitted, "STOP_PRICE_INVALID"))
+            continue
+        for lots in range(permitted, 0, -1):
+            quantity = lots * instrument.lot_size
+            buy_cost = charges("BUY", entry, quantity, config)
+            stop_cost = charges("SELL", stop_exit, quantity, config)
+            target_cost = charges("SELL", target, quantity, config)
+            planned_loss = (
+                (entry - stop_exit) * quantity + buy_cost + stop_cost + config.planned_loss_buffer
+            )
+            reward = (target - entry) * quantity - buy_cost - target_cost
+            cash = entry * quantity + buy_cost + charges("SELL", entry, quantity, config)
+            failures = []
+            if planned_loss > config.max_planned_loss:
+                failures.append("PLANNED_LOSS_LIMIT")
+            if reward < config.min_projected_net_reward:
+                failures.append("NET_REWARD_BELOW_MINIMUM")
+            if cash > account.available:
+                failures.append("INSUFFICIENT_FUNDS")
+            if min(quote.ask_size, quote.bid_size) < quantity:
+                failures.append("INSUFFICIENT_DEPTH")
+            rejected.extend((token, lots, reason) for reason in failures)
+            if not failures:
+                proposal = EntryPlan(
+                    instrument,
+                    quantity,
+                    lots,
+                    entry,
+                    stop,
+                    stop_exit,
+                    target,
+                    planned_loss,
+                    reward,
+                    cash,
+                )
+                eligible.append((proposal, score_plan(proposal, quote, config, now)))
+    if not eligible:
+        return EntryPlan(None, 0, 0, zero, zero, zero, zero, zero, zero, zero, tuple(rejected))
+    eligible.sort(
+        key=lambda pair: (
+            -Decimal(pair[1]["total"]),
+            pair[0].planned_loss,
+            pair[0].cash_required,
+            str(pair[0].instrument.expiry),
+            pair[0].instrument.strike,
+            pair[0].instrument.token,
+            pair[0].lots,
+        )
+    )
+    from dataclasses import replace
+
+    return replace(
+        eligible[0][0], rejections=tuple(rejected), ranking=tuple(row for _, row in eligible)
+    )
 
 
 def entry_reasons(account, instrument, quote, now, config, *, session_open, data_healthy):

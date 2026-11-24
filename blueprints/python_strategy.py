@@ -3507,8 +3507,12 @@ def save_strategy(strategy_id):
 
 # Cleanup on shutdown
 def cleanup_on_exit():
-    """Clean up all running processes on application exit"""
-    logger.info("Cleaning up running strategies...")
+    """Clean up all running processes on application exit.
+
+    Deliberately do not log from this atexit hook: pytest/Colorama may have
+    already closed the output stream. Operational shutdown logging belongs
+    in the earlier begin_shutdown() path, not interpreter teardown.
+    """
     # Snapshot under the lock, stop outside it: stop_strategy_process takes the
     # lock itself and waits for each process, so holding it across the loop
     # would serialise shutdown behind every termination in turn. Starts are
@@ -3525,7 +3529,6 @@ def cleanup_on_exit():
                 stop_strategy_process(strategy_id)
         except Exception:
             pass
-    logger.info("Cleanup complete")
 
 
 #: How long begin_shutdown gives the running strategies to stop, together,

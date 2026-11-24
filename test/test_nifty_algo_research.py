@@ -7,7 +7,14 @@ import pytest
 from services.nifty_algo.analytics import performance
 from services.nifty_algo.config import StrategyConfig
 from services.nifty_algo.models import Candle
-from services.nifty_algo.research import options_replay, signal_study, walk_forward_windows
+from services.nifty_algo.research import (
+    expire_opportunity,
+    observe_opportunity,
+    opportunity_from_decision,
+    options_replay,
+    signal_study,
+    walk_forward_windows,
+)
 
 START = datetime(2026, 11, 19, 4, 0, tzinfo=UTC)
 
@@ -100,3 +107,56 @@ def test_walk_forward_windows_half_open_nonoverlapping():
     assert all(window["interval_convention"] == "[start, end)" for window in windows)
     with pytest.raises(ValueError):
         walk_forward_windows(START, START + timedelta(days=40), test_days=0)
+
+
+def opportunity(end=START + timedelta(minutes=30), side="CE"):
+    config = StrategyConfig()
+    return opportunity_from_decision(
+        {
+            "decision_id": "d",
+            "eligible": True,
+            "side": side,
+            "config_id": config.version_id,
+            "analysis_token": "fixture_future",
+            "snapshot": {"end": end.isoformat(), "price": 100.0, "supertrend": {"atr": 2.0}},
+        },
+        config,
+    )
+
+
+def step(at, price, token="fixture_future"):
+    return {"token": token, "price": price, "at": at.isoformat()}
+
+
+def test_opportunity_observation_is_causal_and_ordered():
+    row = opportunity()
+    end = datetime.fromisoformat(row["candle_end"])
+    assert row["status"] == "OBSERVING" and row["research_only"] is True
+    assert datetime.fromisoformat(row["deadline"]) == end + timedelta(minutes=45)
+    # The signal candle itself, a reordered candle and another future are ignored.
+    assert observe_opportunity(row, step(end, 150)) == row
+    assert observe_opportunity(row, step(end + timedelta(minutes=5), 150, "other")) == row
+    later = observe_opportunity(row, step(end + timedelta(minutes=10), 101))
+    assert observe_opportunity(later, step(end + timedelta(minutes=5), 150)) == later
+    assert later["max_favorable"] == "1.0" and len(later["steps"]) == 1
+    # A candle beyond the deadline stops the row without being applied.
+    late = observe_opportunity(later, step(end + timedelta(minutes=50), 150))
+    assert late["outcome"] == "WINDOW_45M" and len(late["steps"]) == 1
+    assert observe_opportunity(late, step(end + timedelta(minutes=55), 150)) == late
+    assert expire_opportunity(row, end + timedelta(minutes=44))["status"] == "OBSERVING"
+    assert expire_opportunity(row, end + timedelta(minutes=45))["outcome"] == "WINDOW_45M"
+
+
+def test_adverse_threshold_stops_and_unobservable_signals_are_skipped():
+    row = opportunity(side="PE")
+    end = datetime.fromisoformat(row["candle_end"])
+    stopped = observe_opportunity(row, step(end + timedelta(minutes=5), 102))
+    assert stopped["outcome"] == "THRESHOLD_ADVERSE" and stopped["max_adverse"] == "2.0"
+    config = StrategyConfig()
+    base = {"eligible": True, "side": "CE", "config_id": config.version_id}
+    for snapshot in (
+        {"end": end.isoformat(), "price": 100.0},
+        {"end": end.isoformat(), "price": 100.0, "supertrend": {"atr": 0}},
+        {"end": end.replace(tzinfo=None).isoformat(), "price": 100.0, "supertrend": {"atr": 1}},
+    ):
+        assert opportunity_from_decision({**base, "snapshot": snapshot}, config) is None
