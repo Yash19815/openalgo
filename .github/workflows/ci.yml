@@ -105,7 +105,6 @@ jobs:
   # open. gunicorn and eventlet are not in pyproject, so they are installed
   # with the same pins as requirements-nginx.txt and the Dockerfile.
   gunicorn-boot:
-    needs: backend-lint
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -191,7 +190,6 @@ jobs:
   # pyproject does not install. Here eventlet is installed, and the last step
   # fails if anything was skipped, so a broken install cannot pass as skips.
   eventlet-fallback:
-    needs: backend-lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -228,7 +226,6 @@ jobs:
   # Static gates for code request threads run under gthread. The gates key
   # their reviewed lists by file and function; see the scripts for each rule.
   gthread-gates:
-    needs: backend-lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -250,7 +247,6 @@ jobs:
   # Eventlet is installed here too so the lifecycle and compatibility proofs
   # execute rather than skip on the default production worker.
   gthread-migration:
-    needs: backend-lint
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -269,7 +265,6 @@ jobs:
   # Shell launcher/systemd/Docker tests stay in the Linux migration job.
   # The ARM64 cell installs eventlet so the default-worker lifecycle cases run.
   gthread-platforms:
-    needs: backend-lint
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
@@ -511,45 +506,11 @@ jobs:
           git diff --staged --quiet || git commit -m "chore: auto-build frontend dist [skip ci]"
           git push
 
-  # Docker build, smoke test, and (opt-in) publish to Docker Hub.
-  #
-  # Multi-arch (issue #1205): builds linux/amd64 and linux/arm64 natively on
-  # per-arch GitHub runners (ubuntu-latest / ubuntu-24.04-arm). No QEMU
-  # emulation - each matrix leg runs on its own native arch. This is
-  # essential because the image now installs chromium for Kaleido/Plotly
-  # chart rendering, and chromium's apt post-install scripts are painfully
-  # slow under QEMU (15-25 min vs ~2 min native).
-  #
-  # Validation runs on every event this job runs for (PRs and pushes to main),
-  # with no registry credentials: each leg builds its own arch with
-  # `load: true` and runs the Kaleido smoke test against that image. This gives
-  # native arm64 smoke-test coverage that a single-arch CI could never provide.
-  #
-  # Publishing is a separate, explicit opt-in. A push to main publishes only
-  # when the repository variable DOCKER_PUBLISH is set to 'true' (Settings >
-  # Secrets and variables > Actions > Variables) AND the DOCKERHUB_USERNAME and
-  # DOCKERHUB_TOKEN secrets exist. Without the variable there is no Docker Hub
-  # login, no push and no manifest, so a fork without those secrets still gets
-  # the full amd64 + arm64 build and smoke test and finishes green. With the
-  # variable set but a secret missing, the job fails with a message naming the
-  # missing secret instead of the registry's "Username and password required".
-  # A pull request never publishes, whatever the variable says.
-  #
-  # When publishing, each leg first passes the same validation build and smoke
-  # test, then pushes by digest (no tag assigned) and the docker-manifest job
-  # downloads all per-arch digests and assembles them into a single Docker Hub
-  # manifest list under the canonical tags (:latest, :<sha>).
+  # Docker validation is independent of the language/runtime suites. Both
+  # architectures build the application and smoke-test Kaleido + Chromium on
+  # native runners immediately, including fork PRs, without registry secrets.
+  # Native ARM64 avoids Chromium's slow apt post-install scripts under QEMU.
   docker-build:
-    needs: [backend-lint, backend-test, frontend-build, security-scan, gunicorn-boot, eventlet-fallback, gthread-gates, gthread-migration, gthread-platforms]
-    # Skip for fork PRs (secrets not available)
-    if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push'
-    env:
-      # 'true' only for a push to main with DOCKER_PUBLISH=true. Every
-      # registry step below is conditioned on this one value.
-      PUBLISH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DOCKER_PUBLISH == 'true' }}
-      # The registry namespace exists only when publishing; otherwise the
-      # image is local-only and needs no username.
-      IMAGE_NAME: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DOCKER_PUBLISH == 'true') && format('{0}/openalgo', secrets.DOCKERHUB_USERNAME) || 'openalgo' }}
     strategy:
       fail-fast: false
       matrix:
@@ -566,34 +527,11 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - name: Require Docker Hub credentials (publishing only)
-        if: env.PUBLISH == 'true'
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: |
-          missing=""
-          [ -n "$DOCKERHUB_USERNAME" ] || missing="$missing DOCKERHUB_USERNAME"
-          [ -n "$DOCKERHUB_TOKEN" ] || missing="$missing DOCKERHUB_TOKEN"
-          if [ -n "$missing" ]; then
-            echo "::error::DOCKER_PUBLISH is 'true' but these secrets are not set:$missing. Add them, or unset DOCKER_PUBLISH to validate images without publishing."
-            exit 1
-          fi
-
-      - name: Login to Docker Hub
-        if: env.PUBLISH == 'true'
-        uses: docker/login-action@v4.5.2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      # Per-arch metadata - labels only. Final tags are assigned by the
-      # docker-manifest merge job, not here.
       - name: Extract metadata (labels)
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_NAME }}
+          images: openalgo
 
       # Validation build: single-arch, loaded into the runner's local Docker
       # daemon for the smoke test. Never pushes, needs no credentials, and
@@ -635,12 +573,63 @@ jobs:
           '
           echo "[smoke] $SUFFIX OK"
 
-      # Publish path only, and only after the smoke test above passed: build
+  # Publishing has a separate safety barrier: every test/validation matrix
+  # must succeed before credentials are checked or any image is pushed.
+  # A PR never publishes. Main pushes require DOCKER_PUBLISH='true'; missing
+  # credentials fail explicitly. Disabled publishing performs no registry login.
+  # The validated source is rebuilt from the per-arch layer cache, retaining
+  # the existing push-by-digest and multi-architecture manifest workflow.
+  docker-publish:
+    needs: [backend-lint, backend-test, frontend-build, frontend-lint, frontend-test, frontend-e2e, security-scan, chart-indicator-skill, openscript-skill, gunicorn-boot, eventlet-fallback, gthread-gates, gthread-migration, gthread-platforms, docker-build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DOCKER_PUBLISH == 'true'
+    env:
+      IMAGE_NAME: ${{ format('{0}/openalgo', secrets.DOCKERHUB_USERNAME) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            suffix: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            suffix: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Require Docker Hub credentials (publishing only)
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          missing=""
+          [ -n "$DOCKERHUB_USERNAME" ] || missing="$missing DOCKERHUB_USERNAME"
+          [ -n "$DOCKERHUB_TOKEN" ] || missing="$missing DOCKERHUB_TOKEN"
+          if [ -n "$missing" ]; then
+            echo "::error::DOCKER_PUBLISH is 'true' but these secrets are not set:$missing. Add them, or unset DOCKER_PUBLISH to validate images without publishing."
+            exit 1
+          fi
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4.5.2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata (labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+
+      # Publish path only, and only after all suites and smoke tests passed: build
       # per-arch and push by digest (served from the same layer cache). The
       # manifest job downstream assembles the per-arch digests into the final
       # multi-arch tags.
       - name: Build (publish by digest)
-        if: env.PUBLISH == 'true'
         id: build-main
         uses: docker/build-push-action@v6
         with:
@@ -654,14 +643,12 @@ jobs:
       # Export the per-arch digest so the docker-manifest job can pick it
       # up and assemble the final manifest list.
       - name: Export digest
-        if: env.PUBLISH == 'true'
         run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build-main.outputs.digest }}"
           touch "/tmp/digests/${digest#sha256:}"
 
       - name: Upload digest
-        if: env.PUBLISH == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: digests-${{ matrix.suffix }}
@@ -672,11 +659,11 @@ jobs:
   # Assemble the per-arch digests into a single Docker Hub manifest list
   # (linux/amd64 + linux/arm64) under the canonical tags (:latest, :<sha>).
   # Runs only on a main push with the DOCKER_PUBLISH repository variable set to
-  # 'true' (see docker-build); otherwise it is skipped, which nothing depends
+  # 'true' (see docker-publish); otherwise it is skipped, which nothing depends
   # on. Trivy scan against the assembled image also happens here.
   docker-manifest:
     runs-on: ubuntu-latest
-    needs: docker-build
+    needs: docker-publish
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DOCKER_PUBLISH == 'true'
     steps:
       - name: Download digests
