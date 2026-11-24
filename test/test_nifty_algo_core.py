@@ -147,18 +147,20 @@ def test_invalid_metadata_rejected(changes):
 
 
 def test_contract_resolver_uses_listed_strikes_and_requires_fresh_depth():
-    contracts = [instrument(strike=22000), instrument(strike=22080, token="higher")]
+    # NSE lists NIFTY weekly and monthly strikes every 50 points; 22025 is the exact
+    # midpoint of the two listed strikes, so the lower one is the ATM.
+    contracts = [instrument(strike=22000), instrument(strike=22050, token="higher")]
     quotes = {"call": quote(), "higher": quote("higher")}
     config = StrategyConfig()
-    assert Resolver().resolve(contracts, quotes, 22040, "CE", NOW, config).token == "call"
+    assert Resolver().resolve(contracts, quotes, 22025, "CE", NOW, config).token == "call"
     assert [
         candidate.token
         for candidate in Resolver().candidates(
-            contracts, quotes, 22040, "CE", NOW, config
+            contracts, quotes, 22025, "CE", NOW, config
         )
     ] == ["call"]
     with pytest.raises(ValueError):
-        Resolver().resolve(contracts, quotes, 22040, "FUT", NOW, config)
+        Resolver().resolve(contracts, quotes, 22025, "FUT", NOW, config)
     with pytest.raises(ValueError):
         Resolver().resolve(
             contracts,
@@ -167,7 +169,7 @@ def test_contract_resolver_uses_listed_strikes_and_requires_fresh_depth():
                 "call": quote(bid_size=0),
                 "higher": quote("higher", bid_size=0),
             },
-            22040,
+            22025,
             "CE",
             NOW,
             config,

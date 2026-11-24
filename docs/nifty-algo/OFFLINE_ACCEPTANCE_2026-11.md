@@ -49,25 +49,26 @@ question owned elsewhere; no indicator logic or configuration changed.
 | Item | Value |
 | --- | --- |
 | New file | `test/test_nifty_algo_offline_acceptance.py` |
-| Collected | 147 (69 test functions, parametrized) |
-| Passed | 146 |
-| Expected failures (strict `xfail`, each a documented defect) | 1 (D-1) |
+| Collected | 247 (85 test functions, parametrized) |
+| Passed | 247 |
+| Expected failures (strict `xfail`) | 0 |
 | Failed | 0 |
 | Run | Windows, Python 3.12.11, `pytest -o addopts=""` with `--basetemp` |
 
-The first run of this file (baseline `a89854a5`) collected 132 tests: 129 passed
-and 3 were strict `xfail` (D-1, D-2, D-3). After the D-2 and D-3 fixes on
-`fix/nifty-paper-safety` the figures above apply. All `test/test_nifty_algo_*.py`
-files together, plus `test/test_ci_docker_publish_policy.py`: 1111 passed,
-1 xfailed, 0 failed (5 min 24 s). With the production fixes temporarily reverted
-to `HEAD`, 12 of the new D-2 and D-3 tests fail, so they detect the original
-defects.
+History of this file: the first run (baseline `a89854a5`) collected 132 tests,
+129 passed and 3 were strict `xfail` (D-1, D-2, D-3). After the D-2 and D-3 fixes
+on `fix/nifty-paper-safety` it was 146 passed and 1 `xfail` (D-1). After the D-1
+fix on `fix/nifty-atm-strike-validation` the figures above apply and no `xfail`
+remains.
 
-The remaining strict `xfail` test asserts the behavior the specification asks
-for and fails today. It is strict: when the defect is fixed it starts to pass,
-the run fails with XPASS, and whoever fixes it removes the marker. It names the
-defect in its `reason` and is restricted to the expected failure type
-(`raises=`), so an unrelated error cannot hide behind it.
+All `test/test_nifty_algo_*.py` files together, plus
+`test/test_ci_docker_publish_policy.py`: 1214 passed, 0 failed, 0 xfailed
+(5 min 38 s). With `contract_resolver.py` temporarily reverted to `main`, the
+new D-1 behavioral tests fail, including the original D-1 test, so they detect
+the defect.
+
+The strict `xfail` mechanism did its job: when the D-1 fix landed, the former
+`xfail` test started to pass, and its marker was removed in the same change.
 
 Status words below: PASS means asserted and green; FAIL means a defect is
 demonstrated by a strict xfail; UNVERIFIED means it cannot be checked offline.
@@ -130,7 +131,7 @@ demonstrated by a strict xfail; UNVERIFIED means it cannot be checked offline.
 | Revalidation before the final fill: spread blow-out, monthly lock latched, kill switch | `test_fills_that_fail_final_revalidation_do_not_move_money_or_use_the_entry`, `test_monthly_lock_and_kill_switch_between_admission_and_fill_stop_the_fill` | PASS |
 | Every strike the selector offers is one admission will not call OTM, over a grid of spots (CE and PE, midpoints included) | `test_every_strike_the_selector_offers_is_one_admission_will_not_call_otm` (2) | PASS |
 | A ladder that does not bracket spot never labels a strike ATM | `test_a_ladder_that_does_not_bracket_spot_never_labels_a_strike_atm` (8) | PASS |
-| A gappy ladder that does bracket spot does not make a distant strike ATM | `test_a_gappy_ladder_that_brackets_spot_does_not_make_a_distant_otm_strike_atm` | FAIL (D-1) |
+| A gappy ladder that does bracket spot does not make a distant strike ATM | `test_a_gappy_ladder_that_brackets_spot_does_not_make_a_distant_otm_strike_atm` | PASS (D-1 fixed) |
 | A history gap anywhere in the evaluated session, or a missing opening candle, blocks the decision; a gap in an older session does not; history that stops early blocks | `test_minute_history_gaps_and_missing_opening_data_block_the_decision` | PASS |
 | A decision older than 30 seconds cannot be admitted | `test_a_decision_made_on_stale_history_cannot_be_admitted` | PASS |
 
@@ -185,7 +186,8 @@ None of these changes any ledger amount for an order that fills, and none is a
 route to a real order. The acceptance branch changed no production file. Each
 defect had a strict `xfail` test and a suggested patch. D-3 and D-2 were then
 fixed on `fix/nifty-paper-safety` (see "Fix record" under each) and their
-markers removed; D-1 is deliberately unfixed and awaits a policy decision.
+markers removed. D-1 was then fixed on `fix/nifty-atm-strike-validation` (see
+its section).
 
 ### D-3: an entry admitted in the last 10 seconds before 14:45 IST expires at the wrong instant
 
@@ -234,94 +236,129 @@ cutoff = datetime.combine(now.astimezone(IST).date(), time(14, 45), tzinfo=IST).
 
 ### D-1: a gappy strike ladder that brackets spot labels a distant strike ATM
 
-Severity: low to medium; needs a master with strikes missing near spot.
+Status: FIXED on `fix/nifty-atm-strike-validation`.
 
-`contract_resolver.current_moneyness` treats the nearest listed strike as ATM
-whenever the ladder brackets spot (`min(strikes) <= spot <= max(strikes)`),
-with no limit on how far that strike is from spot. With CE strikes 22000 and
-22500 listed and spot 22300, CE 22500 (200 points out of the money) is
-classified `ATM` and is admitted. The unbracketed cases (spot beyond either end
-of the ladder, or a single strike) are handled correctly and are tested.
+Original failure: with CE strikes 22000 and 22500 listed and spot 22300, CE 22500
+(200 points out of the money) was classified `ATM` and admitted, because
+`current_moneyness` treated the nearest listed strike as ATM whenever the ladder
+bracketed spot, with no limit on how far that strike was from spot. The
+unbracketed cases (spot beyond either end of the ladder, or a single strike) were
+already handled. A partially delivered master, which the master check does not
+detect because it covers unparseable rows and not missing strikes, could widen
+eligibility. Liquidity, spread, volume and the 8 percent stop still applied.
 
-Why it matters: the rule is ATM or ITM only. The master check covers
-unparseable rows, not strikes that are simply missing, so a partially delivered
-master can widen eligibility. Liquidity, spread, volume and the 8 percent stop
-still apply.
+Root cause: two consumers computed the ATM strike separately, and neither bounded
+its distance from spot. `current_moneyness` (admission, the locked write, fill
+and replay) bracketed spot and took the nearest strike. `Resolver.assess` (the
+selector) took the nearest strike with no bracketing check at all, so it offered
+the nearest edge strike of a ladder that did not even reach spot, and it did
+arithmetic on the ATM strike that would have failed for `None`.
 
-Reproduction: `test_a_gappy_ladder_that_brackets_spot_does_not_make_a_distant_otm_strike_atm`.
+#### Rule
 
-Suggested patch: honour the nearest-strike rule only when the strikes adjacent
-to spot are within one normal step, for example
+One function, `contract_resolver.atm_reference(strikes, spot)`, now decides, and
+`current_moneyness` and `Resolver.assess` both call it. A strike is the ATM
+reference only when all of these hold:
 
-```python
-lower = max((s for s in strikes if s <= spot), default=None)
-upper = min((s for s in strikes if s >= spot), default=None)
-if lower is None or upper is None or upper - lower > MAX_LADDER_STEP:  # 100 for NIFTY
-    atm = None  # fall back to the strict spot comparison
-```
+1. listed strikes lie on both sides of spot (`min <= spot <= max`);
+2. it is the nearest listed strike, the lower strike at an exact midpoint (the
+   rule from N-03, unchanged);
+3. it is within half a strike interval of spot, that is 25 points.
 
-The step constant is a product decision (NIFTY lists 50-point steps near the
-money and wider further out), so it is left to the owner.
+Otherwise there is no ATM reference. `current_moneyness` then returns the strict
+spot comparison with `atm_strike = None` (an out-of-the-money option is refused,
+an in-the-money one is still allowed), and `Resolver.assess` refuses an `ATM` or
+`ITM` selection with the explicit code `ATM_REFERENCE_UNVERIFIED` instead of
+offering a candidate admission would reject. `DELTA` selection needs no ATM and
+keeps working on the strict comparison. The report's `atm_strike` is `null` in
+that case (the frontend type already allowed it).
 
-Status: NOT FIXED. The strict `xfail` stays. Nothing in `contract_resolver.py`
-changed; no threshold was added without approval.
+Also changed: two records for the same token with different content now refuse
+with `INSTRUMENT_IDENTITY_MISMATCH` in either order, where before the last record
+won and the result depended on master order. Identical duplicates and reordered
+masters give identical results.
 
-#### D-1 policy recommendation (pending approval)
+#### Source evidence and what is not verified
 
-Findings from the investigation:
+| Check | Source | Status |
+| --- | --- | --- |
+| NIFTY 50 weekly and monthly options: strike interval 50 at all index levels, 35 strikes in the money, at the money and out of the money each side (35-1-35), set from the previous day's close | NSE, "NIFTY 50 F&O", Strike Price Intervals, https://www.nseindia.com/static/products-services/equity-derivatives-nifty50, read 24 November 2026 | Verified on NSE's own page. The page shows no effective date for this row, and I could not retrieve the circular that set it. |
+| Quarterly and half-yearly (long term) options use wider, level-dependent intervals (100, 500, 1000, 1500) with 5-1-5 or fewer strikes | same page; NSE circular NSE/FAOP/71819 (214/2025), 16 December 2025, interval 1000 to 1500 effective 31 December 2025 | Verified. Not used: the selector takes the nearest expiry, which is weekly or monthly. A longer-dated contract gets no ATM reference and falls back to the strict comparison, which refuses an out-of-the-money strike. |
+| NIFTY weekly and monthly expiry day is Tuesday | NSE page; NSE/FAOP/68747 (111/2025), 25 June 2025 | Verified. The selector's expiry is the nearest eligible one, so the 50-point row applies to it. |
+| A 100-point gap is valid for the selected expiry | no source | Rejected. The 100-point figure proposed earlier is not an NSE interval for weekly or monthly contracts, so it was not used. The bound is half of the verified 50-point interval. |
+| How the master marks weekly, monthly and long-term contracts, and whether any selected expiry could be long-term | no source | Unverified. The code does not classify expiries; it relies on the selector choosing the nearest one. |
+| Whether a real broker master lists every strike NSE lists near spot | none, no broker feed | Unverified. Offline tests are synthetic. |
 
-- The same nearest-strike rule lives in two places that must agree.
-  `current_moneyness` (admission and fill) brackets spot first. `Resolver.assess`
-  takes `nearest_listed_strike(strikes, spot)` with no bracketing check at all
-  and puts that strike into the candidate list as the ATM candidate. A rule added
-  to admission alone would make the selector offer candidates admission then
-  refuses (`test_every_strike_the_selector_offers_is_one_admission_will_not_call_otm`
-  guards exactly that), so both sites need the same helper.
-- The defect is a distance problem, not a bracket problem. With a correctly
-  listed ladder the nearest strike is at most half a step from spot. A large
-  distance therefore means strikes are missing, or the master is partial.
-- Failing closed is cheap here. A strike with no ATM label falls back to the
-  strict comparison (a CE below spot is ITM, a CE above is OTM and is refused).
-  The only cost is that a legitimate ATM-but-slightly-OTM contract on a sparse
-  ladder is refused.
+NSE's page describes strikes as added from the previous day's close. During the
+day the listed ladder can lag a fast move, so near the edge of the 35-strike
+range there may be no ATM reference. That case is refused, never guessed.
 
-Recommended rule: label a strike ATM by nearness only when the two listed
-strikes that bracket spot are at most `MAX_ATM_BRACKET_GAP` apart, with the
-constant defaulting to 100 index points (two NIFTY 50-point steps, so the nearest
-strike is never more than 50 points away). Otherwise return `atm = None` and use
-the strict spot comparison. Put it in one shared helper used by both
-`current_moneyness` and `Resolver.assess`, and make the constant a frozen
-`StrategyConfig` field that cannot be loosened above a hard ceiling, like the
-other risk ceilings. Add a master-completeness refusal as a second, independent
-layer (the root cause): refuse the whole selection when listed strikes within
-about 500 points of spot are not contiguous at the expected step.
+#### Behavior, by case
 
-Why 100 and not 50: an exact 50-point bracket would refuse a ladder with one
-missing strike at the money even though the nearest strike is still at most 50
-points away. 100 admits that case and refuses two missing strikes in a row.
-
-Impact on valid NIFTY contracts (offline arithmetic over synthetic ladders, spots
-every 12.5 points; the script is in the session scratchpad, not in the repo):
-
-| Ladder | Spots whose label changes |
+| Case | Result |
 | --- | --- |
-| 50-point steps within 1,000 of spot, 100-point steps beyond | 0 of 481 |
-| 100-point steps throughout | 0 of 481 |
-| 50-point ladder with 22050 to 22250 missing | 23 of 81, the spots between the gap's neighbors |
-| Only 22000 and 22500 listed (the D-1 case) | 39 of 41, all but the two exact strikes |
-| 100-point near the money, 500-point beyond 1,000 | 0 within 1,000 of the money; changes only for spots far outside it |
+| Complete 50-point ladder, any spot inside it | nearest strike ATM, lower strike at the midpoint, as before |
+| One strike missing, spot within 25 points of a listed strike | unchanged, that strike is ATM |
+| One strike missing, nearest listed strike 50 points away | no ATM reference; only ITM strikes are allowed; the selector refuses |
+| Several strikes missing around spot, or two strikes listed far apart | no ATM reference; the 22500 call at spot 22300 is OTM and is refused |
+| Single strike listed | ATM only when spot equals it exactly, otherwise strict comparison |
+| Spot outside the listed range | no ATM reference |
+| 100-point ladder (not NSE weekly or monthly) | ATM only within 25 points of a listed strike |
 
-Open points that this offline work cannot settle and the owner must confirm
-against a real instrument master before approving a number:
+#### Files modified
 
-1. The real NIFTY strike spacing by expiry (weekly, monthly, far months) and how
-   it changes with distance from spot. The 50 and 100 figures above are an
-   assumption from the exchange's published practice, not read from a master.
-2. Whether any listed expiry has 100-point spacing at the money. If so, a bracket
-   gap of 100 is still allowed, but a missing strike there would refuse, which is
-   the intended fail-closed behavior.
-3. Whether a refused ATM-by-nearness is acceptable for entry frequency; the
-   strict comparison still permits every ITM strike.
+- `services/nifty_algo/contract_resolver.py`: `atm_reference`, the 50-point
+  constant and its sources, the conflicting-record check, `Resolver.assess`.
+- `test/test_nifty_algo_offline_acceptance.py`: the D-1 `xfail` removed, new
+  tests below.
+- `test/test_nifty_algo_core.py`: one fixture moved onto the NSE grid.
+  `test_contract_resolver_uses_listed_strikes_and_requires_fresh_depth` listed
+  strikes 22000 and 22080 with spot 22040, an 80-point gap NSE does not list and
+  nothing within 25 points of spot. It was really testing the lower-strike
+  midpoint rule, so it now uses 22000 and 22050 with spot 22025. No assertion was
+  weakened.
+- `docs/nifty-algo/STRATEGY_ASSUMPTIONS.md` and this record.
+
+Not changed: the paper executor, the store and `execution_replay`, which already
+call `current_moneyness`, so admission, the locked write, fill and replay pick up
+the rule with no edit. The master is still read before the ledger lock, and no
+read was added under it.
+
+#### New tests
+
+All in `test/test_nifty_algo_offline_acceptance.py`:
+
+- `test_a_gappy_ladder_that_brackets_spot_does_not_make_a_distant_otm_strike_atm`
+  (the former strict `xfail`, now passing) and the complete-ladder tests for CE
+  and PE: exact strike, exact midpoint, just either side of it.
+- `test_atm_reference_is_only_issued_within_half_an_interval_of_spot` (30):
+  missing one or several strikes, extremely sparse ladders, a single strike, spot
+  outside the range, 100-point ladders.
+- `test_a_missing_ladder_never_turns_an_out_of_the_money_strike_into_itm_or_atm`:
+  a sweep showing a strict OTM strike is never softened beyond 25 points.
+- Other expiries, sides and underlyings never repair a gap; reordered and
+  duplicated identical records give identical results; conflicting records fail
+  closed in both orders; missing or invalid metadata and a stale master fail
+  closed.
+- `test_selector_admission_fill_and_replay_label_every_offered_contract_alike`
+  (42): seven ladders, CE and PE, `ATM`, `ITM` and `DELTA` selection, many spots.
+  Every offered candidate carries the label admission computes, and a refusal is
+  explicit.
+- The selector refuses with `ATM_REFERENCE_UNVERIFIED`; ranking excludes the OTM
+  contract; admission refuses the 22500 strike on a gappy master and still admits
+  22000; a pending entry is rejected at fill (`OTM_PROHIBITED`, no cash moved)
+  when the master turns sparse; a complete master still fills; replay uses the
+  same two functions.
+
+With `contract_resolver.py` reverted to `main`, the new behavioral tests fail,
+including the original D-1 test.
+
+#### Limits
+
+Synthetic ladders prove the classification logic. They do not prove that a real
+broker's instrument master lists every strike NSE lists, how often a master is
+partial, or how often the 25-point rule will refuse a real entry. They do not
+establish profitability, and no real order, broker call or notification was made.
 
 ### D-2: no entry buffer before an early close
 
@@ -382,7 +419,9 @@ None of these can be verified offline and none is claimed:
    for PCR, and how often the five-second skew and 90-second age limits trip.
 3. Real minute-history completeness, gaps, and the first candle of the session.
 4. Real instrument-master delivery, including partially delivered strike
-   ladders (the D-1 exposure) and daily freshness.
+   ladders and daily freshness. D-1 now refuses a gap near spot, but how often
+   a real master has one, and how often the 25-point rule will refuse a real
+   entry, is unobserved.
 5. Real calendar data: partial-day windows and special sessions (D-2).
 6. Real spreads, displayed sizes, partial depth consumption and slippage
    against the fixed one-tick assumption.
