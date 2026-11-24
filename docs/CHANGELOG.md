@@ -39,6 +39,176 @@ fix, live in [docs/releases](releases/).
   SDK. The application never imports itself as `openalgo`; the Groww plugin's
   `openalgo.database` fallback runs only when `database` itself fails to import.
 
+
+### Added
+
+- Sandbox trades now pay brokerage and statutory charges. Each fill is charged
+  brokerage under your own plan, plus STT or CTT, exchange transaction charges,
+  SEBI fees, stamp duty and GST at the published rates. The charge is taken from
+  the available balance when the order fills, so sandbox funds and results will
+  be lower than before for the same trades. P&L is still shown before charges,
+  with the charges beside it.
+- `/sandbox/commissions`: set the brokerage for each segment (an amount per
+  executed order, a percentage of the trade value, or the lower of the two) and
+  switch charges on or off. Defaults: delivery 20 or 2.5%, intraday 20 or 0.1%,
+  futures 20 or 0.03%, options 20 per order. The same page has a transaction
+  cost report by trade, segment and day, with a CSV export.
+- `/sandbox/calculator`: a brokerage calculator. Enter a buy price, a sell price
+  and a quantity for any segment and exchange, and see every charge, the points
+  to breakeven and the net P&L. Its lines are the ones a published brokerage
+  calculator shows for the same trade: 117 trades were read from one and are
+  kept as a test (103 match on every line, 8 are one paisa apart on an exact
+  half paisa, and 6 are NSE currency futures, where that calculator leaves the
+  investor protection levy out of its own total).
+- A broker on the Indian exchanges is shown the Indian plan and calculator, and
+  a crypto venue is shown the crypto ones (as a venue fee and a fee calculator).
+  The two are never shown together.
+- `POST /api/v1/charges`: the charges for one order before it is placed, laid out
+  as total, brokerage, taxes and other charges. It is in the API playground and
+  documented under `docs/api/account-services/charges.md`.
+- `/sandbox/mypnl` shows today's and lifetime charges and the net figures, and a
+  charges column on the day-wise and trade tables. The day-wise and trades CSV
+  exports gain charges columns at the end.
+
+### Upgrade notes
+
+- Charges are on after the upgrade, for new and existing installs. To keep the
+  old behaviour, switch them off on `/sandbox/commissions`.
+- Charges apply from the first sandbox trade after the upgrade. Trades already
+  made are not charged, and no balance is changed by the upgrade itself.
+- Run `cd upgrade && uv run migrate_all.py` as usual. It adds the charge columns
+  to the sandbox database and the default brokerage plan. An install that only
+  restarts gets the same columns at startup.
+- A sandbox balance can now go below zero: a trade that fills with too little
+  cash left to cover its charges still pays them, as a broker's ledger would.
+- Resetting the sandbox from `/sandbox` also puts the brokerage plan back to its
+  defaults.
+- Not charged: depository (DP) charges on a delivery sell; STT on an option that
+  is exercised at expiry (a position settled at expiry pays nothing); a delivery
+  buy and sell on the same day pays delivery rates on both sides; agricultural
+  commodities and NCDEX use the MCX rates for other commodities.
+- Rounding follows a contract note: STT and stamp duty to the nearest rupee,
+  CTT and every other line to the paisa. Each trade is rounded on its own, where
+  a contract note rounds STT and stamp duty once on the day's total, so a day of
+  many small trades can differ from it by a rupee or two.
+- Crypto is charged nothing by default. Every crypto value is zero until a venue
+  fee is entered on `/sandbox/commissions`, and nothing is added to that fee.
+  One fee applies to every executed order: maker and taker rates are not told
+  apart.
+
+### Changed
+
+- The watchlist on `/trading` now opens on four columns: Symbol, Last, Chg and
+  Chg%. Chg is the move from the previous close in price. It was an optional
+  column before, switched off, and easy to miss. A browser that still has the
+  earlier two columns gets Chg added once; a selection you made yourself is
+  left as it was. To hide it, open **Customise columns** (the three dots at
+  the top of the watchlist); that choice is remembered. (#2276)
+- Watchlist prices and moves are shown to the paisa at every size. A price
+  above a thousand used to lose a decimal, so 25,349.65 read 25,349.7 and a
+  move of -2,049.85 read -2,049.8. Currency contracts on CDS and BCD are shown
+  to four decimals. Not changed: an instrument quoted finer than two decimals
+  on any other exchange (some crypto contracts) is still shown to two, so its
+  Chg can read 0.00 while its Chg% shows the move.
+- The watchlist opens a little wider (392 px, it was 340) to hold the extra
+  column, and its narrowest width with the four columns is 342 px. A width you
+  have already dragged it to is kept, unless it is below that.
+- The pinned OpenAlgo Python SDK moves from 2.3.0 to 2.4.1. A Python strategy
+  can now run several strategies on one account, in a backtest or a live
+  session, including two on one symbol. It also adds optional daily limits
+  (trades per day, profit target, order value), an audit record of every live
+  order and custom tearsheets. The SDK's own dependencies are unchanged.
+- Backtest figures for equity change with SDK 2.4.1. A backtest, and the cost
+  figures of a `bt.live` session, now charge the standard brokerage unless you
+  choose another: delivery 2.5 percent of the order value or Rs 20 per
+  executed order, whichever is lower (it was free), and intraday 0.1 percent
+  or Rs 20, whichever is lower (it was 0.03 percent or Rs 20). Futures and
+  options brokerage is as before. This is the brokerage the sandbox plan above
+  starts with, so a backtest and a sandbox run now begin from the same plan.
+  A delivery order of Rs 800 or more pays Rs 23.60 more (Rs 20 and the GST on
+  it), and an intraday order below about Rs 66,667 pays more as well. The
+  trades a backtest takes do not change. The earlier brokerage is still in the
+  SDK as a named preset: the SDK's 2.4.1 changelog gives the argument that
+  selects it.
+- New SDK methods: `client.charges(...)` prices one order through the Charges
+  API above before it is placed, and `client.discord(message)` and
+  `client.slack(message)` send an alert through the webhook saved on
+  `/discord` or `/slack`, while that channel is switched on at `/alerts`.
+- A backtest can now cost MCX options on non-agri commodities and NSE currency
+  futures and options, and the SDK's cost helpers take a quantity in lots.
+  Currency derivatives are backtest-only for now: a `bt.live` session refuses
+  a strategy on CDS or BCD when it starts.
+- Upgrade while no `bt.live` session is running. A live session that 2.3.0
+  saved earlier the same day cannot be resumed by 2.4.0 or later, so start it
+  fresh after the upgrade. A strategy class that holds a nested ABC, Protocol
+  or Flag gets a new version id with SDK 2.4.1, so a restart on the day of
+  the upgrade reports a version change for it.
+- Now refused in a live session: a resting reversal order, and a resting
+  order against a position its stop already closes. Both are stopped before
+  they reach the broker, where both could fill. Use `target=` on the entry, or
+  MARKET orders. A trade closed by the account's daily loss limit now records
+  the exit reason `account_loss_limit` instead of `manual`.
+
+### Fixed
+
+- An instrument sitting on its previous close is no longer shown as a gain in
+  the `/trading` watchlist. It read `+0.00%` in green. It now reads `0.00` and
+  `0.00%` with no sign and no colour.
+- Adding a column to the watchlist no longer cuts an instrument's name short
+  beside a whole exchange tag (NIFTY read "NI..." next to NSE_INDEX). The name
+  now gets the room first and the exchange shows where both fit. Hold the
+  pointer over a row for the full name and exchange.
+- On a watchlist long enough to scroll, each column label now sits over its
+  figures. The labels were offset to the right by the width of the scrollbar.
+- A crypto contract looked up before the symbol cache had loaded was valued at
+  1000 times its worth, because that lookup dropped the contract multiplier.
+  Sandbox P&L for such a contract was wrong by the same factor. The multiplier
+  is now carried on that path as it is on the cached one.
+- The AI agent's indicator tools and its chart tools load again. Since the
+  move to SDK 2.3.0 in 2.0.3.5, both were skipped at startup, so the agent
+  could neither compute an indicator nor read or draw on the chart. The SDK
+  had added the Relative Volatility Index (`ta.rvi_volatility`, from SDK
+  2.1.0) and the agent's indicator catalogue did not list it. The catalogue
+  now holds all 128 indicators, the new one included. `ta.rvi` is still the
+  Relative Vigor Index.
+- The indicator docs called the Relative Volatility Index as `ta.rvi(close)`,
+  which raises an error. They now show `ta.rvi_volatility(close)`.
+
+## [2.0.3.5] - 2026-11-20
+
+### Python SDK 2.3.0 Release
+
+25 commits since 2.0.3.4, excluding automated frontend build commits and
+including this release. Full notes:
+[version-2.0.3.5-released.md](releases/version-2.0.3.5-released.md).
+No migration is needed.
+
+### Highlights
+
+- The pinned OpenAlgo Python SDK moves from 2.0.5 to 2.3.0.
+- The Pocketful plugin is rebuilt on its new API (#2467).
+- Order update streams for Tradejini, Groww and Sahi (#2477, #2474).
+- AI agent: web fetch, prompt caching for Claude models and search that falls
+  through the other keyed providers.
+- Sandbox feed subscribes no longer sit on the order path (#2192).
+- Broker fixes for Flattrade, Nuvama, Tradesmart, Aliceblue, XTS, Wisdom and
+  iBulls.
+
+### Dependencies
+
+- `openalgo` 2.0.5 to 2.3.0.
+- `litellm` to 1.110.1, with `pydantic` 2.14.3.
+
+### Contributors
+
+- **@marketcalls** - the AI agent work, the broker fixes, the dependency
+  updates and the release.
+- **@Kalaiviswa** - broker order streams and fixes (#2473 to #2480).
+- **@jackiectl2 (Tianlang (Jackie) Chen)** - WebSocket reconnect (#2277).
+- **@samadarsh (Adarsh)** - sandbox feed subscribe (#2192).
+- **@Mystery01092000 (Pranav Tomar)** - scalping partial exit P&L (#2437).
+- **@Mr-Neutr0n** - contributing guide (#2457).
+
 ## [2.0.3.4] - 2026-11-17
 
 ### Alert Channels and Nuvama Release
@@ -1747,10 +1917,10 @@ format gains the other two in its next patch.
   ended in, and the units it took to get there. Two entries on one bar and
   exits on their own keep their own marks.
 - **Written the way a trader reads them.** The equity axis is in rupees grouped
-  the Indian way and compacted to lakh and crore (₹1.08L), the drawdown axis
+  the Indian way and compacted to lakh and crore (Γé╣1.08L), the drawdown axis
   is a percentage of the high it fell from, and times are in the instrument's
-  hours. A line above each chart says it in words: "Equity ₹1,10,968
-  +₹11,400 (+11.45%) from ₹99,568 at the start", "Deepest drawdown -₹2,283
+  hours. A line above each chart says it in words: "Equity Γé╣1,10,968
+  +Γé╣11,400 (+11.45%) from Γé╣99,568 at the start", "Deepest drawdown -Γé╣2,283
   (-2.09%) on 04 Sept 2026, 09:00". The current-value tag is green above the
   starting capital and red below it.
 
