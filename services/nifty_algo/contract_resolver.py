@@ -51,10 +51,53 @@ def moneyness(instrument, spot, atm_strike=None):
 
 
 def nearest_listed_strike(strikes, spot):
-    """The listed ATM strike: nearest to spot, the lower strike at the exact midpoint."""
+    """The listed strike nearest to spot, the lower strike at the exact midpoint.
+
+    This is only the nearest strike. Whether it may be called ATM is decided by
+    ``atm_reference``, which every consumer uses.
+    """
     spot = Decimal(str(spot))
     strikes = sorted({Decimal(str(strike)) for strike in strikes if strike is not None})
     return min(strikes, key=lambda strike: (abs(strike - spot), strike)) if strikes else None
+
+
+# NSE strike interval for NIFTY 50 weekly and monthly option contracts: 50
+# points at every index level, 35-1-35 strikes (in the money, at the money, out
+# of the money), set from the previous day's close. Source: NSE, "NIFTY 50 F&O",
+# Strike Price Intervals,
+# https://www.nseindia.com/static/products-services/equity-derivatives-nifty50
+# (read 24 November 2026). Quarterly and half-yearly contracts use wider,
+# level-dependent intervals (100 to 1500 points); the selector never chooses
+# them, because it takes the nearest expiry. Do not widen this for them: a
+# longer-dated contract then has no ATM label and falls back to the strict spot
+# comparison, which refuses an out-of-the-money strike.
+NIFTY_SHORT_TERM_STRIKE_INTERVAL = Decimal("50")
+MAX_ATM_DISTANCE = NIFTY_SHORT_TERM_STRIKE_INTERVAL / 2
+
+
+def atm_reference(strikes, spot):
+    """The listed ATM strike for this spot, or None when it cannot be verified.
+
+    One rule for the selector, admission, the locked write, fill and replay.
+    A strike is ATM only when all of these hold:
+
+    * strikes are listed on both sides of spot (``min <= spot <= max``);
+    * it is the nearest listed strike, the lower one at an exact midpoint;
+    * it is within half a strike interval of spot (``MAX_ATM_DISTANCE``).
+
+    On the exchange's 50-point grid the nearest strike is never farther than 25
+    points, so a larger distance means the grid is incomplete near spot: strikes
+    are missing, or the master is partial. Missing strikes are never filled in
+    and a gap is never assumed normal. With no ATM reference every caller falls
+    back to the strict spot comparison, which refuses out-of-the-money options,
+    and the selector refuses the selection outright.
+    """
+    spot = Decimal(str(spot))
+    listed = sorted({Decimal(str(strike)) for strike in strikes if strike is not None})
+    if not listed or not listed[0] <= spot <= listed[-1]:
+        return None
+    nearest = nearest_listed_strike(listed, spot)
+    return nearest if abs(nearest - spot) <= MAX_ATM_DISTANCE else None
 
 
 def listed_chain(instrument, instruments):
@@ -84,10 +127,12 @@ def current_moneyness(instrument, spot, instruments):
     refused. ``reason`` is set and the classification is None when the current
     verified metadata cannot vouch for this exact contract.
 
-    The nearest strike is ATM only while listed strikes lie on both sides of
-    spot. Outside the listed range, or on a ladder too sparse to bracket spot,
-    "nearest" says nothing about moneyness, so the strict spot comparison
-    applies and ``atm_strike`` is None: a sparse ladder never widens eligibility.
+    The ATM strike comes from ``atm_reference``: the nearest listed strike, but
+    only with strikes listed on both sides of spot and within half a strike
+    interval of it. Outside the listed range, on a ladder too sparse to bracket
+    spot, or with a gap near spot, "nearest" says nothing about moneyness, so
+    the strict spot comparison applies and ``atm_strike`` is None: a sparse
+    ladder never widens eligibility.
     """
     if spot is None:
         return None, None, "SPOT_REFERENCE_UNAVAILABLE"
@@ -97,11 +142,28 @@ def current_moneyness(instrument, spot, instruments):
         return None, None, "MASTER_FRESHNESS_UNVERIFIED"
     if chain.get(instrument.token) != instrument:
         return None, None, "INSTRUMENT_IDENTITY_MISMATCH"
-    strikes = [item.strike for item in chain.values()]
-    atm = nearest_listed_strike(strikes, spot)
-    if not min(strikes) <= spot <= max(strikes):
-        atm = None
+    if _conflicting_records(instrument, instruments):
+        # The same token listed twice with different content: which record wins
+        # would depend on the order of the master, so no record is trusted.
+        return None, None, "INSTRUMENT_IDENTITY_MISMATCH"
+    atm = atm_reference([item.strike for item in chain.values()], spot)
     return moneyness(instrument, spot, atm), atm, None
+
+
+def _conflicting_records(instrument, instruments):
+    seen = {}
+    for item in instruments:
+        if (
+            item.exchange == instrument.exchange
+            and item.underlying == instrument.underlying
+            and item.expiry == instrument.expiry
+            and item.kind == instrument.kind
+            and item.tradable
+            and item.master_date == instrument.master_date
+            and seen.setdefault(item.token, item) != item
+        ):
+            return True
+    return False
 
 
 class SelectionUnavailable(ValueError):
@@ -163,7 +225,15 @@ class Resolver:
         expiry_options = options
         strikes = sorted({i.strike for i in options})
         # The same rule admission and fill re-apply against fresh spot.
-        atm_strike = nearest_listed_strike(strikes, spot)
+        atm_strike = atm_reference(strikes, spot)
+        if atm_strike is None and config.selection in ("ITM", "ATM"):
+            # Spot outside the listed range, or a gap near spot: the listed
+            # ladder cannot vouch for an ATM or an adjacent ITM strike, and a
+            # contract offered here would be refused at admission.
+            raise SelectionUnavailable(
+                "ATM_REFERENCE_UNVERIFIED",
+                "No verified at-the-money strike near spot in the listed strikes",
+            )
         if config.selection == "ITM":
             itm_strikes = [
                 strike
@@ -284,7 +354,7 @@ class Resolver:
             "configuration_id": config.version_id,
             "evaluated_at": now.isoformat(),
             "spot_reference": str(spot),
-            "atm_strike": str(atm_strike),
+            "atm_strike": None if atm_strike is None else str(atm_strike),
             "expiry": expiry.isoformat(),
             "ranked_tokens": ranked,
             "candidates": rows,

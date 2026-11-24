@@ -55,6 +55,28 @@ special sessions remain disabled. A loss blocks the next eligible session.
 Monthly loss locks at ₹2,000; an optional configured profit target latches its
 own monthly lock. Locks do not block exits or reset equity.
 
+## The at-the-money strike
+
+Entries are at the money or in the money; out of the money is refused. The
+selector, admission, the locked write, fill and replay share one rule
+(`contract_resolver.atm_reference`). On today's verified master, for the same
+exchange, NIFTY, expiry and side, the ATM strike is the nearest listed strike,
+the lower at an exact midpoint, and only when listed strikes lie on both sides
+of spot and it is within 25 points of spot. NSE lists NIFTY weekly and monthly
+options every 50 points at all index levels (35 strikes each side of the money),
+so the nearest strike on a complete ladder is never farther than 25 points.
+Source: NSE, NIFTY 50 F&O, Strike Price Intervals, read 24 November 2026; the
+page shows no effective date and the circular that set the row was not
+retrieved. Quarterly and half-yearly contracts use wider intervals and are never
+selected: the selector takes the nearest expiry.
+
+With no such strike (a gap near spot, a partial master, spot outside the
+ladder) nothing is called ATM, the strict spot comparison applies, an
+out-of-the-money option is refused, and an ATM or ITM selection is refused with
+`ATM_REFERENCE_UNVERIFIED`. Missing strikes are never filled in. Whether a real
+broker master lists every strike NSE lists is not verified; the tests use
+synthetic ladders.
+
 ## Strength method: five-indicator-v1
 
 Scoring runs only after every mandatory gate passes. Each component is clipped

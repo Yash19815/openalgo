@@ -41,7 +41,7 @@ from database.nifty_algo_db import (
 )
 from services.nifty_algo import calendar as nifty_calendar
 from services.nifty_algo.config import StrategyConfig
-from services.nifty_algo.contract_resolver import Resolver, current_moneyness
+from services.nifty_algo.contract_resolver import Resolver, SelectionUnavailable, current_moneyness
 from services.nifty_algo.depth_quote import depth_quote
 from services.nifty_algo.models import Instrument, Quote
 from services.nifty_algo.native_data import NativeDataAdapter
@@ -1515,16 +1515,332 @@ def test_a_ladder_that_does_not_bracket_spot_never_labels_a_strike_atm(
     assert refusal is None and atm is None and label == expected
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="D-1 (OFFLINE_ACCEPTANCE_2026-11.md): a gappy ladder that brackets spot still labels a far strike ATM",
-)
 def test_a_gappy_ladder_that_brackets_spot_does_not_make_a_distant_otm_strike_atm():
     ladder = [contract(THU, strike, "CE") for strike in (22000, 22500)]
     far_call = ladder[1]  # 200 points out of the money at spot 22300
-    label, _, _ = current_moneyness(far_call, D("22300"), ladder)
-    assert label == "OTM"
+    label, atm, refusal = current_moneyness(far_call, D("22300"), ladder)
+    assert (label, atm, refusal) == ("OTM", None, None)  # was ATM (D-1)
+
+
+# --- D-1: one ATM rule for the selector, admission, fill and replay -------------
+#
+# NSE lists NIFTY weekly and monthly options every 50 points at all index levels
+# (35-1-35 strikes). The selector chooses the nearest expiry, so the ATM strike on
+# a complete ladder is never more than 25 points from spot. A larger distance
+# means strikes are missing; nothing is filled in and no gap is called normal.
+
+GRID_50 = tuple(range(21500, 22501, 50))
+GRID_100 = tuple(range(21500, 22501, 100))  # not an NSE weekly or monthly ladder
+
+
+def _ladder(strikes, kind="CE", *, day=THU, expiry=EXPIRY):
+    return [contract(day, strike, kind, expiry=expiry) for strike in strikes]
+
+
+def _label(strikes, spot, strike, kind="CE"):
+    ladder = _ladder(strikes, kind)
+    item = next(i for i in ladder if i.strike == strike)
+    return current_moneyness(item, D(str(spot)), ladder)
+
+
+@pytest.mark.parametrize("kind", ["CE", "PE"])
+@pytest.mark.parametrize(
+    ("spot", "atm"),
+    [
+        ("22000", 22000),  # exactly on a listed strike
+        ("22010", 22000),
+        ("22024.95", 22000),
+        ("22025", 22000),  # exact midpoint: the lower strike
+        ("22025.05", 22050),
+        ("22049.95", 22050),
+        ("22075", 22050),  # midpoint again, lower strike
+    ],
+)
+def test_a_complete_50_point_ladder_labels_the_nearest_strike_atm(kind, spot, atm):
+    label, found, refusal = _label(GRID_50, spot, atm, kind)
+    assert (label, found, refusal) == ("ATM", D(atm), None)
+
+
+@pytest.mark.parametrize("kind", ["CE", "PE"])
+def test_a_complete_ladder_keeps_itm_otm_and_the_strict_midpoint_split(kind):
+    spot = "22025"
+    itm_strike, otm_strike = (21950, 22100) if kind == "CE" else (22100, 21950)
+    assert _label(GRID_50, spot, itm_strike, kind)[0] == "ITM"
+    assert _label(GRID_50, spot, otm_strike, kind)[0] == "OTM"
+    # The non-ATM neighbour at the midpoint keeps its strict label, never ATM.
+    upper_label = _label(GRID_50, spot, 22050, kind)[0]
+    assert upper_label == ("OTM" if kind == "CE" else "ITM")
+
+
+@pytest.mark.parametrize("kind", ["CE", "PE"])
+@pytest.mark.parametrize(
+    ("strikes", "spot", "listed_atm"),
+    [
+        # one strike missing: the nearest is still within 25 points, so ATM holds
+        (tuple(s for s in GRID_50 if s != 22050), "22040", None),
+        (tuple(s for s in GRID_50 if s != 22050), "22010", 22000),
+        # the strike nearest to spot is missing and the next one is 50 away
+        (tuple(s for s in GRID_50 if s != 22050), "22050", None),
+        # several strikes around spot missing
+        (tuple(s for s in GRID_50 if not 21950 <= s <= 22150), "22050", None),
+        (tuple(s for s in GRID_50 if not 21950 <= s <= 22150), "22000", None),
+        # extremely sparse ladders that still bracket spot
+        ((22000, 22500), "22300", None),
+        ((21000, 23000), "22000", None),
+        ((22000, 22100), "22050", None),  # 50 away on each side
+        # a single listed strike, and spot outside the listed range
+        ((22000,), "22010", None),
+        ((22000,), "22000", 22000),
+        (GRID_50, "21000", None),
+        (GRID_50, "23000", None),
+        # a 100-point ladder is not NSE weekly or monthly: nothing 50 away is ATM
+        (GRID_100, "22050", None),
+        (GRID_100, "22030", None),
+        (GRID_100, "22020", 22000),
+    ],
+)
+def test_atm_reference_is_only_issued_within_half_an_interval_of_spot(
+    kind, strikes, spot, listed_atm
+):
+    from services.nifty_algo.contract_resolver import atm_reference
+
+    assert atm_reference(strikes, D(spot)) == (None if listed_atm is None else D(listed_atm))
+    for strike in strikes:
+        label, found, refusal = _label(strikes, spot, strike, kind)
+        assert refusal is None and found == (None if listed_atm is None else D(listed_atm))
+        assert label == ("ATM" if strike == listed_atm else _strict(kind, strike, D(spot)))
+
+
+def _strict(kind, strike, spot):
+    if strike == spot:
+        return "ATM"
+    return (
+        ("ITM" if strike < spot else "OTM") if kind == "CE" else ("ITM" if strike > spot else "OTM")
+    )
+
+
+def test_a_missing_ladder_never_turns_an_out_of_the_money_strike_into_itm_or_atm():
+    for kind in ("CE", "PE"):
+        for strikes in ((22000, 22500), (22000, 22150, 22500), (21000, 22300, 23000)):
+            for spot in range(21950, 22551, 13):
+                for strike in strikes:
+                    label, _, _ = _label(strikes, spot, strike, kind)
+                    strict = _strict(kind, strike, D(spot))
+                    if strict == "OTM":
+                        # Only an ATM within 25 points may soften a strict OTM.
+                        assert label == "OTM" or abs(D(strike) - D(spot)) <= 25, (
+                            kind,
+                            strikes,
+                            spot,
+                            strike,
+                        )
+                    if strict == "ITM":
+                        assert label in ("ITM", "ATM")
+
+
+def test_atm_reference_ignores_other_expiries_sides_and_underlyings():
+    near = _ladder((22000, 22500))
+    other_expiry = _ladder((22300,), expiry=date(2026, 12, 1))
+    other_side = _ladder((22300,), "PE")
+    other_underlying = [contract(THU, 22300).model_copy(update={"underlying": "BANKNIFTY"})]
+    other_underlying[0] = other_underlying[0].model_copy(update={"token": "bank-22300"})
+    master = near + other_expiry + other_side + other_underlying
+    far = next(i for i in near if i.strike == 22500)
+    assert current_moneyness(far, D("22300"), master) == ("OTM", None, None)
+
+
+def test_atm_reference_is_the_same_for_reordered_and_duplicated_identical_records():
+    base = _ladder(GRID_50)
+    spot = D("22030")
+    target = next(i for i in base if i.strike == 22050)
+    expected = current_moneyness(target, spot, base)
+    assert expected[0] == "ATM"
+    assert current_moneyness(target, spot, list(reversed(base))) == expected
+    assert current_moneyness(target, spot, base + base[:5]) == expected
+    sparse = _ladder((22000, 22500))
+    far = sparse[1]
+    reference = current_moneyness(far, D("22300"), sparse)
+    assert current_moneyness(far, D("22300"), list(reversed(sparse)) + sparse) == reference
+
+
+def test_conflicting_duplicate_records_fail_closed_in_either_order():
+    ladder = _ladder(GRID_50)
+    target = next(i for i in ladder if i.strike == 22000)
+    clash = target.model_copy(update={"lot_size": 75})
+    for master in (ladder + [clash], [clash] + ladder):
+        label, atm, refusal = current_moneyness(target, D("22010"), master)
+        assert (label, atm, refusal) == (None, None, "INSTRUMENT_IDENTITY_MISMATCH")
+
+
+def test_missing_or_invalid_metadata_fails_closed():
+    ladder = _ladder(GRID_50)
+    target = ladder[0]
+    assert current_moneyness(target, None, ladder)[2] == "SPOT_REFERENCE_UNAVAILABLE"
+    assert current_moneyness(target, D("22000"), [])[2] == "MASTER_FRESHNESS_UNVERIFIED"
+    unlisted = target.model_copy(update={"token": "not-listed"})
+    assert current_moneyness(unlisted, D("22000"), ladder)[2] == "INSTRUMENT_IDENTITY_MISMATCH"
+    altered = target.model_copy(update={"lot_size": 50})
+    assert current_moneyness(altered, D("22000"), ladder)[2] == "INSTRUMENT_IDENTITY_MISMATCH"
+
+
+def test_a_stale_master_never_supplies_the_ladder():
+    yesterday = date(2026, 11, 18)
+    stale = _ladder(GRID_50, day=yesterday)
+    config = StrategyConfig()
+    with pytest.raises(SelectionUnavailable) as raised:
+        Resolver().assess(stale, {}, D("22000"), "CE", ist(THU, 10, 31), config)
+    assert raised.value.code == "CONTRACT_METADATA_UNAVAILABLE"
+    # Stale rows do not repair a gap in today's ladder either.
+    today = _ladder((22000, 22500))
+    mixed = today + _ladder((22300,), day=yesterday)
+    far = today[1]
+    assert current_moneyness(far, D("22300"), mixed) == ("OTM", None, None)
+
+
+LADDERS = {
+    "complete-50": GRID_50,
+    "complete-100": GRID_100,
+    "one-missing": tuple(s for s in GRID_50 if s != 22050),
+    "several-missing": tuple(s for s in GRID_50 if not 21950 <= s <= 22150),
+    "sparse-two": (22000, 22500),
+    "sparse-three": (21500, 22000, 22500),
+    "single": (22000,),
+}
+
+
+@pytest.mark.parametrize("selection", ["ATM", "ITM", "DELTA"])
+@pytest.mark.parametrize("kind", ["CE", "PE"])
+@pytest.mark.parametrize("name", sorted(LADDERS))
+def test_selector_admission_fill_and_replay_label_every_offered_contract_alike(
+    name, kind, selection
+):
+    strikes = LADDERS[name]
+    ladder = [
+        i.model_copy(
+            update={"delta": 0.55 if kind == "CE" else -0.55, "delta_time": ist(THU, 10, 31)}
+        )
+        for i in _ladder(strikes, kind)
+    ]
+    config = StrategyConfig(selection=selection, candidate_strike_window=2)
+    quotes = {i.token: None for i in ladder}
+    offered_total = 0
+    for spot in [D(s) for s in range(21440, 22561, 11)] + [D("22025"), D("22075")]:
+        try:
+            report = Resolver().assess(ladder, quotes, spot, kind, ist(THU, 10, 31), config)
+        except SelectionUnavailable as refusal:
+            # A refusal is explicit. It is never a crash, and a missing ATM is the
+            # reason unless an ITM selection simply has no ITM strike left.
+            from services.nifty_algo.contract_resolver import atm_reference
+
+            assert selection != "DELTA"
+            if refusal.code == "ATM_REFERENCE_UNVERIFIED":
+                assert atm_reference([i.strike for i in ladder], spot) is None
+            else:
+                assert refusal.code == "ITM_STRIKE_UNAVAILABLE" and selection == "ITM"
+            continue
+        expected_atm = report["atm_strike"]
+        for row in report["candidates"]:
+            item = Instrument.model_validate(row["instrument"])
+            # Admission, the locked write, fill and replay all call this function.
+            label, atm, refusal = current_moneyness(item, spot, ladder)
+            assert refusal is None
+            assert row["moneyness"] == label, (name, kind, selection, spot, item.strike)
+            assert (None if atm is None else str(atm)) == expected_atm
+            if row["moneyness"] == "OTM":
+                assert row["reasons"], "an OTM contract must carry a refusal reason"
+            offered = not row["reasons"] or row["reasons"] == ["QUOTE_UNAVAILABLE"]
+            if offered and row["rank"] is None and "QUOTE_UNAVAILABLE" in row["reasons"]:
+                # Selected for assessment: it must be one admission will not call OTM.
+                offered_total += 1
+                assert label in ("ATM", "ITM"), (name, kind, selection, spot, item.strike)
+    if name in ("complete-50", "complete-100", "one-missing"):
+        assert offered_total > 0  # the sweep genuinely offered candidates
+
+
+def test_the_selector_refuses_with_an_explicit_reason_when_no_atm_can_be_verified():
+    ladder = _ladder((22000, 22500))
+    for selection in ("ATM", "ITM"):
+        config = StrategyConfig(selection=selection)
+        with pytest.raises(SelectionUnavailable) as raised:
+            Resolver().assess(ladder, {}, D("22300"), "CE", ist(THU, 10, 31), config)
+        assert raised.value.code == "ATM_REFERENCE_UNVERIFIED"
+    with pytest.raises(ValueError):  # candidates() and resolve() propagate it
+        Resolver().candidates(ladder, {}, D("22300"), "CE", ist(THU, 10, 31), StrategyConfig())
+
+
+def test_ranking_excludes_an_invalid_otm_contract_on_a_gappy_master():
+    ladder = [
+        i.model_copy(update={"delta": 0.55, "delta_time": ist(THU, 10, 31)})
+        for i in _ladder((22000, 22500))
+    ]
+    quotes = {
+        i.token: Quote(
+            token=i.token,
+            source_time=ist(THU, 10, 30, 58),
+            received_time=ist(THU, 10, 30, 59),
+            ltp=D("130"),
+            bid=D("129.90"),
+            ask=D("130.00"),
+            bid_size=100,
+            ask_size=100,
+            volume=5000,
+            oi=5000,
+            provider="TEST_FIXTURE",
+        )
+        for i in ladder
+    }
+    report = Resolver().assess(
+        ladder, quotes, D("22300"), "CE", ist(THU, 10, 31), StrategyConfig(selection="DELTA")
+    )
+    ranked = {row["instrument"]["strike"] for row in report["candidates"] if row["rank"]}
+    assert report["atm_strike"] is None and ranked == {"22000"}  # the 22500 call is OTM
+    by_strike = {row["instrument"]["strike"]: row for row in report["candidates"]}
+    assert by_strike["22500"]["moneyness"] == "OTM"
+    assert "OTM_PROHIBITED" in by_strike["22500"]["reasons"]
+
+
+def test_admission_refuses_a_distant_strike_on_a_gappy_master(store):
+    desk = Desk(store, feed=Feed(ist(THU, 10, 30), spot="22300"))
+    desk.STRIKES = (22000, 22500)
+    desk.running()
+    with pytest.raises(OrderRefused) as refusal:
+        desk.buy(ist(THU, 10, 30), strike=22500)
+    assert refusal.value.reasons == ["OTM_PROHIBITED"] and store.pending_orders(USER) == []
+    # The real in-the-money strike on the same master is still admitted.
+    assert desk.buy(ist(THU, 10, 30, 5), strike=22000)["side"] == "BUY"
+
+
+def test_a_pending_entry_is_rejected_at_fill_when_the_master_turns_sparse(store):
+    desk = Desk(store, feed=Feed(ist(THU, 10, 30), spot="22040"))
+    desk.running()
+    order = desk.buy(ist(THU, 10, 30), strike=22050)  # 10 points from spot: ATM on a full grid
+    assert order["payload"]["candidate_metadata"][0]["moneyness"] == "ATM"
+    desk.STRIKES = (22050, 22500)  # spot 22040 is now below every listed strike: no ATM label
+    fills = desk.process(ist(THU, 10, 30, 1))
+    assert [(row["status"], row["reason"]) for row in fills] == [("REJECTED", "OTM_PROHIBITED")]
+    assert store.positions(USER) == []
+    assert D(store.account(USER, ist(THU, 10, 31))["equity"]) == D("20000")
+
+
+def test_a_complete_master_still_fills_the_atm_and_itm_entries(store):
+    desk = Desk(store, feed=Feed(ist(THU, 10, 30), spot="22040"))
+    desk.running()
+    filled = desk.enter(ist(THU, 10, 30), strike=22050)
+    assert filled["status"] == "FILLED" and len(store.positions(USER)) == 1
+
+
+def test_replay_applies_the_same_rule_to_a_recorded_master():
+    # execution_replay calls current_moneyness(...)[0] for the pending entry and
+    # Resolver().candidates(...) for selection: both are the functions above.
+    import inspect
+
+    from services.nifty_algo import execution_replay
+
+    source = inspect.getsource(execution_replay)
+    assert "current_moneyness(instrument, spot.ltp, frame.instruments)" in source
+    assert "Resolver().candidates(" in source
+    ladder = _ladder((22000, 22500))
+    assert current_moneyness(ladder[1], D("22300"), ladder)[0] == "OTM"
 
 
 def test_minute_history_gaps_and_missing_opening_data_block_the_decision():
