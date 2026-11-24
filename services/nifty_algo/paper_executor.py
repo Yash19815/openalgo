@@ -33,6 +33,11 @@ class OrderRefused(ValueError):
         super().__init__(", ".join(self.reasons))
 
 
+def _utc(moment):
+    """The same instant in UTC, so a zone-dropping column stores the right wall time."""
+    return moment.astimezone(UTC)
+
+
 def _charges(side, price, quantity, config=None):
     """Configured research cost schedule; not an assertion of current tax rates."""
     from .config import StrategyConfig
@@ -139,7 +144,12 @@ class NiftyPaperExecutor:
     def admit(self, intent, now=None):
         """Validate an intent through the risk manager, then persist it once."""
         from services.nifty_algo.config import StrategyConfig
-        from services.nifty_algo.risk_manager import AccountRisk, entry_reasons, plan_entry
+        from services.nifty_algo.risk_manager import (
+            SESSION_EXIT_BUFFER,
+            AccountRisk,
+            entry_reasons,
+            plan_entry,
+        )
 
         now = now or self.clock()
         existing = self.store.order_by_intent(self.user_id, intent["intent_id"])
@@ -305,6 +315,7 @@ class NiftyPaperExecutor:
                 config,
                 session_open=entry_session_open,
                 data_healthy=any(candidate_quote for _, candidate_quote in candidate_quotes),
+                session_close=session["window"][1] if session["window"] else None,
             )
             if reasons:
                 raise OrderRefused(reasons)
@@ -379,10 +390,17 @@ class NiftyPaperExecutor:
                     "NET_REWARD_BELOW_MINIMUM": str(config.min_projected_net_reward),
                 },
             }
-        expires_at = now + timedelta(seconds=config.order_ttl_seconds)
+        # The ledger's DateTime columns keep the wall time and drop the zone, and
+        # every reader takes a naive value as UTC. Persist only UTC instants, or
+        # an IST wall time is read back 5h30m late.
+        expires_at = _utc(now + timedelta(seconds=config.order_ttl_seconds))
         if side == "BUY":
             cutoff = datetime.combine(now.astimezone(IST).date(), time(14, 45), tzinfo=IST)
-            expires_at = min(expires_at, cutoff)
+            expires_at = min(expires_at, _utc(cutoff))
+            # An early close pulls the mandatory exit forward; a pending entry
+            # must not outlive the last instant an entry may be admitted.
+            if session["window"]:
+                expires_at = min(expires_at, _utc(session["window"][1] - SESSION_EXIT_BUFFER))
         order = {
             "order_id": uuid4().hex[:20],
             "intent_id": intent["intent_id"],
@@ -412,9 +430,9 @@ class NiftyPaperExecutor:
                 },
                 **reservation,
             },
-            "eligible_at": now + timedelta(milliseconds=config.latency_ms),
+            "eligible_at": _utc(now + timedelta(milliseconds=config.latency_ms)),
             "expires_at": expires_at,
-            "created_at": now,
+            "created_at": _utc(now),
         }
         approved_identity = instrument.model_dump(mode="json")
 

@@ -892,24 +892,85 @@ def test_an_entry_admitted_in_the_last_second_never_fills_at_or_after_1445(store
     desk.running()
     order = desk.buy(ist(THU, 14, 44, 59))
     assert order["expires_at"] == ist(THU, 14, 45)  # capped at the entry cutoff, not now + TTL
-    fills = desk.process(ist(THU, 14, 45))
-    assert [(row["status"], row["reason"]) for row in fills] == [("EXPIRED", "ENTRY_CUTOFF")]
+    # The fill's own hard cutoff is a second layer: it refuses even when the
+    # order is still pending at 14:45:00, before any expiry sweep has run.
+    refused = store.fill(USER, order["order_id"], "165.00", "10", ist(THU, 14, 45))
+    assert (refused["status"], refused["reason"]) == ("EXPIRED", "ENTRY_CUTOFF")
     assert store.positions(USER) == []
     assert D(store.account(USER, ist(THU, 14, 46))["equity"]) == D("20000")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="D-3 (OFFLINE_ACCEPTANCE_2026-11.md): cutoff expiry is stored as an IST wall time read back as UTC",
-)
+def test_an_entry_admitted_in_the_last_second_is_expired_by_the_sweep_at_1445(store):
+    desk = Desk(store, feed=Feed(ist(THU, 14, 44, 59)))
+    desk.running()
+    order = desk.buy(ist(THU, 14, 44, 59))
+    assert desk.process(ist(THU, 14, 45)) == []  # swept as expired, never filled
+    (row,) = [o for o in store.orders(USER, now=ist(THU, 14, 45)) if o["side"] == "BUY"]
+    assert row["order_id"] == order["order_id"]
+    assert (row["status"], row["reason"]) == ("EXPIRED", "ORDER_TTL")
+    assert store.positions(USER) == [] and store.pending_orders(USER) == []
+    assert D(store.account(USER, ist(THU, 14, 46))["equity"]) == D("20000")
+
+
 def test_the_cutoff_expiry_is_the_same_instant_after_it_is_stored(store):
     desk = Desk(store, feed=Feed(ist(THU, 14, 44, 59)))
     desk.running()
     desk.buy(ist(THU, 14, 44, 59))
     desk.feed.stamp = ist(THU, 14, 40)  # no fresh depth, so no fill attempt can resolve it
     desk.exe.process(ist(THU, 14, 45, 30))
-    assert store.pending_orders(USER) == []  # still PENDING until 20:15 IST today
+    assert store.pending_orders(USER) == []  # was PENDING until 20:15 IST (D-3)
+
+
+def _stored_expiry_wall_time(store, order_id):
+    """The raw column value: SQLite keeps the wall time and drops the zone."""
+    from sqlalchemy import text
+
+    with store.engine.connect() as connection:
+        return connection.execute(
+            text("SELECT expires_at FROM nifty_algo_order WHERE order_id = :id"), {"id": order_id}
+        ).scalar_one()
+
+
+@pytest.mark.parametrize(
+    ("admitted", "expires"),
+    [
+        ((14, 44, 50), (14, 45, 0)),  # the cutoff wins, inside the last ten seconds
+        ((14, 44, 59), (14, 45, 0)),
+        ((14, 44, 49), (14, 44, 59)),  # the TTL (10 s) wins by one second
+        ((10, 30, 0), (10, 30, 10)),  # an ordinary entry keeps its TTL
+    ],
+)
+def test_every_persisted_expiry_is_the_intended_utc_instant(store, admitted, expires):
+    when = ist(THU, *admitted)
+    desk = Desk(store, feed=Feed(when))
+    desk.running()
+    assert desk.config.order_ttl_seconds == 10
+    order = desk.buy(when)
+    assert order["expires_at"] == ist(THU, *expires)
+    # The stored wall time is UTC, which is what every reader assumes.
+    stored = _stored_expiry_wall_time(store, order["order_id"])
+    assert str(stored).startswith(ist(THU, *expires).strftime("%Y-%m-%d %H:%M:%S"))
+    assert order["created_at"] == when
+    assert order["eligible_at"] == when + timedelta(milliseconds=desk.config.latency_ms)
+
+
+def test_a_cutoff_expiry_survives_a_restart_and_expires_exactly_at_1445_ist(store):
+    desk = Desk(store, feed=Feed(ist(THU, 14, 44, 55)))
+    desk.running()
+    order = desk.buy(ist(THU, 14, 44, 55))
+    restarted = NiftyStore(store.engine)  # the process restarted: new objects, same files
+    restarted.initialize()
+    assert [row["order_id"] for row in restarted.pending_orders(USER)] == [order["order_id"]]
+    # One microsecond before 14:45 IST nothing expires, and no depth ever arrives.
+    restarted.expire_pending(USER, ist(THU, 14, 44, 59, 999999))
+    assert [row["order_id"] for row in restarted.pending_orders(USER)] == [order["order_id"]]
+    restarted.expire_pending(USER, ist(THU, 14, 45))
+    assert restarted.pending_orders(USER) == []
+    (row,) = [o for o in restarted.orders(USER, now=ist(THU, 14, 45, 1)) if o["side"] == "BUY"]
+    assert (row["status"], row["reason"]) == ("EXPIRED", "ORDER_TTL")
+    assert datetime.fromisoformat(row["expires_at"]) == ist(THU, 14, 45)
+    assert restarted.positions(USER) == []
+    assert D(restarted.account(USER, ist(THU, 14, 46))["equity"]) == D("20000")
 
 
 def _hold_scenario(store, open_at, **desk_options):
@@ -1027,23 +1088,84 @@ def test_exits_are_still_governed_by_the_real_session_when_the_calendar_says_clo
     assert fills == [] and len(store.positions(USER)) == 1  # waits, never invents a fill
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=pytest.fail.Exception,  # "DID NOT RAISE": the entry was admitted
-    reason="D-2 (OFFLINE_ACCEPTANCE_2026-11.md): entry_reasons has no buffer before an early close",
-)
-def test_an_entry_is_not_opened_inside_the_final_exit_buffer_of_an_early_close(store, monkeypatch):
+def _early_close(monkeypatch, close_hour, close_minute):
     window = {
         "start_ms": ist(THU, 9, 15).timestamp() * 1000,
-        "end_ms": ist(THU, 13, 0).timestamp() * 1000,
+        "end_ms": ist(THU, close_hour, close_minute).timestamp() * 1000,
     }
     monkeypatch.setattr(
         nifty_calendar, "_legacy_calendar", lambda: FakeCalendar(windows={THU: window})
     )
+
+
+def test_an_entry_is_not_opened_inside_the_final_exit_buffer_of_an_early_close(store, monkeypatch):
+    _early_close(monkeypatch, 13, 0)
     desk = Desk(store, feed=Feed(ist(THU, 12, 57)), session_close=time(13, 0))
     desk.running()
     with pytest.raises(OrderRefused):
         desk.buy(ist(THU, 12, 57))  # would be force-exited at 12:55, two minutes earlier
+
+
+@pytest.mark.parametrize(
+    ("clock", "admitted"),
+    [
+        ((12, 54, 59), True),  # last second before the mandatory exit at 12:55:00
+        ((12, 54, 59, 999999), True),
+        ((12, 55, 0), False),  # exactly close minus five minutes
+        ((12, 55, 1), False),
+        ((12, 59, 59), False),
+        ((13, 0, 0), False),  # the session itself is over
+    ],
+)
+def test_early_close_entry_buffer_boundary_is_exactly_five_minutes_before_the_close(
+    store, monkeypatch, clock, admitted
+):
+    _early_close(monkeypatch, 13, 0)
+    when = ist(THU, *clock)
+    desk = Desk(store, feed=Feed(when), session_close=time(13, 0))
+    desk.running()
+    if admitted:
+        order = desk.buy(when)
+        assert order["side"] == "BUY"
+        # The pending entry may not outlive the buffer either: the executor caps
+        # its expiry at the boundary, so it can never fill after 12:55:00.
+        assert order["expires_at"] == min(when + timedelta(seconds=10), ist(THU, 12, 55))
+    else:
+        with pytest.raises(OrderRefused) as refusal:
+            desk.buy(when)
+        assert "ENTRY_WINDOW" in refusal.value.reasons and store.pending_orders(USER) == []
+
+
+def test_an_entry_admitted_just_before_the_early_close_buffer_never_fills_inside_it(
+    store, monkeypatch
+):
+    _early_close(monkeypatch, 13, 0)
+    desk = Desk(store, feed=Feed(ist(THU, 12, 54, 59)), session_close=time(13, 0))
+    desk.running()
+    desk.buy(ist(THU, 12, 54, 59))
+    assert desk.process(ist(THU, 12, 55)) == []  # fresh depth, but the boundary was reached
+    (row,) = [o for o in store.orders(USER, now=ist(THU, 12, 55)) if o["side"] == "BUY"]
+    assert (row["status"], row["reason"]) == ("EXPIRED", "ORDER_TTL")
+    assert store.positions(USER) == []
+    assert store.pending_orders(USER) == []
+
+
+def test_an_early_close_buffer_does_not_block_the_exit_of_a_held_position(store, monkeypatch):
+    _early_close(monkeypatch, 13, 0)
+    desk = Desk(store, feed=Feed(ist(THU, 12, 30)), session_close=time(13, 0))
+    desk.running()
+    desk.enter(ist(THU, 12, 30))  # held 26 minutes, well inside the 45-minute limit
+    desk.stamp(ist(THU, 12, 56))  # inside the buffer: a new entry is refused, an exit is not
+    assert len(desk.exe.monitor_exits(ist(THU, 12, 56))) == 1
+    assert desk.process(ist(THU, 12, 56, 1))[0]["status"] == "FILLED"
+    assert store.trades(USER)[0]["reason"] == "SESSION_EXIT" and store.positions(USER) == []
+
+
+def test_a_normal_full_day_entry_window_is_unchanged_by_the_exit_buffer(store):
+    # A 15:40 close puts the buffer at 15:35, long after the 14:45 entry cutoff.
+    desk = Desk(store, feed=Feed(ist(THU, 14, 44, 59)), session_close=time(15, 40))
+    desk.running()
+    assert desk.buy(ist(THU, 14, 44, 59))["expires_at"] == ist(THU, 14, 45)
 
 
 def test_a_position_carried_over_a_session_boundary_is_closed_on_the_next_open(store):

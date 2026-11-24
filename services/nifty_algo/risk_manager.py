@@ -1,10 +1,14 @@
 """NIFTY sizing, entry gates and Decimal option-premium protection adapters."""
 
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from .contract_resolver import liquid
+
+# Mirrors the five-minute boundary of ``protection.mandatory_exit_reason``.
+SESSION_EXIT_BUFFER = timedelta(minutes=5)
 
 
 @dataclass(frozen=True)
@@ -160,10 +164,20 @@ def plan_entry(account, candidates, config, confidence_score, charges, *, now=No
     )
 
 
-def entry_reasons(account, instrument, quote, now, config, *, session_open, data_healthy):
-    """Caller supplies native calendar and reconciled feature-ledger observations."""
+def entry_reasons(
+    account, instrument, quote, now, config, *, session_open, data_healthy, session_close=None
+):
+    """Caller supplies native calendar and reconciled feature-ledger observations.
+
+    ``session_close`` is the effective close from the market calendar window. On
+    a shortened session the mandatory exit falls ``SESSION_EXIT_BUFFER`` before
+    it, so an entry at or after that instant is refused: it could only be
+    force-exited at once, paying both sides of the charges. Omitted, only the
+    configured entry window applies (a normal day, where 14:45 comes first).
+    """
     local = now.astimezone(ZoneInfo("Asia/Kolkata"))
     reasons = []
+    before_exit_buffer = session_close is None or now < session_close - SESSION_EXIT_BUFFER
     checks = (
         (account.reconciled, "RECONCILIATION_REQUIRED"),
         (account.entries_enabled, "ENTRIES_PAUSED"),
@@ -172,7 +186,8 @@ def entry_reasons(account, instrument, quote, now, config, *, session_open, data
         (session_open, "SESSION_CLOSED"),
         (data_healthy, "DATA_UNAVAILABLE"),
         (
-            config.entry_after <= local.time().replace(tzinfo=None) < config.entry_before,
+            config.entry_after <= local.time().replace(tzinfo=None) < config.entry_before
+            and before_exit_buffer,
             "ENTRY_WINDOW",
         ),
         (

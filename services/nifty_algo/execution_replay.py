@@ -640,6 +640,7 @@ def _run(events, config, profit_lock, start, end):
             config,
             session_open=window[0] <= now < window[1],
             data_healthy=True,
+            session_close=window[1],
         )
         if blocks:
             for code in blocks:
