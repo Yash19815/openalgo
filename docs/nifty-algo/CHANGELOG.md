@@ -1,5 +1,31 @@
 # NIFTY ALGO changelog
 
+## 0.6.0 — 2026-11-24 (unreleased)
+
+### Feature
+
+- Complete typed native analysis/execution recording, isolated deterministic
+  financial A/B/C replay, immutable multi-session definitions and verified
+  explicit recording archive/restore. Unsupported evidence continues to refuse P&L.
+- Add authoritative PAPER versus independent Shadow comparisons, non-additive
+  mirrors, recorded fill quality, protection coverage and approval-only research
+  suggestions with existing ledger drilldowns and private exports.
+- Add durable notification heartbeats, provider-bucket scheduling, bounded
+  trailing/research digests, definite-dead-letter operator replay and deferred
+  ephemeral report commands with verified owned PDF attachments.
+- Apply the owner-approved OI cap within the existing volume contribution.
+  All five selector weights and risk/strategy parameters remain unchanged.
+
+### Fix
+
+- Refuse future or corrupt replay evidence, unsupported identities, unobserved
+  protection periods and unsafe split boundaries. Preserve unknown financial
+  metrics and delivery outcomes instead of substituting zero or retrying blindly.
+- Keep notification health reads on one released DB session; isolate provider
+  and research work from trading protection. Extend offline regression and CI
+  coverage. External feeds, delivery, deployment and forward PAPER remain
+  acceptance requirements; no live-readiness claim is made.
+
 ## 0.5.0 — 2026-11-23 (unreleased)
 
 ### Fix

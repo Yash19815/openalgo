@@ -7,8 +7,10 @@ uncertain-outcome behavior.
 
 from datetime import UTC, timedelta
 
+from pydantic import ValidationError
 from sqlalchemy import and_, func, or_, select
 
+from database.nifty_notification_ops import NotificationOperations
 from services.nifty_algo.discord_bot import (
     DiscordSettings,
     event_projection,
@@ -17,7 +19,7 @@ from services.nifty_algo.discord_bot import (
 )
 
 
-class NotificationStore:
+class NotificationStore(NotificationOperations):
     def project_shadow_notifications(self, user_id, now):
         from database.nifty_algo_db import (
             NiftyDiscordSettings,
@@ -135,12 +137,22 @@ class NotificationStore:
             row = db.get(NiftyDiscordSettings, user_id)
             if row is None:
                 return None
-            settings = DiscordSettings.model_validate(row.configuration)
+            try:
+                settings = DiscordSettings.model_validate(row.configuration)
+                invalid = False
+            except ValidationError:
+                # A stored row that no longer validates (for example every
+                # authorization removed) must not crash readers or the worker.
+                # It is reported invalid and never treated as verified.
+                settings = DiscordSettings.model_construct(**dict(row.configuration or {}))
+                invalid = True
             result = {
                 "revision": row.revision,
+                "invalid": invalid,
                 "configuration": settings.model_dump(mode="json"),
                 "token_configured": bool(row.token_encrypted),
-                "verified": row.verified_revision == row.revision
+                "verified": not invalid
+                and row.verified_revision == row.revision
                 and bool((row.verification or {}).get("ready")),
                 "verification": row.verification,
                 "updated_at": _instant(row.updated_at),
@@ -274,6 +286,9 @@ class NotificationStore:
             ).all()
             count = 0
             for event in events:
+                if event.kind in ("trailing_stop_updated", "TRAILING_STOP_UPDATED"):
+                    cursor.event_id = event.id
+                    continue  # Routine changes use the independently checkpointed digest.
                 incident = (
                     db.get(NiftySafetyIncident, event.payload.get("id"))
                     if event.kind.startswith("safety_")
@@ -449,11 +464,51 @@ class NotificationStore:
             row.status = "DEAD" if outcome == "RETRY" and row.attempts >= 5 else outcome
             row.updated_at = now
             delay = min(86400, max(1, int(result.get("retry_after", min(3600, 2**row.attempts)))))
+            # Bucket evidence is bounded and sanitized by the transport. Missing
+            # scope on legacy/mock 429 results retains the conservative global hold.
+            bucket = result.get("bucket")
+            bucket_delay = result.get("bucket_retry_after")
+            if isinstance(bucket, str) and bucket_delay:
+                from database.nifty_algo_db import NiftyDiscordBucket
+
+                until = now + timedelta(seconds=min(86400, max(1, int(bucket_delay))))
+                settings = db.get(NiftyDiscordSettings, user_id)
+                channels = settings.configuration.get("channels", {}) if settings else {}
+                channel = channels.get(row.destination)
+                destinations = {row.destination} | {
+                    name
+                    for name, value in channels.items()
+                    if channel is not None and value == channel
+                }
+                for destination in destinations:
+                    limited = db.get(NiftyDiscordBucket, (user_id, destination))
+                    if limited is None:
+                        db.add(
+                            NiftyDiscordBucket(
+                                user_id=user_id,
+                                destination=destination,
+                                bucket=bucket[:128],
+                                blocked_until=until,
+                            )
+                        )
+                    else:
+                        limited.bucket = bucket[:128]
+                        limited.blocked_until = max(
+                            limited.blocked_until.replace(tzinfo=UTC), until
+                        )
             if row.status == "RETRY":
                 row.next_at = now + timedelta(seconds=delay)
                 config = db.get(NiftyDiscordSettings, user_id)
-                if config is not None:
-                    config.rate_limit_until = row.next_at
+                if (
+                    config is not None
+                    and row.destination != "email_fallback"
+                    and result.get("global", True)
+                ):
+                    config.rate_limit_until = (
+                        max(config.rate_limit_until.replace(tzinfo=UTC), row.next_at)
+                        if config.rate_limit_until
+                        else row.next_at
+                    )
             db.add(
                 NiftyNotificationAttempt(
                     user_id=user_id,
@@ -467,8 +522,9 @@ class NotificationStore:
                 self._notification_fallback(db, row, now)
             return True
 
-    def notification_health(self, user_id):
+    def notification_health(self, user_id, now=None):
         from database.nifty_algo_db import (
+            NiftyDiscordReportRequest,
             NiftyNotificationAttempt,
             NiftyNotificationDelivery,
             _instant,
@@ -488,7 +544,17 @@ class NotificationStore:
                 .order_by(NiftyNotificationAttempt.id.desc())
                 .limit(50)
             ).all()
+            from datetime import datetime
+
             return {
+                "worker": self._notification_worker_health(db, user_id, now or datetime.now(UTC)),
+                "private_report_counts": dict(
+                    db.execute(
+                        select(NiftyDiscordReportRequest.status, func.count())
+                        .where(NiftyDiscordReportRequest.user_id == user_id)
+                        .group_by(NiftyDiscordReportRequest.status)
+                    ).all()
+                ),
                 "counts": counts,
                 "attempts": [
                     {

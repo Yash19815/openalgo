@@ -10,6 +10,10 @@ vi.mock('./api', () => ({
   readAnalyticsPdf: api.pdf,
 }))
 
+// The comparison view has its own tests and its own error state; isolating it keeps
+// this file's single-alert assertions about the primary PAPER evidence meaningful.
+vi.mock('./ComparativeAnalytics', () => ({ ComparativeAnalytics: () => null }))
+
 const evidence = {
   mode: 'PAPER',
   opening_realized_equity: '20000',

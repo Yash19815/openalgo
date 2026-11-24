@@ -308,7 +308,9 @@ class NiftyPaperExecutor:
                     "decision_id": intent.get("decision_id"),
                     "configuration_id": config.version_id,
                     "evaluated_at": now.isoformat(),
-                    "policy": "risk-approved-weighted-v1",
+                    "policy": sizing.ranking[0]["policy"]
+                    if sizing.ranking
+                    else "risk-approved-weighted-v2-oi",
                     "ranking": list(sizing.ranking),
                     "rejections": [
                         {"token": token, "lots": lots, "reason": reason}

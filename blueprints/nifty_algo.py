@@ -3,7 +3,7 @@
 from datetime import UTC, date, datetime, time, timedelta
 from hashlib import sha256
 from io import BytesIO
-from json import loads
+from json import dumps, loads
 from re import fullmatch
 from zoneinfo import ZoneInfo
 
@@ -434,7 +434,12 @@ def opportunities():
 @nifty_algo_bp.after_request
 def recording_cache_policy(response):
     if request.path.startswith(
-        ("/api/nifty-algo/research/recordings", "/api/nifty-algo/research/experiments")
+        (
+            "/api/nifty-algo/research/recordings",
+            "/api/nifty-algo/research/experiments",
+            "/api/nifty-algo/research/comparisons",
+            "/api/nifty-algo/analytics/comparison",
+        )
     ):
         response.headers["Cache-Control"] = "private, no-store"
     return response
@@ -700,6 +705,98 @@ def experiment_replay(experiment_id):
     except ValueError:
         return jsonify(status="error", message="Replay evidence or clock failed verification"), 409
     return success(data)
+
+
+@nifty_algo_bp.route("/research/comparisons", methods=["POST"])
+@check_session_validity
+def create_execution_comparison():
+    body = _recording_body()
+    if (
+        not isinstance(body, dict)
+        or set(body) != {"confirm", "sources", "configuration", "train_end", "validation_end"}
+        or body["confirm"] != "DEFINE_RESEARCH_ONLY"
+    ):
+        return jsonify(status="error", message="Confirm a pinned research-only comparison"), 400
+    try:
+        result = store().create_execution_comparison(
+            session["user"],
+            body["sources"],
+            body["configuration"],
+            datetime.fromisoformat(body["train_end"]),
+            datetime.fromisoformat(body["validation_end"]),
+            datetime.now(UTC),
+        )
+    except (ValueError, KeyError, TypeError):
+        return jsonify(
+            status="error", message="Invalid sealed evidence or comparison boundaries"
+        ), 400
+    return success(result), 201
+
+
+@nifty_algo_bp.route("/research/experiments/<experiment_id>/execution", methods=["GET", "POST"])
+@check_session_validity
+def execution_comparison(experiment_id):
+    if fullmatch(r"[a-f0-9]{32}", experiment_id) is None or request.args:
+        return jsonify(status="error", message="Invalid experiment identity"), 400
+    try:
+        if store().experiment(session["user"], experiment_id) is None:
+            return jsonify(status="error", message="Experiment not found"), 404
+        if request.method == "POST":
+            if _recording_body() != {"confirm": "REPLAY_RESEARCH_ONLY"}:
+                return jsonify(status="error", message="Confirm research-only replay"), 400
+            result = store().queue_execution_research(
+                session["user"], experiment_id, datetime.now(UTC)
+            )
+        else:
+            result = store().execution_research(session["user"], experiment_id)
+    except ValueError:
+        return jsonify(status="error", message="Research result failed verification"), 409
+    return success(result)
+
+
+@nifty_algo_bp.route("/research/recordings/<recording_id>/<action>", methods=["POST"])
+@check_session_validity
+def recording_retention(recording_id, action):
+    if fullmatch(r"[a-f0-9]{32}", recording_id) is None or action not in ("archive", "restore"):
+        return jsonify(status="error", message="Invalid recording retention action"), 400
+    expected = "ARCHIVE_SEALED_EVIDENCE" if action == "archive" else "RESTORE_ARCHIVED_EVIDENCE"
+    if _recording_body() != {"confirm": expected}:
+        return jsonify(
+            status="error", message="Explicit evidence-retention confirmation required"
+        ), 400
+    try:
+        method = store().archive_recording if action == "archive" else store().restore_recording
+        result = method(session["user"], recording_id, datetime.now(UTC))
+    except LookupError:
+        return jsonify(status="error", message="Recording not found"), 404
+    except (ValueError, OSError):
+        return jsonify(status="error", message="Sealed archive evidence failed verification"), 409
+    return success(result)
+
+
+@nifty_algo_bp.route("/research/recordings/archives")
+@check_session_validity
+def recording_archives():
+    return success({"items": store().archived_recordings(session["user"]), "storage": "ARCHIVED"})
+
+
+@nifty_algo_bp.route("/research/recordings/<recording_id>/archive")
+@check_session_validity
+def recording_archive_download(recording_id):
+    if fullmatch(r"[a-f0-9]{32}", recording_id) is None:
+        return jsonify(status="error", message="Invalid archive identity"), 400
+    try:
+        bundle = store().load_archived_recording(session["user"], recording_id)
+        if bundle is None:
+            return jsonify(status="error", message="Archive not found"), 404
+        return send_file(
+            BytesIO(dumps(bundle, sort_keys=True, separators=(",", ":")).encode()),
+            mimetype="application/json",
+            as_attachment=True,
+            download_name=f"nifty-recording-{recording_id}.json",
+        )
+    except (ValueError, OSError):
+        return jsonify(status="error", message="Archive failed integrity verification"), 409
 
 
 _REPORT_FIELDS = (
@@ -970,6 +1067,107 @@ def analytics_snapshot():
             code="INVALID_ANALYTICS_PERIOD",
             message="Use ISO dates, a period of 1 to 366 days, limit 1 to 100 and offset 0 to 5000.",
         ), 400
+
+
+@nifty_algo_bp.route("/analytics/comparison")
+@check_session_validity
+def analytics_comparison():
+    from zoneinfo import ZoneInfo
+
+    if set(request.args) - {"start", "end", "side", "reason", "format"}:
+        return jsonify(status="error", message="Invalid comparison filters"), 400
+    try:
+        today = datetime.now(ZoneInfo("Asia/Kolkata")).date()
+        start = datetime.combine(
+            date.fromisoformat(request.args.get("start", (today - timedelta(days=30)).isoformat())),
+            time(),
+            ZoneInfo("Asia/Kolkata"),
+        )
+        end = datetime.combine(
+            date.fromisoformat(request.args.get("end", (today + timedelta(days=1)).isoformat())),
+            time(),
+            ZoneInfo("Asia/Kolkata"),
+        )
+        data = store().comparative_analytics(
+            session["user"],
+            start,
+            end,
+            side=request.args.get("side") or None,
+            reason=request.args.get("reason") or None,
+        )
+        if request.args.get("format") == "pdf":
+            from services.nifty_algo.reports import render_pdf
+
+            sections = []
+            for mode in ("paper", "independent_shadow"):
+                metrics = data[mode]["metrics"]
+                sections.append(
+                    (
+                        mode.replace("_", " ").upper(),
+                        [
+                            [k, str(metrics[k]) if metrics is not None else "Unavailable"]
+                            for k in (
+                                "trades",
+                                "fills",
+                                "total_gross",
+                                "costs",
+                                "total_net",
+                                "maximum_drawdown",
+                            )
+                        ],
+                        "Independent modes; never add mirrors or research returns to PAPER capital.",
+                    )
+                )
+            sections.append(
+                (
+                    "Evidence and suggestions",
+                    [
+                        ["Mirrors (non-additive)", str(data["mirrors"]["total"])],
+                        [
+                            "Shadow outcomes unavailable",
+                            str(data["independent_shadow"]["unavailable_outcomes"]),
+                        ],
+                    ],
+                    "Sampled extrema are not continuous extremes. Quotes describe modeled PAPER fills, not broker execution.",
+                )
+            )
+            quality = data["paper"]["quality"]
+            sections.append(
+                (
+                    "Recorded execution quality",
+                    [
+                        [mode + ": " + key, str(value) if value is not None else "Unavailable"]
+                        for mode in ("entry", "exit", "protection")
+                        for key, value in quality[mode].items()
+                    ],
+                    "Recorded PAPER fills only; no broker execution claim.",
+                )
+            )
+            sections.append(
+                (
+                    "Evidence-based research suggestions",
+                    [
+                        [s["code"], s["message"], str(s["evidence_count"])]
+                        for s in quality["suggestions"]
+                    ],
+                    "Explicit approval required; no automatic strategy changes.",
+                )
+            )
+            response = send_file(
+                BytesIO(render_pdf("NIFTY comparative analytics", sections, datetime.now(UTC))),
+                mimetype="application/pdf",
+                as_attachment=True,
+                download_name="nifty-comparative-analytics.pdf",
+            )
+            response.headers["Cache-Control"] = "private, no-store"
+            return response
+        if request.args.get("format") not in (None, "json"):
+            raise ValueError("Invalid export format")
+        return success(data)
+    except AnalyticsDataError:
+        return jsonify(status="error", message="Comparative evidence failed reconciliation"), 422
+    except (ValueError, TypeError, OverflowError):
+        return jsonify(status="error", message="Invalid comparative period or filters"), 400
 
 
 def _calendar_response(version):

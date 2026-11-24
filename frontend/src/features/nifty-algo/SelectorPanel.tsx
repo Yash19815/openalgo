@@ -85,6 +85,14 @@ export function SelectorPanel() {
                     ['Planned loss (Rs)', row.planned_loss],
                     ['Projected net reward (Rs)', row.projected_net_reward],
                     ['Delta coverage', row.coverage.delta ? 'Available' : 'Unavailable'],
+                    [
+                      'Open-interest coverage',
+                      row.coverage.open_interest
+                        ? 'Available: caps volume contribution'
+                        : 'Unavailable: volume contribution earns zero',
+                    ],
+                    ['Recorded open interest', row.inputs?.open_interest ?? 'Unavailable'],
+                    ['OI-capped volume', row.inputs?.oi_capped_volume ?? 'Unavailable'],
                     ...Object.entries(row.scores).map(([name, score]): [string, string] => [
                       name,
                       score,

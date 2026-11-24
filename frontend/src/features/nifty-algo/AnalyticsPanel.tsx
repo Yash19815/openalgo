@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { niftyKeys, readAnalyticsPdf, readNifty } from './api'
+import { ComparativeAnalytics } from './ComparativeAnalytics'
 import { Facts, Panel, text } from './parts'
 import { RealizedCurve } from './RealizedCurve'
 
@@ -139,6 +140,7 @@ export function AnalyticsPanel() {
   })
   return (
     <Panel title="Realized paper analytics">
+      <ComparativeAnalytics start={period.start} end={period.end} />
       {selectedTrade !== null && (
         <TradeEvidence tradeId={selectedTrade} onClose={() => setSelectedTrade(null)} />
       )}

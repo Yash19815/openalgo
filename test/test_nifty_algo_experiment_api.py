@@ -64,7 +64,13 @@ def test_experiment_controls_freeze_recording_settings_not_active_settings(clien
     listing = client.get(URL)
     assert listing.status_code == 200
     assert listing.json["data"]["items"] == [
-        {key: result[key] for key in ("id", "sha256", "created_at", "status", "execution_eligible")}
+        {
+            **{
+                key: result[key]
+                for key in ("id", "sha256", "created_at", "status", "execution_eligible")
+            },
+            "execution_bundle": False,
+        }
     ]
     assert "snapshot" not in listing.json["data"]["items"][0]
 
@@ -157,7 +163,12 @@ def test_experiment_reads_select_only_and_list_does_not_load_snapshots(client, s
     event.listen(store.engine, "before_cursor_execute", observe)
     try:
         listing = client.get(URL)
-        assert all("SNAPSHOT" not in statement for statement in statements)
+        # Only the scalar schema version may be read from the snapshot column, never the blob.
+        assert all(
+            "SNAPSHOT"
+            not in statement.replace("JSON_EXTRACT(NIFTY_ALGO_RESEARCH_EXPERIMENT.SNAPSHOT, ?)", "")
+            for statement in statements
+        )
         detail = client.get(f"{URL}/{result['id']}")
     finally:
         event.remove(store.engine, "before_cursor_execute", observe)

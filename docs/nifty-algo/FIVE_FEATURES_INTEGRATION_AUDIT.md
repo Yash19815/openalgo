@@ -1,5 +1,12 @@
 # Five Features Integration Audit
 
+> 24 November 2026 completion supersedes the software-gap descriptions below:
+> typed evidence and isolated A/B/C replay, verified archive/restore, comparative
+> ledger analytics, notification operations/private reports and the approved OI
+> cap are implemented. See [current readiness](ADVANCED_FEATURES_READINESS.md)
+> and [current test evidence](ADVANCED_FEATURES_TESTING.md). Linux verification
+> is delegated to GitHub CI; earlier Linux and browser results are historical.
+
 > Current continuation status (23 November 2026): weighted quantity proposals,
 > trade inspection/exit sampling, causal evidence playback and a dedicated
 > Discord REST bot are now integrated. Final NIFTY gates pass 744 tests on each

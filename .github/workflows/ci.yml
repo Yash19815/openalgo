@@ -81,6 +81,12 @@ jobs:
             test/test_flow_scheduler_resilience.py \
             test/test_latency_groups.py \
             -v --timeout=60
+      - name: Run offline NIFTY and notification regressions
+        run: |
+          uv run pytest test/test_nifty_algo_*.py \
+            test/test_smtp_error_messages.py test/test_smtp_certificate_verification.py \
+            test/test_requirements_parity.py -o addopts='' -q --timeout=120 \
+            --basetemp="${{ runner.temp }}/nifty-tests" -p no:cacheprovider
 
   # The web server launcher, booted for real. install/openalgo-gunicorn.sh is
   # what an opted-in Ubuntu service and the gthread Docker start run, and it

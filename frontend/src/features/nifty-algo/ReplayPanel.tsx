@@ -3,7 +3,9 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { type ExperimentSummary, inspectExperiment, niftyKeys, readNifty } from './api'
+import { ExecutionComparison } from './ExecutionComparison'
 import { Panel } from './parts'
+import { ResearchOperations } from './ResearchOperations'
 
 interface Inspection {
   sha256: string
@@ -22,6 +24,7 @@ interface ReplayPage {
     sequence: number
     available_at: string
     source_time: string
+    kind?: 'QUOTE' | 'FRAME' | 'LEDGER'
     payload: { token: string; bid: string | null; ask: string | null }
   }[]
 }
@@ -58,11 +61,14 @@ export function ReplayPanel() {
   const validClock = clock !== '' && Number.isFinite(Date.parse(`${clock}Z`))
   const current =
     request?.id === id && request?.clock === clock && !page.isError ? page.data : undefined
+  const bundle = experiments.data?.items.find((item) => item.id === id)?.execution_bundle === true
   return (
     <Panel title="Historical Replay Lab">
+      <ResearchOperations />
       <p className="nifty-muted">
-        RESEARCH only. Replays sealed quote evidence by receipt availability. This dataset has no
-        futures/PCR history; financial backtesting and three-way returns remain unavailable.
+        RESEARCH only. Replays sealed evidence by receipt availability. Financial results require
+        validated futures, PCR, spot, candidate metadata and executable depth. Missing evidence
+        stays unavailable.
       </p>
       <label htmlFor="nifty-replay-experiment">Experiment</label>
       <select
@@ -89,92 +95,112 @@ export function ReplayPanel() {
       {experiments.isPending && <output>Loading experiments...</output>}
       {id && (
         <>
-          <Button
-            variant="outline"
-            disabled={create.isPending || create.isError || experiments.isError}
-            onClick={() => create.mutate()}
-          >
-            Inspect and save dataset coverage
-          </Button>
-          {create.isError && (
-            <p role="alert">
-              Inspection outcome unavailable. Inspect saved results before retrying.
+          <ExecutionComparison key={id} id={id} />
+          {bundle ? (
+            <p>
+              Multi-session bundle: use the isolated comparison worker above. Inspect individual
+              recordings for raw evidence.
             </p>
-          )}
-          {inspection.isError && (
-            <p role="alert">Saved research result unavailable or failed verification.</p>
-          )}
-          {!inspection.isError && inspection.data && (
+          ) : (
             <>
-              <p>
-                {inspection.data.result.fidelity}: {inspection.data.result.samples} quote samples
-              </p>
-              <p>
-                Immutable result hash:{' '}
-                <code style={{ overflowWrap: 'anywhere' }}>{inspection.data.sha256}</code>
-              </p>
-              <ul>
-                {Object.entries(inspection.data.result.split_counts).map(([split, count]) => (
-                  <li key={split}>
-                    {split}: {count} samples
-                  </li>
-                ))}
-              </ul>
-              <p>
-                Full execution refused: {inspection.data.result.full_execution_refused.join(', ')}
-              </p>
-              <ul>
-                {inspection.data.result.variants.map((variant) => (
-                  <li key={variant.name}>
-                    {variant.name}: {variant.status}; no performance calculated
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-          <label htmlFor="nifty-replay-clock">Replay clock (UTC)</label>
-          <Input
-            id="nifty-replay-clock"
-            type="datetime-local"
-            value={clock}
-            onChange={(event) => {
-              setClock(event.target.value)
-              setRequest(null)
-            }}
-          />
-          <Button
-            variant="outline"
-            disabled={!validClock || page.isFetching || experiments.isError}
-            onClick={() => setRequest({ id, clock, after: 0 })}
-          >
-            Start evidence replay
-          </Button>
-          {page.isFetching && <output>Verifying and reading recorded evidence...</output>}
-          {page.isError && (
-            <p role="alert">Replay unavailable. Clock or stored evidence failed validation.</p>
-          )}
-          {current && (
-            <>
-              <p>
-                Quote evidence only. No orders, fills, realized returns or active settings changes.
-              </p>
-              <ul>
-                {current.items.map((item) => (
-                  <li key={item.sequence}>
-                    #{item.sequence} {item.payload.token}: bid {item.payload.bid ?? 'Unavailable'} /
-                    ask {item.payload.ask ?? 'Unavailable'}; source {item.source_time}; available{' '}
-                    {item.available_at}
-                  </li>
-                ))}
-              </ul>
-              {!current.items.length && <p>No further evidence available at this clock.</p>}
               <Button
                 variant="outline"
-                disabled={!current.items.length || page.isFetching}
-                onClick={() => setRequest({ id, clock, after: current.next_after })}
+                disabled={create.isPending || create.isError || experiments.isError}
+                onClick={() => create.mutate()}
               >
-                Step next evidence page
+                Inspect and save dataset coverage
               </Button>
+              {create.isError && (
+                <p role="alert">
+                  Inspection outcome unavailable. Inspect saved results before retrying.
+                </p>
+              )}
+              {inspection.isError && (
+                <p role="alert">Saved research result unavailable or failed verification.</p>
+              )}
+              {!inspection.isError && inspection.data && (
+                <>
+                  <p>
+                    {inspection.data.result.fidelity}: {inspection.data.result.samples} quote
+                    samples
+                  </p>
+                  <p>
+                    Immutable result hash:{' '}
+                    <code style={{ overflowWrap: 'anywhere' }}>{inspection.data.sha256}</code>
+                  </p>
+                  <ul>
+                    {Object.entries(inspection.data.result.split_counts).map(([split, count]) => (
+                      <li key={split}>
+                        {split}: {count} samples
+                      </li>
+                    ))}
+                  </ul>
+                  <p>
+                    Full execution refused:{' '}
+                    {inspection.data.result.full_execution_refused.join(', ')}
+                  </p>
+                  <ul>
+                    {inspection.data.result.variants.map((variant) => (
+                      <li key={variant.name}>
+                        {variant.name}: {variant.status}; no performance calculated
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              <label htmlFor="nifty-replay-clock">Replay clock (UTC)</label>
+              <Input
+                id="nifty-replay-clock"
+                type="datetime-local"
+                value={clock}
+                onChange={(event) => {
+                  setClock(event.target.value)
+                  setRequest(null)
+                }}
+              />
+              <Button
+                variant="outline"
+                disabled={!validClock || page.isFetching || experiments.isError}
+                onClick={() => setRequest({ id, clock, after: 0 })}
+              >
+                Start evidence replay
+              </Button>
+              {page.isFetching && <output>Verifying and reading recorded evidence...</output>}
+              {page.isError && (
+                <p role="alert">Replay unavailable. Clock or stored evidence failed validation.</p>
+              )}
+              {current && (
+                <>
+                  <p>
+                    Quote evidence only. No orders, fills, realized returns or active settings
+                    changes.
+                  </p>
+                  <ul>
+                    {current.items.map((item) => (
+                      <li key={item.sequence}>
+                        #{item.sequence}{' '}
+                        {item.kind && item.kind !== 'QUOTE' ? (
+                          `${item.kind} observation`
+                        ) : (
+                          <>
+                            {item.payload.token}: bid {item.payload.bid ?? 'Unavailable'} / ask{' '}
+                            {item.payload.ask ?? 'Unavailable'}
+                            {`; source ${item.source_time}; available ${item.available_at}`}
+                          </>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  {!current.items.length && <p>No further evidence available at this clock.</p>}
+                  <Button
+                    variant="outline"
+                    disabled={!current.items.length || page.isFetching}
+                    onClick={() => setRequest({ id, clock, after: current.next_after })}
+                  >
+                    Step next evidence page
+                  </Button>
+                </>
+              )}
             </>
           )}
         </>

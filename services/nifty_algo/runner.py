@@ -162,7 +162,14 @@ class NiftyRunner:
             decision = (
                 self.assessment(config, now)
                 if self.assessment
-                else assess_current(key, config, now, native=self.native, observation_only=False)
+                else assess_current(
+                    key,
+                    config,
+                    now,
+                    native=self.native,
+                    observation_only=False,
+                    evidence_sink=self._record_analysis_frame,
+                )
             )
             self.assessed_configuration_id = config.version_id
             self.last_assessed_at = now
@@ -697,8 +704,8 @@ class NiftyRunner:
             if not self._recording_feed_current(context, write_now):
                 return None
             if not observations:
-                return manifest
-            return self.store.append_recording(
+                return self._capture_execution_observations(manifest, context, floor, write_now)
+            saved = self.store.append_recording(
                 self.user_id,
                 manifest["id"],
                 observations,
@@ -707,9 +714,142 @@ class NiftyRunner:
                 deduplicate_samples=True,
                 runner_owner=self.owner,
             )
+            return self._capture_execution_observations(saved, context, floor, write_now)
         except Exception as exc:
             logger.warning("NIFTY recording capture skipped: %s", type(exc).__name__)
             return None
+
+    def _capture_execution_observations(self, manifest, context, floor, now):
+        tokens = {i["token"] for i in context["scope"]["instruments"]}
+        observations = [
+            o
+            for o in self.store.execution_observations(self.user_id, floor, now)
+            if o["payload"]["token"] in tokens
+        ]
+        remaining = manifest["max_observations"] - manifest["count"]
+        if (
+            not observations
+            or remaining <= 0
+            or not self._recording_feed_current(context, self.clock())
+        ):
+            return manifest
+        return self.store.append_recording(
+            self.user_id,
+            manifest["id"],
+            observations[:remaining],
+            now,
+            expected_count=manifest["count"],
+            deduplicate_samples=True,
+            runner_owner=self.owner,
+        )
+
+    def _record_analysis_frame(self, bars, windows, pcr, decision, assessed_at):
+        """Entry-job research snapshot; cache/calendar only beyond existing history call."""
+        from datetime import timedelta
+
+        from .calendar import nifty_session
+        from .execution_replay import validate_frame
+        from .selection_scoring import POLICY
+
+        now = self.clock()
+        context = self.recording_feed
+        if not self._recording_feed_current(context, now):
+            return
+        manifest = next(
+            (
+                r
+                for r in self.store.recordings(self.user_id)
+                if r["status"] == "RECORDING"
+                and r["capture"] is not None
+                and datetime.fromisoformat(r["starts_at"])
+                <= now
+                < datetime.fromisoformat(r["ends_at"])
+            ),
+            None,
+        )
+        if manifest is None:
+            return
+        instruments = [Instrument.model_validate(i) for i in context["scope"]["instruments"]]
+        manifest = self.store.freeze_recording_scope(
+            self.user_id,
+            manifest["id"],
+            now,
+            instruments=instruments,
+            broker=context["scope"]["broker"],
+            runner_owner=self.owner,
+        )
+        today = now.astimezone(IST).date()
+        days = sorted(set(windows) | {today + timedelta(days=i) for i in range(11)})
+        calendars = [
+            c
+            for year in sorted({d.year for d in days})
+            if (c := self.store.approved_calendar_version(self.user_id, year)) is not None
+        ]
+        sessions = []
+        for day in days:
+            session = nifty_session(self.user_id, day, store=self.store)
+            calendar = next((c for c in calendars if c["year"] == day.year), None)
+            window = session["window"]
+            sessions.append(
+                {
+                    "date": day.isoformat(),
+                    "status": session["status"],
+                    "start": window[0].isoformat() if window else None,
+                    "end": window[1].isoformat() if window else None,
+                    "calendar_sha256": calendar["sha256"] if calendar else None,
+                }
+            )
+        spot_instrument, spot = self.native.recording_spot(now)
+        deadline = monotonic() + 0.25
+        quotes = []
+        for instrument in instruments:
+            if monotonic() >= deadline:
+                break
+            quote = self.native.recording_quote(instrument, now)
+            if quote is not None:
+                quotes.append(quote.model_dump(mode="json"))
+        analysis = {
+            k: v
+            for k, v in decision["analysis_instrument"].items()
+            if k not in ("master_freshness", "master_broker", "master_complete")
+        }
+        available_at = self.clock()
+        payload = validate_frame(
+            {
+                "analysis_instrument": analysis,
+                "minute_bars": [b.model_dump(mode="json") for b in bars],
+                "pcr": pcr.model_dump(mode="json") if pcr else None,
+                "pcr_available_at": now.isoformat() if pcr else None,
+                "spot": spot.model_dump(mode="json") if spot else None,
+                "spot_instrument": spot_instrument,
+                "instruments": [i.model_dump(mode="json") for i in instruments],
+                "quotes": quotes,
+                "sessions": sessions,
+                "calendars": calendars,
+                "decision": decision,
+                "configuration_id": decision["config_id"],
+                "selector_policy": POLICY,
+            },
+            available_at,
+        )
+        if not self._recording_feed_current(context, self.clock()):
+            return
+        self.store.append_recording(
+            self.user_id,
+            manifest["id"],
+            [
+                {
+                    "kind": "FRAME",
+                    "source": "NATIVE_FEED",
+                    "source_time": available_at.isoformat(),
+                    "available_at": available_at.isoformat(),
+                    "payload": payload,
+                }
+            ],
+            self.clock(),
+            expected_count=manifest["count"],
+            runner_owner=self.owner,
+        )
 
     def _capture_exit_studies(self, now):
         """Cache-only sampled research through the approved effective session close."""

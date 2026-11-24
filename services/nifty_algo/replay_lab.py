@@ -20,6 +20,8 @@ def experiment_cursor(store, user_id, experiment_id):
     if definition is None:
         raise LookupError("Experiment not found")
     dataset = definition["snapshot"]["dataset"]
+    if "recordings" in dataset:
+        raise ValueError("Multi-session bundles use the isolated execution comparison worker")
     cursor = recording_cursor(
         store,
         user_id,
@@ -43,6 +45,8 @@ def inspect_experiment(store, user_id, experiment_id):
         if not page["items"]:
             break
         for item in page["items"]:
+            if item["kind"] != "QUOTE":
+                continue  # Financial replay consumes frames through its separate evidence gate.
             samples += 1
             quote = item["payload"]
             token = quote["token"]

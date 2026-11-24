@@ -154,6 +154,53 @@ class NiftyNotificationAttempt(Base):
     created_at = Column(DateTime(timezone=True), nullable=False)
 
 
+class NiftyNotificationWorker(Base):
+    __tablename__ = "nifty_algo_notification_worker"
+    user_id = Column(String(255), primary_key=True)
+    owner = Column(String(32), nullable=False)
+    status = Column(String(32), nullable=False)
+    heartbeat_at = Column(DateTime(timezone=True), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class NiftyDiscordBucket(Base):
+    __tablename__ = "nifty_algo_discord_bucket"
+    user_id = Column(String(255), primary_key=True)
+    destination = Column(String(32), primary_key=True)
+    bucket = Column(String(128), nullable=False)
+    blocked_until = Column(DateTime(timezone=True), nullable=False)
+
+
+class NiftyNotificationDigest(Base):
+    __tablename__ = "nifty_algo_notification_digest"
+    user_id = Column(String(255), primary_key=True)
+    kind = Column(String(16), primary_key=True)
+    cursor = Column(Integer, nullable=False)
+    next_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class NiftyResearchNotificationSeen(Base):
+    __tablename__ = "nifty_algo_research_notification_seen"
+    user_id = Column(String(255), primary_key=True)
+    opportunity_id = Column(String(64), primary_key=True)
+
+
+class NiftyDiscordReportRequest(Base):
+    __tablename__ = "nifty_algo_discord_report_request"
+    user_id = Column(String(255), primary_key=True)
+    interaction_id = Column(String(20), primary_key=True)
+    application_id = Column(String(20), nullable=False)
+    token_encrypted = Column(String(2048))
+    payload = Column(JSON, nullable=False)
+    status = Column(String(16), nullable=False)
+    attempts = Column(Integer, nullable=False, default=0)
+    claim_token = Column(String(32))
+    claimed_until = Column(DateTime(timezone=True))
+    next_at = Column(DateTime(timezone=True), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    result = Column(JSON)
+
+
 class NiftyIncidentReminder(Base):
     __tablename__ = "nifty_algo_incident_reminder"
     user_id = Column(String(255), primary_key=True)
@@ -487,6 +534,29 @@ class NiftyResearchResult(Base):
     experiment_id = Column(String(32), primary_key=True)
     payload = Column(JSON, nullable=False)
     sha256 = Column(String(64), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class NiftyExecutionResearch(Base):
+    """Pure research job; no permission to mutate accounts or trading settings."""
+
+    __tablename__ = "nifty_algo_execution_research"
+    user_id = Column(String(255), primary_key=True)
+    experiment_id = Column(String(32), primary_key=True)
+    status = Column(String(16), nullable=False)
+    claim_token = Column(String(32))
+    claimed_until = Column(DateTime(timezone=True))
+    payload = Column(JSON)
+    sha256 = Column(String(64))
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class NiftyRecordingArchive(Base):
+    __tablename__ = "nifty_algo_recording_archive"
+    user_id = Column(String(255), primary_key=True)
+    recording_id = Column(String(32), primary_key=True)
+    sha256 = Column(String(64), nullable=False)
+    path = Column(String(255), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False)
 
 
@@ -1569,6 +1639,8 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
 
     def claim_notification(self, user_id, *, now, email_only=False):
         """Fence a single transport attempt. Expired dispatches cannot be replayed."""
+        from sqlalchemy import case
+
         now = self._notification_time(now)
         self.ensure_user(user_id)
         with self.sessions.begin() as db:
@@ -1599,11 +1671,27 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
                     NiftyNotificationDelivery.user_id == user_id,
                     NiftyNotificationDelivery.status.in_(("PENDING", "RETRY")),
                     NiftyNotificationDelivery.next_at <= now,
+                    ~NiftyNotificationDelivery.destination.in_(
+                        select(NiftyDiscordBucket.destination).where(
+                            NiftyDiscordBucket.user_id == user_id,
+                            NiftyDiscordBucket.blocked_until > now,
+                        )
+                    ),
                     NiftyNotificationDelivery.destination == "email_fallback"
                     if rate_limited or email_only
                     else True,
                 )
-                .order_by(NiftyNotificationDelivery.id)
+                .order_by(
+                    case(
+                        (
+                            NiftyNotificationDelivery.envelope["severity"].as_string()
+                            == "CRITICAL",
+                            0,
+                        ),
+                        else_=1,
+                    ),
+                    NiftyNotificationDelivery.id,
+                )
                 .limit(1)
             )
             if row is None:
@@ -2856,6 +2944,22 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
     @staticmethod
     def _protection_transitions(before, after, events):
         """Protection events persisted once, on the observation that changes state."""
+        if (
+            after.get("trailing_stop") is not None
+            and Decimal(after["stop_price"]) > Decimal(before["stop_price"])
+            and (
+                before.get("trailing_stop") is None
+                or Decimal(after["trailing_stop"]) > Decimal(before["trailing_stop"])
+            )
+        ):
+            yield (
+                "trailing_stop_updated",
+                {
+                    "stop_before": before["stop_price"],
+                    "stop_price": after["stop_price"],
+                    "source_time": after.get("last_source_time"),
+                },
+            )
         for event in events:
             kind = event.get("kind")
             transitioned = (
@@ -3845,7 +3949,7 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
             "id": row.id,
             "mode": "RESEARCH",
             "schema_version": 1,
-            "status": row.status,
+            "status": "SEALED" if row.status == "ARCHIVED" else row.status,
             "starts_at": _instant(row.starts_at),
             "ends_at": _instant(row.ends_at),
             "last_available_at": _instant(row.last_available_at) if row.last_available_at else None,
@@ -3877,7 +3981,10 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
                         NiftyResearchCapture.recording_id == NiftyResearchRecording.id,
                     ),
                 )
-                .where(NiftyResearchRecording.user_id == user_id)
+                .where(
+                    NiftyResearchRecording.user_id == user_id,
+                    NiftyResearchRecording.status != "ARCHIVED",
+                )
                 .order_by(NiftyResearchRecording.starts_at.desc(), NiftyResearchRecording.id)
                 .limit(20)
             ).all()
@@ -3906,10 +4013,22 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
             total = db.scalar(
                 select(func.count())
                 .select_from(NiftyResearchRecording)
-                .where(NiftyResearchRecording.user_id == user_id)
+                .where(
+                    NiftyResearchRecording.user_id == user_id,
+                    NiftyResearchRecording.status != "ARCHIVED",
+                )
             )
             if total >= 20:
                 raise ValueError("Recording quota reached; evidence is not automatically deleted")
+            catalogue = db.scalar(
+                select(func.count())
+                .select_from(NiftyResearchRecording)
+                .where(NiftyResearchRecording.user_id == user_id)
+            )
+            if catalogue >= 1000:
+                raise ValueError(
+                    "Archive catalogue quota reached; preserve and review existing evidence"
+                )
             state = db.get(NiftyState, user_id)
             configuration = StrategyConfig.model_validate(state.configuration).model_dump(
                 mode="json"
@@ -4031,7 +4150,14 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
                 frozen_at = datetime.fromisoformat(capture.payload["frozen_at"])
                 if any(
                     item["source"] != "NATIVE_FEED"
-                    or item["payload"]["token"] not in tokens
+                    or (
+                        item["kind"] in ("QUOTE", "LEDGER")
+                        and item["payload"]["token"] not in tokens
+                    )
+                    or (
+                        item["kind"] == "FRAME"
+                        and not {i["token"] for i in item["payload"]["instruments"]} <= tokens
+                    )
                     or datetime.fromisoformat(item["source_time"]) < frozen_at
                     for item in batch
                 ):
@@ -4161,6 +4287,19 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
                 as_of = as_of.astimezone(UTC)
             except (OverflowError, ValueError):
                 raise ValueError("Invalid recording page") from None
+        archive = self.load_archived_recording(user_id, recording_id)
+        if archive is not None:
+            rows = [
+                r
+                for r in archive["items"]
+                if r["sequence"] > after
+                and (as_of is None or datetime.fromisoformat(r["available_at"]) <= as_of)
+            ][:limit]
+            return {
+                "manifest": archive["manifest"],
+                "items": rows,
+                "next_after": rows[-1]["sequence"] if rows else after,
+            }
         with self.sessions() as db:
             row = db.get(NiftyResearchRecording, (user_id, recording_id))
             if row is None:
@@ -4199,6 +4338,12 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
             "execution_eligible": False,
             "performance": None,
             "limitations": [
+                "DEFINITION_ONLY",
+                "EXECUTION_REQUIRES_VALIDATED_EVIDENCE",
+                "PROVENANCE_NOT_AUTHENTICATED",
+            ]
+            if row.snapshot.get("schema_version") == 2
+            else [
                 "DEFINITION_ONLY",
                 "QUOTE_EVIDENCE_ONLY",
                 "PROVENANCE_NOT_AUTHENTICATED",
@@ -4285,6 +4430,9 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
                     NiftyResearchExperiment.id,
                     NiftyResearchExperiment.sha256,
                     NiftyResearchExperiment.created_at,
+                    NiftyResearchExperiment.snapshot["schema_version"]
+                    .as_integer()
+                    .label("schema_version"),
                 )
                 .where(NiftyResearchExperiment.user_id == user_id)
                 .order_by(NiftyResearchExperiment.created_at.desc(), NiftyResearchExperiment.id)
@@ -4297,6 +4445,7 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
                     "created_at": _instant(row.created_at),
                     "status": "DEFINED",
                     "execution_eligible": False,
+                    "execution_bundle": row.schema_version == 2,
                 }
                 for row in rows
             ]

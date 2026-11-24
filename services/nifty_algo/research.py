@@ -79,7 +79,8 @@ def recording_batch(rows, now):
         encoded = dumps(rows, allow_nan=False, sort_keys=True, separators=(",", ":")).encode()
     except (TypeError, ValueError, RecursionError):
         raise ValueError("Invalid recording batch") from None
-    if len(encoded) > 262144:
+    frame_batch = len(rows) == 1 and isinstance(rows[0], dict) and rows[0].get("kind") == "FRAME"
+    if len(encoded) > (1048576 if frame_batch else 262144):
         raise ValueError("Recording batch exceeds 256 KiB")
     fields = {"kind", "source_time", "available_at", "source", "payload"}
     result, previous, seen = [], None, set()
@@ -87,30 +88,46 @@ def recording_batch(rows, now):
         try:
             if not isinstance(row, dict) or set(row) != fields:
                 raise ValueError
-            if row["kind"] != "QUOTE" or row["source"] not in ("NATIVE_FEED", "IMPORT"):
+            if row["kind"] not in ("QUOTE", "FRAME", "LEDGER") or row["source"] not in (
+                "NATIVE_FEED",
+                "IMPORT",
+            ):
                 raise ValueError
             source = datetime.fromisoformat(row["source_time"])
             available = datetime.fromisoformat(row["available_at"])
-            quote = Quote.model_validate(row["payload"])
+            quote = Quote.model_validate(row["payload"]) if row["kind"] == "QUOTE" else None
             if (
                 source.tzinfo is None
                 or available.tzinfo is None
-                or source != quote.source_time
-                or not source <= quote.received_time <= available <= now
+                or (quote is not None and source != quote.source_time)
+                or not source <= (quote.received_time if quote else available) <= available <= now
                 or (previous is not None and available < previous)
-                or not quote.token
-                or not quote.provider
+                or (quote is not None and (not quote.token or not quote.provider))
             ):
                 raise ValueError
-        except (KeyError, TypeError, ValueError):
+            if row["kind"] == "LEDGER":
+                from .execution_replay import RecordedExecution
+
+                payload = RecordedExecution.model_validate(row["payload"]).model_dump(mode="json")
+                if payload.get("quote") is not None:
+                    q = Quote.model_validate(payload["quote"])
+                    if not q.source_time <= q.received_time <= source:
+                        raise ValueError("Recorded execution quote was not available at execution")
+            elif quote is None:
+                from .execution_replay import validate_frame
+
+                payload = validate_frame(row["payload"], available)
+            else:
+                payload = quote.model_dump(mode="json")
+        except (KeyError, TypeError, ValueError, RecursionError):
             # Do not echo validation errors containing untrusted payload values.
             raise ValueError("Invalid point-in-time quote evidence") from None
         normalized = {
-            "kind": "QUOTE",
+            "kind": row["kind"],
             "source_time": source.astimezone(UTC).isoformat(),
             "available_at": available.astimezone(UTC).isoformat(),
             "source": row["source"],
-            "payload": quote.model_dump(mode="json"),
+            "payload": payload,
         }
         content = dumps(normalized, sort_keys=True, separators=(",", ":")).encode()
         digest = sha256(content).hexdigest()
@@ -339,10 +356,14 @@ def signal_study(bars, config, start, end, *, session_opens, pcr_observations=()
 
 
 def options_replay(*args, **kwargs):
-    """Refuse a premium simulation until a validated historical quote model exists."""
-    raise ValueError(
-        "OPTION_REPLAY_UNAVAILABLE: timestamped option depth and verified metadata required"
-    )
+    """Run only an explicitly supplied, complete execution comparison tape."""
+    if len(args) != 4 or kwargs:
+        raise ValueError(
+            "OPTION_REPLAY_UNAVAILABLE: timestamped option depth and verified metadata required"
+        )
+    from .execution_replay import compare
+
+    return compare(*args)
 
 
 def experiment_snapshot(manifest, configuration, *, train_end, validation_end, now):
@@ -437,6 +458,12 @@ def recording_cursor(store, user_id, recording_id, *, expected_count, expected_s
         or fullmatch(r"[a-f0-9]{64}", expected_sha256) is None
     ):
         raise ValueError("Invalid replay identity")
+    if hasattr(store, "load_archived_recording"):
+        archive = store.load_archived_recording(user_id, recording_id)
+        if archive is not None:
+            from database.nifty_replay_storage import ArchivePages
+
+            store = ArchivePages(archive)
     page = store.recording_page(user_id, recording_id, limit=100)
     if page is None:
         raise ValueError("Recording not found")

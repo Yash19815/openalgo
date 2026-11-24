@@ -141,6 +141,45 @@ def register_discord_routes(bp):
                 message="Discord setup request failed; verify configuration and provider health",
             ), 502
 
+    @bp.route("/discord/failures")
+    @check_session_validity
+    def delivery_failures():
+        if set(request.args) - {"before"} or any(
+            len(request.args.getlist(k)) != 1 for k in request.args
+        ):
+            return jsonify(status="error", message="Invalid delivery cursor"), 400
+        try:
+            raw = request.args.get("before")
+            if raw is not None and (not raw.isascii() or not raw.isdecimal() or len(raw) > 18):
+                raise ValueError
+            return success(
+                store().notification_failures(session["user"], before=int(raw) if raw else None)
+            )
+        except ValueError:
+            return jsonify(status="error", message="Invalid delivery cursor"), 400
+
+    @bp.route("/discord/deliveries/<int:delivery_id>/replay", methods=["POST"])
+    @check_session_validity
+    def replay_delivery(delivery_id):
+        data = body()
+        if (
+            not isinstance(data, dict)
+            or set(data) != {"confirm", "expected_attempts"}
+            or data["confirm"] != "REPLAY_DEFINITELY_FAILED"
+        ):
+            return jsonify(status="error", message="Confirm a definite delivery failure"), 400
+        try:
+            result = store().replay_dead_notification(
+                session["user"], delivery_id, data["expected_attempts"], datetime.now(UTC)
+            )
+        except StateConflict:
+            raise
+        except LookupError:
+            return jsonify(status="error", message="Delivery not found"), 404
+        except ValueError:
+            return jsonify(status="error", message="Invalid delivery controls"), 400
+        return success(result)
+
     @bp.route("/discord/interactions/<application_id>", methods=["POST"])
     def discord_interaction(application_id):
         # This route alone is CSRF exempt. Ed25519 is mandatory, even for PING.

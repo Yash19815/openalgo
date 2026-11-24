@@ -1,6 +1,31 @@
 # NIFTY paper-trading readiness report
 
-## Corrective audit — 23 November 2026
+## Advanced-gap completion — 24 November 2026
+
+The remaining feature implementation is tracked in
+[ADVANCED_FEATURES_READINESS.md](ADVANCED_FEATURES_READINESS.md). It adds
+evidence-gated isolated execution replay and retention, comparative ledger
+analytics, notification operations/private reports, and the approved OI cap.
+Existing Phase 1–7 risk formulas, ₹20,000 capital, accounting and Live interlocks
+remain authoritative. This is not a new broad audit or a strategy rewrite.
+
+Current test evidence is recorded in
+[ADVANCED_FEATURES_TESTING.md](ADVANCED_FEATURES_TESTING.md). Earlier Linux counts
+below are historical. The owner explicitly deferred this working tree's Linux
+tests to GitHub CI; no local Linux regression result is claimed. Genuine broker
+data, historical option coverage, Discord/SMTP delivery, DigitalOcean operations
+and forward PAPER remain separate external acceptance requirements.
+
+Final frozen-source Windows result: **842 backend/SMTP/parity tests passed**;
+**97 frontend tests passed**. Both final suites report zero failed/skipped tests.
+TypeScript, production build, scoped formatting/lint and strict static gates pass.
+Overall acceptance remains **PARTIAL** because installed dependency consistency
+fails (`litellm` requires `filelock<4.0`, installed 4.2.4), the installed Node is
+outside the declared supported ranges, and Linux CI/external acceptance remain
+pending. No requested software gap is knowingly left unfinished. No dependency
+was installed, active strategy changed, live trade enabled, commit or push made.
+
+## Historical corrective audit — 23 November 2026
 
 The final scoped Linux regression matrix passes: **795 passed**. The clean
 worker suite passes **1,456 tests with three documentation skips**. The final

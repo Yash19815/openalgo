@@ -7,12 +7,12 @@ reservation and final fill validation remain authoritative.
 
 ## Scoring policy
 
-`risk-approved-weighted-v1` uses Decimal arithmetic. Each factor is in [0, 1];
+`risk-approved-weighted-v2-oi` uses Decimal arithmetic. Each factor is in [0, 1];
 the weighted total is in [0, 100]. `clamp(x)` means min(1, max(0, x)).
 
 | Factor | Default weight | Normalization |
 | --- | ---: | --- |
-| Liquidity | 30 | 0.75 × clamp(min(bid size, ask size) / quantity / 3) + 0.25 × clamp(volume / (3 × minimum volume)) |
+| Liquidity | 30 | 0.75 × clamp(min(bid size, ask size) / quantity / 3) + 0.25 × clamp(min(volume, fresh OI) / (3 × minimum volume)) |
 | Spread | 25 | clamp(1 − midpoint spread in basis points / maximum spread) |
 | Delta | 15 | clamp(1 − abs(abs(delta) − target) / max(target, 1 − target)) |
 | Net reward/risk | 20 | clamp(projected net reward / planned loss / 2) |
@@ -23,6 +23,13 @@ Missing, stale or directionally inconsistent Delta earns zero under its original
 candidate path remains usable without Greeks. The pre-existing explicit DELTA
 selection mode still requires trustworthy Greeks; this baseline limitation is
 not silently removed.
+
+The owner approved fresh OI capping the existing volume contribution. No new
+threshold or top-level weight was introduced. Missing OI contributes zero to
+that volume term; observed depth retains its existing 75% share of liquidity.
+OI uses the same validated source observation and freshness gates as the quote.
+Rankings expose OI availability, raw OI and the capped volume. This is a scoring
+input, not a substitute for the full-quantity depth and risk admission checks.
 
 Only pairs meeting existing loss, reward, funds, confidence lot limits and
 entry/exit displayed-depth requirements are scored. One-to-one reward/risk is

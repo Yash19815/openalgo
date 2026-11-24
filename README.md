@@ -484,6 +484,8 @@ The authenticated `/nifty-algo` workspace uses an isolated PAPER_ONLY ledger. Th
 
 The feature uses OpenAlgo's existing environment and authentication. Live remains blocked. Advanced selector, analytics, research and Discord setup are documented in the [advanced features readiness report](docs/nifty-algo/ADVANCED_FEATURES_READINESS.md). Discord uses encrypted server-side bot settings and a separate optional dispatcher: `uv run --no-sync python -m services.nifty_algo.notification_worker --user YOUR_USERNAME`. Existing Gmail reporting remains in place. See the [Discord setup guide](docs/nifty-algo/DISCORD_INTEGRATION.md) before starting delivery.
 
+Execution research runs only in a separate optional process: `uv run --no-sync python -m services.nifty_algo.replay_worker --user YOUR_USERNAME` (`--once` processes one queued definition). The Replay Lab pins owned recordings and shows evidence-gated A/B/C results; missing historical depth or signal data produces unavailable performance. Archive/restore controls preserve immutable experiment evidence. See [Historical Replay](docs/nifty-algo/HISTORICAL_REPLAY.md) for authenticated research endpoints, storage bounds and backup requirements. These additions use the existing environment and dependencies and never activate strategy settings or live orders. Local Linux testing is deferred to GitHub CI; the backend matrix includes the offline NIFTY and SMTP suites.
+
 ## Repo Activity
 
 ![Alt](https://repobeats.axiom.co/api/embed/0b6b18194a3089cb47ab8ae588caabb14aa9972b.svg "Repobeats analytics image")

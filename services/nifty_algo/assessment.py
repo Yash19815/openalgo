@@ -100,6 +100,7 @@ def assess_current(
     native=None,
     pcr_reader=None,
     observation_only=True,
+    evidence_sink=None,
 ):
     """Compute an explainable observation without creating an order intent.
 
@@ -199,4 +200,12 @@ def assess_current(
             },
         }
     )
+    if evidence_sink is not None:
+        # Research failures cannot change the assessed signal or trading controls.
+        try:
+            evidence_sink(bars, windows, pcr_result["pcr"], decision, now)
+        except Exception:
+            from utils.logging import get_logger
+
+            get_logger(__name__).warning("NIFTY assessment evidence was not recorded")
     return decision

@@ -54,7 +54,14 @@ export interface DiscordCenter {
     rate_limit_until: string | null
   } | null
   health: {
+    worker?: {
+      status: string
+      operational: boolean
+      heartbeat_at: string | null
+      expires_at?: string
+    }
     counts: Record<string, number>
+    private_report_counts?: Record<string, number>
     attempts: {
       delivery_id: number
       attempt: number
@@ -103,6 +110,45 @@ export async function inspectExperiment(id: string) {
   return response.data.data
 }
 
+export async function queueExecutionResearch(id: string) {
+  const response = await webClient.post(
+    `${base}/research/experiments/${encodeURIComponent(id)}/execution`,
+    { confirm: 'REPLAY_RESEARCH_ONLY' }
+  )
+  return response.data.data
+}
+
+export async function defineExecutionComparison(body: Record<string, unknown>) {
+  const response = await webClient.post(`${base}/research/comparisons`, {
+    ...body,
+    confirm: 'DEFINE_RESEARCH_ONLY',
+  })
+  return response.data.data
+}
+
+export async function recordingRetention(id: string, action: 'archive' | 'restore') {
+  const response = await webClient.post(
+    `${base}/research/recordings/${encodeURIComponent(id)}/${action}`,
+    { confirm: action === 'archive' ? 'ARCHIVE_SEALED_EVIDENCE' : 'RESTORE_ARCHIVED_EVIDENCE' }
+  )
+  return response.data.data
+}
+
+export async function replayDeadNotification(id: number, attempts: number) {
+  const response = await webClient.post(`${base}/discord/deliveries/${id}/replay`, {
+    confirm: 'REPLAY_DEFINITELY_FAILED',
+    expected_attempts: attempts,
+  })
+  return response.data.data
+}
+
+export async function readComparativePdf(params: string): Promise<Blob> {
+  const response = await webClient.get(`${base}/analytics/comparison?${params}&format=pdf`, {
+    responseType: 'blob',
+  })
+  return response.data
+}
+
 export async function readAnalyticsPdf(params: string): Promise<Blob> {
   const response = await webClient.get(`${base}/analytics.pdf?${params}`, { responseType: 'blob' })
   if (response.data.type !== 'application/pdf') throw new Error('PDF export unavailable')
@@ -136,7 +182,8 @@ export interface SelectorRecord {
         projected_net_reward: string
         total: string
         scores: Record<string, string>
-        coverage: { delta: boolean }
+        coverage: { delta: boolean; open_interest?: boolean; oi_policy?: string }
+        inputs?: { open_interest: number | null; oi_capped_volume: number }
       }[]
       rejections: { token: string | null; lots: number; reason: string }[]
     }
@@ -215,6 +262,7 @@ export interface ResearchRecording {
   size_bytes: number
   max_observations: number
   configuration_id: string
+  configuration?: Record<string, unknown>
   content_sha256: string
   sealed_at: string | null
   execution_eligible: false
@@ -250,6 +298,7 @@ export interface ExperimentSummary {
   created_at: string
   status: 'DEFINED'
   execution_eligible: false
+  execution_bundle?: boolean
 }
 
 export interface ExperimentDefinition extends ExperimentSummary {

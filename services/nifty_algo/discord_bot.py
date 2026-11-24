@@ -9,6 +9,7 @@ import math
 from datetime import UTC, datetime
 from json import dumps
 from re import fullmatch
+from urllib.parse import quote as quote_path
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -35,6 +36,15 @@ NO_MENTIONS = {"parse": [], "users": [], "roles": [], "replied_user": False}
 
 def snowflake(value):
     return isinstance(value, str) and fullmatch(r"[1-9][0-9]{16,19}", value) is not None
+
+
+def valid_interaction_token(value):
+    """Discord defines an opaque string, not a fixed alphabet; bound and encode it."""
+    return (
+        isinstance(value, str)
+        and 1 <= len(value) <= 512
+        and all(not char.isspace() and ord(char) >= 32 and ord(char) != 127 for char in value)
+    )
 
 
 class DiscordSettings(Model):
@@ -157,7 +167,12 @@ def event_projection(event, incident=None):
         detail = {"code": "OPERATOR_TEST"}
     elif kind in ("start", "pause", "stop", "kill-switch", "configuration", "mode_changed"):
         detail = {"revision": data.get("revision"), "control": kind}
-    elif kind in ("data_blocked", "reconciliation_blocked", "configuration_incompatible"):
+    elif kind in (
+        "data_blocked",
+        "reconciliation_blocked",
+        "configuration_incompatible",
+        "notification_worker_outage",
+    ):
         category, route = "WARNING", "system-warnings"
         # Provider exception text and configuration values are never projected.
         detail = {"code": kind.upper()}
@@ -328,6 +343,7 @@ class DiscordREST:
                 else {"data": {"payload_json": dumps(payload)}, "files": {"files[0]": attachment}}
             )
             response = self.request("POST", f"/channels/{channel}/messages", **arguments)
+            bucket = self._bucket_evidence(response)
             if len(response.content) > 1048576:
                 return {"outcome": "AMBIGUOUS", "code": "OVERSIZED_RESPONSE"}
             if response.status_code == 429:
@@ -338,6 +354,9 @@ class DiscordREST:
                     "outcome": "RETRY",
                     "code": "HTTP_429",
                     "retry_after": min(86400, max(1, math.ceil(seconds))),
+                    "global": bool(response.json().get("global", False)),
+                    "bucket_retry_after": min(86400, max(1, math.ceil(seconds))),
+                    "bucket": bucket.get("bucket", "UNIDENTIFIED_ROUTE"),
                 }
             if response.status_code in (200, 201):
                 message_id = response.json().get("id")
@@ -346,6 +365,7 @@ class DiscordREST:
                         "outcome": "DELIVERED",
                         "code": "HTTP_ACCEPTED",
                         "message_id": message_id,
+                        **bucket,
                     }
             if 400 <= response.status_code < 500:
                 return {"outcome": "DEAD", "code": "HTTP_" + str(response.status_code)}
@@ -353,6 +373,62 @@ class DiscordREST:
             return {"outcome": "AMBIGUOUS", "code": "REMOTE_OUTCOME_UNKNOWN"}
         except Exception:
             return {"outcome": "AMBIGUOUS", "code": "TRANSPORT_OUTCOME_UNKNOWN"}
+
+    @staticmethod
+    def _bucket_evidence(response):
+        bucket = response.headers.get("X-RateLimit-Bucket")
+        if not isinstance(bucket, str) or fullmatch(r"[A-Za-z0-9_.:-]{1,128}", bucket) is None:
+            return {}
+        try:
+            remaining = int(response.headers.get("X-RateLimit-Remaining", "1"))
+            delay = float(response.headers.get("X-RateLimit-Reset-After", "0"))
+            if remaining == 0 and math.isfinite(delay) and delay > 0:
+                return {
+                    "bucket": bucket,
+                    "bucket_retry_after": min(86400, max(1, math.ceil(delay))),
+                }
+        except (ValueError, TypeError):
+            pass
+        return {"bucket": bucket}
+
+    def edit_private_report(self, application_id, token, payload, attachment=None):
+        """Edit the already-ephemeral original; never create a public follow-up."""
+        if not snowflake(application_id) or not valid_interaction_token(token):
+            return {"outcome": "DEAD", "code": "INVALID_INTERACTION"}
+        try:
+            arguments = (
+                {"json": payload}
+                if attachment is None
+                else {
+                    "data": {
+                        "payload_json": dumps(
+                            {**payload, "attachments": [{"id": 0, "filename": attachment[0]}]}
+                        )
+                    },
+                    "files": {"files[0]": attachment},
+                }
+            )
+            response = self.request(
+                "PATCH",
+                f"/webhooks/{application_id}/{quote_path(token, safe='')}/messages/@original",
+                **arguments,
+            )
+            # Editing the original response is documented to answer 200 with the
+            # message; any other success code is not an acknowledgement we can rely on.
+            if response.status_code == 200:
+                return {"outcome": "DELIVERED", "code": "PRIVATE_REPORT_ACCEPTED"}
+            if response.status_code == 429:
+                seconds = float(response.json().get("retry_after", 30))
+                return {
+                    "outcome": "RETRY",
+                    "code": "HTTP_429",
+                    "retry_after": min(86400, max(1, math.ceil(seconds))),
+                }
+            if 400 <= response.status_code < 500:
+                return {"outcome": "DEAD", "code": "HTTP_" + str(response.status_code)}
+            return {"outcome": "AMBIGUOUS", "code": "PRIVATE_REPORT_UNKNOWN"}
+        except Exception:
+            return {"outcome": "AMBIGUOUS", "code": "PRIVATE_REPORT_UNKNOWN"}
 
 
 def private_response(content):
@@ -449,16 +525,5 @@ def command_response(store, user_id, settings, interaction, now):
         period = options[0].get("name") if len(options) == 1 else None
         if period not in ("daily", "monthly"):
             return private_response("Choose daily or monthly.")
-        reports = [
-            r
-            for r in store.reports(user_id)
-            if r["kind"] == ("MONTH_END" if period == "monthly" else "DAILY")
-            and r["generation_status"] == "GENERATED"
-        ]
-        result = {
-            "report": {k: reports[0].get(k) for k in ("id", "kind", "period_key", "sha256")}
-            if reports
-            else None,
-            "download": "Use the authenticated OpenAlgo Reports page.",
-        }
+        return store.defer_discord_report(user_id, settings, interaction, period, now)
     return private_response(dumps(result, default=str, separators=(",", ":")))

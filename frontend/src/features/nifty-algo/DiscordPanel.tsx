@@ -9,6 +9,7 @@ import {
   discordSetupAction,
   niftyKeys,
   readNifty,
+  replayDeadNotification,
   saveDiscordSettings,
 } from './api'
 import { Facts, Panel } from './parts'
@@ -31,6 +32,7 @@ export function DiscordPanel() {
   const [revision, setRevision] = useState<number | null>(null)
   const [token, setToken] = useState('')
   const [uncertain, setUncertain] = useState(false)
+  const [failureBefore, setFailureBefore] = useState<number | null>(null)
   const query = useQuery({
     queryKey: [...niftyKeys.all, 'discord'],
     queryFn: () => readNifty<DiscordCenter>('discord'),
@@ -60,8 +62,30 @@ export function DiscordPanel() {
     onSuccess: () => query.refetch(),
     onError: () => setUncertain(true),
   })
-  const busy = save.isPending || action.isPending
+  const replay = useMutation({
+    mutationFn: ({ id, attempts }: { id: number; attempts: number }) =>
+      replayDeadNotification(id, attempts),
+    retry: false,
+    onSuccess: async () => {
+      await Promise.all([query.refetch(), failures.refetch()])
+    },
+    onError: () => setUncertain(true),
+  })
+  const busy = save.isPending || action.isPending || replay.isPending
   const available = !query.isError && !query.isPending && !!query.data
+  const failures = useQuery({
+    queryKey: [...niftyKeys.all, 'discord-failures', failureBefore],
+    queryFn: () =>
+      readNifty<{
+        items: (DiscordCenter['deliveries'][number] & {
+          last_result?: { outcome: string; code: string } | null
+        })[]
+        next_before: number | null
+      }>(`discord/failures${failureBefore ? `?before=${failureBefore}` : ''}`),
+    enabled: available,
+    retry: false,
+    refetchInterval: 30_000,
+  })
   const stale = revision !== null && revision !== (settings?.revision ?? 0)
   const edit = () => {
     setDraft(settings ? structuredClone(settings.configuration) : blank())
@@ -89,8 +113,8 @@ export function DiscordPanel() {
         variant="outline"
         disabled={busy || query.isFetching}
         onClick={async () => {
-          const fresh = await query.refetch()
-          if (!fresh.isError) {
+          const [fresh, held] = await Promise.all([query.refetch(), failures.refetch()])
+          if (!fresh.isError && !held.isError) {
             setUncertain(false)
             setDraft(null)
             setRevision(null)
@@ -124,8 +148,11 @@ export function DiscordPanel() {
               ],
               [
                 'Worker',
-                'Separate notification process required; queue acceptance is not delivery',
+                query.data?.health?.worker
+                  ? `${query.data.health.worker.status}; ${query.data.health.worker.operational ? 'heartbeat current' : 'not operational'}`
+                  : 'Not started / heartbeat unavailable',
               ],
+              ['Worker heartbeat', query.data?.health?.worker?.heartbeat_at ?? 'Unavailable'],
             ]}
           />
           {settings?.verification?.errors.map((error) => (
@@ -292,6 +319,64 @@ export function DiscordPanel() {
               </li>
             ))}
           </ul>
+          <h3>Private report delivery</h3>
+          <Facts
+            rows={Object.entries(query.data?.health?.private_report_counts ?? {}).map(
+              ([key, value]) => [key, value]
+            )}
+          />
+          <h3>Dead letters and uncertain sends</h3>
+          <p>
+            Only definite delivery failures can be replayed. Ambiguous outcomes remain held to
+            prevent duplicate sends.
+          </p>
+          <ul aria-label="Dead letters and uncertain sends">
+            {!failures.isError &&
+              failures.data?.items?.map((r) => (
+                <li key={r.id}>
+                  #{r.id} {r.destination}: {r.status}; attempts {r.attempts}
+                  {r.last_result && (
+                    <span>
+                      {' '}
+                      {r.last_result.outcome}: {r.last_result.code}
+                    </span>
+                  )}
+                  {r.status === 'DEAD' && (
+                    <Button
+                      variant="outline"
+                      disabled={
+                        busy || uncertain || failures.isFetching || !settings?.verified || !!draft
+                      }
+                      onClick={() => replay.mutate({ id: r.id, attempts: r.attempts })}
+                    >
+                      Replay definite failure #{r.id}
+                    </Button>
+                  )}
+                </li>
+              ))}
+          </ul>
+          {failures.isError && (
+            <p role="alert">Failure history unavailable. Replay controls are blocked.</p>
+          )}
+          <Button
+            variant="outline"
+            disabled={failures.isFetching || busy}
+            onClick={() => {
+              setFailureBefore(null)
+              void failures.refetch()
+            }}
+          >
+            Refresh newest delivery failures
+          </Button>
+          <Button
+            variant="outline"
+            disabled={
+              !failures.data?.next_before || failures.isFetching || failures.isError || busy
+            }
+            onClick={() => setFailureBefore(failures.data?.next_before ?? null)}
+          >
+            Older delivery failures
+          </Button>
           <h3>Unresolved critical incidents</h3>
           <ul>
             {query.data?.incidents

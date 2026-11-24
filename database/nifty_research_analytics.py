@@ -5,11 +5,311 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
+from database.nifty_replay_storage import ReplayStorage
 from services.nifty_algo.ledger_analytics import fill_facts
 from services.nifty_algo.models import Instrument, Quote
 
 
-class ResearchAnalyticsStore:
+class ResearchAnalyticsStore(ReplayStorage):
+    def execution_observations(self, user_id, floor, now):
+        """SELECT-only capture; unlike orders(), this never expires an intent."""
+        from database.nifty_algo_db import NiftyOrder, NiftyPosition, NiftyProtection, _instant
+
+        observations = []
+        with self.sessions() as db:
+            fills = db.scalars(
+                select(NiftyOrder)
+                .where(
+                    NiftyOrder.user_id == user_id,
+                    NiftyOrder.status == "FILLED",
+                    NiftyOrder.resolved_at >= floor,
+                    NiftyOrder.resolved_at <= now,
+                )
+                .order_by(NiftyOrder.resolved_at.desc(), NiftyOrder.order_id)
+                .limit(4)
+            )
+            for row in fills:
+                if not row.payload.get("configuration_id"):
+                    continue
+                observations.append(
+                    {
+                        "kind": "LEDGER",
+                        "source": "NATIVE_FEED",
+                        "source_time": _instant(row.resolved_at),
+                        "available_at": now.isoformat(),
+                        "payload": {
+                            "mode": "PAPER",
+                            "event": "ENTRY_FILL" if row.side == "BUY" else "EXIT_FILL",
+                            "token": row.token,
+                            "entry_order_id": row.order_id
+                            if row.side == "BUY"
+                            else row.payload["entry_order_id"],
+                            "order_id": row.order_id,
+                            "quantity": row.quantity,
+                            "price": str(row.price),
+                            "fees": str(row.fees),
+                            "reason": row.payload.get("exit_reason"),
+                            "quote": row.payload.get("fill_observation"),
+                            "selector_policy": (
+                                (row.payload.get("sizing_plan") or {}).get("ranking") or [{}]
+                            )[0].get("policy"),
+                            "configuration_id": row.payload["configuration_id"],
+                        },
+                    }
+                )
+            positions = db.execute(
+                select(NiftyPosition, NiftyProtection)
+                .join(
+                    NiftyProtection,
+                    (NiftyProtection.user_id == user_id)
+                    & (NiftyProtection.token == NiftyPosition.token),
+                )
+                .where(NiftyPosition.user_id == user_id)
+                .limit(1)
+            ).all()
+            for row, protection in positions:
+                p = protection.payload
+                at = (
+                    datetime.fromisoformat(p["last_source_time"])
+                    if p.get("last_source_time")
+                    else None
+                )
+                if at is None or not floor <= at <= now:
+                    continue
+                observations.append(
+                    {
+                        "kind": "LEDGER",
+                        "source": "NATIVE_FEED",
+                        "source_time": at.isoformat(),
+                        "available_at": now.isoformat(),
+                        "payload": {
+                            "mode": "PAPER",
+                            "event": "PROTECTION",
+                            "token": row.token,
+                            "entry_order_id": row.entry_order_id,
+                            "quantity": row.quantity,
+                            "stop_price": p["stop_price"],
+                            "profit_floor_stop": p.get("profit_floor_stop"),
+                            "profit_lock_active": p.get("profit_lock_active", False),
+                            "reason": p.get("exit_reason"),
+                            "configuration_id": p["configuration_id"],
+                        },
+                    }
+                )
+        return observations
+
+    def comparative_analytics(self, user_id, start, end, *, side=None, reason=None):
+        from sqlalchemy import and_, func
+        from sqlalchemy.orm import aliased
+
+        from database.nifty_algo_db import (
+            NiftyExecutionResearch,
+            NiftyOrder,
+            NiftyResearchExperiment,
+            NiftyShadowPosition,
+            NiftyTrade,
+            _instant,
+        )
+        from services.nifty_algo.analytics import performance
+        from services.nifty_algo.execution_quality import fill_quality, summarize_quality
+        from services.nifty_algo.ledger_analytics import AnalyticsDataError
+
+        if side not in (None, "CE", "PE") or (
+            reason is not None and (not isinstance(reason, str) or not 1 <= len(reason) <= 64)
+        ):
+            raise ValueError("Invalid comparison filters")
+        authoritative = self.analytics_snapshot(user_id, start, end, limit=1)
+        entry, exit_order = aliased(NiftyOrder), aliased(NiftyOrder)
+        with self.sessions() as db:
+            rows = db.execute(
+                select(NiftyTrade, entry, exit_order)
+                .join(
+                    entry,
+                    and_(entry.user_id == user_id, entry.order_id == NiftyTrade.entry_order_id),
+                )
+                .join(
+                    exit_order,
+                    and_(
+                        exit_order.user_id == user_id,
+                        exit_order.order_id == NiftyTrade.exit_order_id,
+                    ),
+                )
+                .where(
+                    NiftyTrade.user_id == user_id,
+                    NiftyTrade.id <= authoritative["watermark"],
+                    NiftyTrade.closed_at >= start,
+                    NiftyTrade.closed_at < end,
+                )
+                .order_by(NiftyTrade.closed_at, NiftyTrade.id)
+                .limit(5001)
+            ).all()
+            if len(rows) > 5000:
+                raise AnalyticsDataError("Comparison exceeds 5000 fills")
+            paper, entries, exits, protections, details = [], {}, [], {}, []
+            unfiltered_net = Decimal(0)
+            for trade, buy, sell in rows:
+                journal, detail = fill_facts(trade, buy, sell)
+                unfiltered_net += Decimal(journal["net"])
+                if (side and journal["instrument"]["kind"] != side) or (
+                    reason and trade.reason != reason
+                ):
+                    continue
+                paper.append(journal)
+                entry_quality, exit_quality = fill_quality(buy), fill_quality(sell)
+                entries[buy.order_id] = entry_quality
+                exits.append(exit_quality)
+                protection = sell.payload.get("protection") or {}
+                protections[buy.order_id] = protection
+                if len(details) < 100:
+                    details.append(
+                        {**detail, "entry_quality": entry_quality, "exit_quality": exit_quality}
+                    )
+            if unfiltered_net != Decimal(authoritative["metrics"]["total_net"]):
+                raise AnalyticsDataError("Comparison does not reconcile with authoritative fills")
+            shadows = list(
+                db.scalars(
+                    select(NiftyShadowPosition)
+                    .where(
+                        NiftyShadowPosition.user_id == user_id,
+                        NiftyShadowPosition.closed_at >= start,
+                        NiftyShadowPosition.closed_at < end,
+                    )
+                    .order_by(NiftyShadowPosition.closed_at, NiftyShadowPosition.id)
+                    .limit(5001)
+                )
+            )
+            if len(shadows) > 5000:
+                raise AnalyticsDataError("Comparison exceeds 5000 shadow rows")
+            independent, mirrors, unavailable = [], [], 0
+            for row in shadows:
+                if (side and row.instrument["kind"] != side) or (
+                    reason and row.exit_reason != reason
+                ):
+                    continue
+                if not row.additive:
+                    mirrors.append(
+                        {
+                            "id": row.id,
+                            "net": str(row.net) if row.net is not None else None,
+                            "primary_entry_order_id": row.primary_entry_order_id,
+                            "additive": False,
+                        }
+                    )
+                    continue
+                if row.net is None or row.gross is None:
+                    unavailable += 1
+                    continue
+                fees = row.entry_fees + row.exit_fees if row.exit_fees is not None else None
+                if fees is None or row.gross - fees != row.net:
+                    raise AnalyticsDataError("Shadow costs do not reconcile")
+                independent.append(
+                    {
+                        "trade_id": str(row.id),
+                        "fill_id": str(row.id),
+                        "instrument": row.instrument,
+                        "quantity": row.quantity,
+                        "opened": _instant(row.opened_at),
+                        "closed": _instant(row.closed_at),
+                        "gross": str(row.gross),
+                        "charges": str(fees),
+                        "net": str(row.net),
+                        "planned_risk": (row.protection.get("sizing_plan") or {}).get(
+                            "planned_loss"
+                        ),
+                        "exit_reason": row.exit_reason,
+                    }
+                )
+            shadow_prior = db.scalar(
+                select(func.sum(NiftyShadowPosition.net)).where(
+                    NiftyShadowPosition.user_id == user_id,
+                    NiftyShadowPosition.additive == 1,
+                    NiftyShadowPosition.closed_at < start,
+                )
+            ) or Decimal(0)
+            experiments = db.execute(
+                select(NiftyExecutionResearch, NiftyResearchExperiment)
+                .join(
+                    NiftyResearchExperiment,
+                    and_(
+                        NiftyResearchExperiment.user_id == user_id,
+                        NiftyResearchExperiment.id == NiftyExecutionResearch.experiment_id,
+                    ),
+                )
+                .where(
+                    NiftyExecutionResearch.user_id == user_id,
+                    NiftyExecutionResearch.status == "COMPLETE",
+                )
+                .order_by(NiftyExecutionResearch.updated_at.desc())
+                .limit(20)
+            ).all()
+            comparisons = []
+            for result, definition in experiments:
+                splits = definition.snapshot["splits"]
+                included = all(
+                    start <= datetime.fromisoformat(s["start"])
+                    and datetime.fromisoformat(s["end"]) <= end
+                    for s in splits
+                )
+                if included:
+                    from services.nifty_algo.replay_lab import canonical_result
+
+                    if canonical_result(result.payload) != result.sha256:
+                        raise AnalyticsDataError("Research comparison integrity failed")
+                    comparisons.append(
+                        {
+                            "experiment_id": result.experiment_id,
+                            "sha256": result.sha256,
+                            "result": {
+                                **{k: v for k, v in result.payload.items() if k != "variants"},
+                                "variants": [
+                                    {
+                                        **variant,
+                                        "splits": [
+                                            {
+                                                k: v
+                                                for k, v in split.items()
+                                                if k not in ("trades", "rejections")
+                                            }
+                                            for split in variant["splits"]
+                                        ],
+                                    }
+                                    for variant in result.payload.get("variants", [])
+                                ],
+                            },
+                            "mode": "RESEARCH",
+                            "additive": False,
+                        }
+                    )
+        from services.nifty_algo.config import StrategyConfig
+
+        seed = StrategyConfig().virtual_capital
+        return {
+            "period": authoritative["period"],
+            "filters": {"side": side, "reason": reason},
+            "paper": {
+                "mode": "PAPER",
+                "metrics": performance(paper, authoritative["opening_realized_equity"]),
+                "details": details,
+                "details_truncated": len(paper) > 100,
+                "quality": summarize_quality(
+                    list(entries.values()), exits, list(protections.values())
+                ),
+            },
+            "independent_shadow": {
+                "mode": "HYPOTHETICAL_SHADOW",
+                "metrics": performance(independent, seed + shadow_prior)
+                if seed + shadow_prior > 0
+                else None,
+                "status": "AVAILABLE" if seed + shadow_prior > 0 else "DEPLETED_LEDGER",
+                "unavailable_outcomes": unavailable,
+            },
+            "mirrors": {"additive": False, "items": mirrors[:100], "total": len(mirrors)},
+            "replay_comparisons": comparisons,
+            "live": {"status": "UNAVAILABLE_LIVE_DISABLED"},
+            "combined_total": None,
+            "active_settings_changed": False,
+        }
+
     def shadow_selection(self, user_id, decision_id, configuration_id):
         from database.nifty_algo_db import NiftyShadowPosition, _instant
 
@@ -31,7 +331,7 @@ class ResearchAnalyticsStore:
             sizing = row.protection.get("sizing_plan") or {}
             return {
                 "evaluated_at": _instant(row.opened_at),
-                "policy": "risk-approved-weighted-v1",
+                "policy": (sizing.get("ranking") or [{}])[0].get("policy", "UNAVAILABLE"),
                 "ranking": sizing.get("ranking", []),
                 "rejections": sizing.get("rejections", []),
             }
@@ -129,6 +429,12 @@ class ResearchAnalyticsStore:
             detail["selection"] = entry.payload.get("sizing_plan")
             detail["entry_observation"] = entry.payload.get("fill_observation")
             detail["exit_observation"] = exit_order.payload.get("fill_observation")
+            from services.nifty_algo.execution_quality import fill_quality
+
+            detail["execution_quality"] = {
+                "entry": fill_quality(entry),
+                "exit": fill_quality(exit_order),
+            }
             detail["protection"] = protection
             events = db.scalars(
                 select(NiftyEvent)

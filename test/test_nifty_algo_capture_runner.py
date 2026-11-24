@@ -421,3 +421,68 @@ def test_shutdown_removes_capture_job_and_releases_context(store, monkeypatch):
     assert any(call.args[0].endswith(":capture") for call in scheduler.remove_job.call_args_list)
     assert runner.closed and runner.recording_feed is None
     assert app.extensions["nifty_algo_runners"] == {}
+
+
+def test_native_assessment_records_causal_analysis_without_trading_authority(store, feed):
+    from sqlalchemy import select
+
+    from database.nifty_algo_db import NiftyCalendarVersion
+    from services.nifty_algo.assessment import assess_current
+    from test.nifty_calendar_helpers import seed_nifty_calendar_dependencies
+    from test.test_nifty_algo_pipeline import minute_rows, session
+
+    seed_nifty_calendar_dependencies(store, USER, NOW.year)
+    # This historical fixture's approval existed before its market observations.
+    with store.sessions.begin() as db:
+        calendar = db.scalar(
+            select(NiftyCalendarVersion).where(NiftyCalendarVersion.user_id == USER)
+        )
+        calendar.approved_at = NOW - timedelta(days=30)
+    manifest = recording(store)
+    before = store.read(USER)
+    decision = assess_current(
+        "offline-fixture-only",
+        StrategyConfig(),
+        NOW,
+        native=feed.runner.native,
+        session_reader=session,
+        history_reader=lambda **kwargs: (True, {"status": "success", "data": minute_rows()}, 200),
+        evidence_sink=feed.runner._record_analysis_frame,
+    )
+    page = store.recording_page(USER, manifest["id"])
+    assert len(page["items"]) == 1
+    recorded = page["items"][0]
+    assert recorded["kind"] == "FRAME" and recorded["source"] == "NATIVE_FEED"
+    payload = recorded["payload"]
+    assert len(payload["minute_bars"]) > 1000
+    assert payload["pcr"] and payload["spot"] and payload["instruments"]
+    assert payload["decision"] == decision
+    assert payload["configuration_id"] == StrategyConfig().version_id
+    assert all(
+        q["source_time"] <= q["received_time"] <= recorded["available_at"]
+        for q in payload["quotes"]
+    )
+    assert store.read(USER) == before
+    assert store.pending_orders(USER) == [] and store.positions(USER) == []
+
+
+def test_research_sink_failure_does_not_change_signal_or_create_orders(store, feed):
+    from services.nifty_algo.assessment import assess_current
+    from test.test_nifty_algo_pipeline import minute_rows, session
+
+    arguments = {
+        "native": feed.runner.native,
+        "session_reader": session,
+        "history_reader": lambda **kwargs: (
+            True,
+            {"status": "success", "data": minute_rows()},
+            200,
+        ),
+    }
+    before = assess_current("offline-fixture-only", StrategyConfig(), NOW, **arguments)
+    broken = Mock(side_effect=OSError("controlled recording interruption"))
+    after = assess_current(
+        "offline-fixture-only", StrategyConfig(), NOW, evidence_sink=broken, **arguments
+    )
+    assert after == before and broken.call_count == 1
+    assert not store.pending_orders(USER) and not store.positions(USER)

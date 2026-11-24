@@ -3,12 +3,13 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { DiscordPanel } from './DiscordPanel'
 
-const api = vi.hoisted(() => ({ read: vi.fn(), save: vi.fn(), action: vi.fn() }))
+const api = vi.hoisted(() => ({ read: vi.fn(), save: vi.fn(), action: vi.fn(), replay: vi.fn() }))
 vi.mock('./api', async (original) => ({
   ...(await original<typeof import('./api')>()),
   readNifty: api.read,
   saveDiscordSettings: api.save,
   discordSetupAction: api.action,
+  replayDeadNotification: api.replay,
 }))
 
 const channels = [
@@ -63,9 +64,46 @@ function view() {
 }
 beforeEach(() => {
   vi.resetAllMocks()
-  api.read.mockResolvedValue(center())
+  api.read.mockImplementation(async (path: string) =>
+    path.startsWith('discord/failures') ? { items: [], next_before: null } : center()
+  )
   api.save.mockResolvedValue({ status: 'success' })
   api.action.mockResolvedValue({ status: 'success' })
+})
+
+it('shows worker outage, holds ambiguous deliveries and prevents uncertain replay retries', async () => {
+  const failures = [
+    { id: 11, destination: 'critical-alerts', status: 'DEAD', attempts: 3 },
+    { id: 12, destination: 'critical-alerts', status: 'AMBIGUOUS', attempts: 1 },
+  ]
+  api.read.mockImplementation(async (path: string) =>
+    path === 'discord/failures'
+      ? { items: failures, next_before: null }
+      : {
+          ...center(),
+          health: {
+            counts: { DEAD: 1, AMBIGUOUS: 1 },
+            attempts: [],
+            worker: { status: 'OUTAGE', operational: false, heartbeat_at: '2026-11-23T04:00:00Z' },
+          },
+          deliveries: [
+            { id: 11, destination: 'critical-alerts', status: 'DEAD', attempts: 3 },
+            { id: 12, destination: 'critical-alerts', status: 'AMBIGUOUS', attempts: 1 },
+          ],
+        }
+  )
+  api.replay.mockRejectedValue(new Error('response lost'))
+  view()
+  expect(await screen.findByText('OUTAGE; not operational')).toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Replay definite failure #12' })
+  ).not.toBeInTheDocument()
+  const button = await screen.findByRole('button', { name: 'Replay definite failure #11' })
+  await waitFor(() => expect(button).toBeEnabled())
+  fireEvent.click(button)
+  expect(await screen.findByRole('alert')).toHaveTextContent('Write outcome unavailable')
+  expect(api.replay).toHaveBeenCalledExactlyOnceWith(11, 3)
+  expect(button).toBeDisabled()
 })
 
 it('shows server-side credential status, unresolved incidents and all channel ID controls', async () => {

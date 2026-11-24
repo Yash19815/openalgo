@@ -234,6 +234,36 @@ class NativeDataAdapter:
         except (AttributeError, TypeError, ValueError, RuntimeError):
             return None
 
+    def recording_spot(self, now):
+        """Native source snapshot only; never use the display observation fallback."""
+        from .models import Quote
+
+        if self.market_data is None:
+            return None, None
+        instrument = next((r for r in self._instruments(now) if r["kind"] == "SPOT"), None)
+        if instrument is None:
+            return None, None
+        try:
+            raw = self.market_data.get_all_data("NIFTY", "NSE_INDEX").get("source_observations", {})
+            raw = raw.get("3") or raw.get("2") or raw.get("1")
+            if not isinstance(raw, dict):
+                return instrument, None
+            source, received = _timestamp(raw.get("ltt")), _timestamp(raw.get("received_time"))
+            price = _number(raw.get("ltp"), positive=True)
+            if source is None or received is None or price is None or not source <= received <= now:
+                return instrument, None
+            if not 0 <= (now - source).total_seconds() <= self.max_age:
+                return instrument, None
+            return instrument, Quote(
+                token=instrument["token"],
+                source_time=source,
+                received_time=received,
+                ltp=price,
+                provider="NATIVE_SOURCE_CACHE",
+            )
+        except (TypeError, ValueError, AttributeError):
+            return instrument, None
+
     def quote(self, instrument, now=None, max_age=None):
         """Read causal source fields, never display defaults, for PCR and selection."""
         from .models import Quote
