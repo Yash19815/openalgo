@@ -104,8 +104,10 @@ def test_cross_platform_runtime_suite_covers_windows_mac_and_arm64():
     assert not any(step.get("continue-on-error") for step in job["steps"])
 
 
-def test_images_are_built_only_after_the_new_jobs_pass():
-    needs = set(_jobs()["docker-build"]["needs"])
+def test_images_validate_immediately_but_publish_only_after_the_new_jobs_pass():
+    jobs = _jobs()
+    assert "needs" not in jobs["docker-build"]
+    needs = set(jobs["docker-publish"]["needs"])
     assert {
         "gunicorn-boot",
         "eventlet-fallback",
