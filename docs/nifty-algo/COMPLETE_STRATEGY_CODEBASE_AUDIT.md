@@ -9,8 +9,16 @@ this file. No recommendation below has been implemented.
 
 **Overall verdict: `PARTIALLY_MATCHES`.**
 
-**Audit coverage: `INCOMPLETE`** (19 of 4,055 tracked files read end to end; see
-sections B and S).
+**Audit coverage: `INCOMPLETE`** (36 of 4,055 tracked files read end to end
+after the second pass, including all 32 files in `services/nifty_algo/`; see
+sections B, S and U).
+
+**Second pass (section U):** the `fd-audit`, `security-review` and `code-review`
+skills were run over the NIFTY scope. They found no descriptor or memory leak
+(static check) and no security vulnerability at high confidence. The
+code-review added eight confirmed findings, F-22 and F-25 to F-31. The most
+relevant is F-26: the 3.2.0 MACD narrowing also lowers confidence scores. The
+verdict is unchanged.
 
 The core risk, timing, PAPER-ledger and live-order-isolation rules match the
 approved specification closely, and most of them are enforced twice: once at
@@ -76,15 +84,16 @@ offline data.
 
 | Status | Count | Share |
 |---|---:|---:|
-| `FULL_TEXT_REVIEWED` | 19 | 0.47% |
+| `FULL_TEXT_REVIEWED` | 36 | 0.89% |
 | `BINARY_INSPECTED` | 0 | 0% |
 | `GENERATED_ARTIFACT_REVIEWED` | 0 | 0% |
 | `ACCESS_BLOCKED` | 0 | 0% |
-| `NOT_REVIEWED` | 4,036 | 99.53% |
+| `NOT_REVIEWED` | 4,019 | 99.11% |
 | **Total** | **4,055** | 100% |
 
-Of the `NOT_REVIEWED` files, 10 were partly read (the line ranges are in the
-manifest notes). Several more NIFTY and shared files were searched with targeted
+These are the figures after the second pass. The first pass alone reviewed 19
+files. Of the `NOT_REVIEWED` files, several were partly read (the line ranges
+are in the manifest notes). Several more NIFTY and shared files were searched with targeted
 patterns but not read end to end. A search result is not a review, and none of
 those files is counted as reviewed.
 
@@ -136,7 +145,7 @@ Every tracked file is listed with its size and SHA-256 at HEAD (the working tree
 was clean). The review status is the one this audit earned; hashing a file is not
 a review.
 
-<!-- manifest rows: 4055; statuses: {'NOT_REVIEWED': 4036, 'FULL_TEXT_REVIEWED': 19} -->
+<!-- manifest rows: 4055; statuses: {'NOT_REVIEWED': 4019, 'FULL_TEXT_REVIEWED': 36} -->
 
 | Path | Type | Size (bytes) | SHA-256 | Classification | NIFTY relevance | Review status | Notes |
 |---|---|---:|---|---|---|---|---|
@@ -241,7 +250,7 @@ a review.
 | `NIFTY_INDICATOR_PARITY_AUDIT.md` | text | 46870 | 6c82dd07694dcf9afd1e725ab96ce92e418d4eff57bb162e4a849ed360dcfcb7 | documentation | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
 | `README.md` | text | 29429 | 05f96e3587059335baa402a587265db55aaaf3a1241987cf68be1baaed0cdaa2 | documentation | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
 | `SECURITY.md` | text | 2526 | 764874ae3c4fe3f3faa2f032ef291a62108f4c7e3c4dfdfb1e0d0655c7210a11 | documentation | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
-| `app.py` | text | 63164 | f92778541a9543529438f63b1efef8d54777f44364b8cb4343a079ee3ece397a | backend source (other) | INDIRECT | NOT_REVIEWED | PARTIAL: NIFTY registration and CSRF exemption lines via grep |
+| `app.py` | text | 63164 | f92778541a9543529438f63b1efef8d54777f44364b8cb4343a079ee3ece397a | backend source (other) | INDIRECT | NOT_REVIEWED | PARTIAL: NIFTY registration, CSRF exemptions and teardown (1105-1164) read |
 | `apply_nifty_report_recovery.py` | text | 14211 | c9ff7184932203a6324b1af14e3f949cc211963ea25f5c615722f04f3d77237d | backend source (other) | DIRECT | NOT_REVIEWED | PARTIAL: header and write sites only |
 | `apply_nifty_safety_fixes.py` | text | 9630 | fde68729bd20afca35caa80483dfecefd3c43c6bdab79e0649261b68b7d36eb2 | backend source (other) | DIRECT | NOT_REVIEWED | PARTIAL: header and write sites only |
 | `audit/BROKER_API_COMPATIBILITY.md` | text | 12248 | 1582147b30dc497823619ad0b2be841cb7f484f2f6b057ce9b428c974cce02ee | documentation | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
@@ -282,8 +291,8 @@ a review.
 | `blueprints/master_contract_status.py` | text | 9689 | 8cbcb2381b748d2b973c942b299e444783d423a8c7e22676463aeb5e60c246d4 | backend source | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
 | `blueprints/mcp_http.py` | text | 45517 | 75512e832a69be437918a07bdc1b4fe4813ec0729a082637965a5615d1e30a50 | backend source | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
 | `blueprints/mcp_oauth.py` | text | 41902 | ac13d5f03db4b28de356e2ecafd54f5530f35361ac350550b4cb511c1321a111 | backend source | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
-| `blueprints/nifty_algo.py` | text | 51746 | dd4adf231c095648693915f3a18dfa33e1e6a916284e3c45c6762b4cc3c852ae | backend source | DIRECT | NOT_REVIEWED | PARTIAL: lines 1-430 and 595-674 read; remaining routes listed by grep only |
-| `blueprints/nifty_discord.py` | text | 10490 | 5c4fce4dfa06d5961b7b93d83e7f8c1c9cf76a6d5b30012847807c6d8a07d5dc | backend source | DIRECT | NOT_REVIEWED | PARTIAL: route and CSRF lines via grep |
+| `blueprints/nifty_algo.py` | text | 51746 | dd4adf231c095648693915f3a18dfa33e1e6a916284e3c45c6762b4cc3c852ae | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
+| `blueprints/nifty_discord.py` | text | 10490 | 5c4fce4dfa06d5961b7b93d83e7f8c1c9cf76a6d5b30012847807c6d8a07d5dc | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
 | `blueprints/oiprofile.py` | text | 4736 | 31597c4a38291265d7da7f3a930ae8e2c04bcf5628979e653aca7ad61b4d5d1c | backend source | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
 | `blueprints/oitracker.py` | text | 4671 | f4347286666afd38c738c9edba176c8a88c48b93970db73a1ae78dcbcf9a3c89 | backend source | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
 | `blueprints/openscript.py` | text | 21285 | 8cf11ade17bc812f90e916e342191b899366e690e29ff27d7ceee40c88a28026 | backend source | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
@@ -1194,12 +1203,12 @@ a review.
 | `database/leverage_db.py` | text | 3356 | 877c4e3dbf3769cba62afed05b0d731d79e3e9d3826101e97ebe0c08126f6b40 | database/migration | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
 | `database/market_calendar_db.py` | text | 68341 | 4f0a327a5dca82fef62e71c6d8794fd1659ff0a353123c7d015ff69fcd7df0ef | database/migration | INDIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
 | `database/master_contract_cache_hook.py` | text | 8407 | 270c4eae03bfda22d06d38475feefba7e1c0a9f9dfea844fec9da38dfabfdbb8 | database/migration | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
-| `database/master_contract_status_db.py` | text | 12112 | bdea2bffbf7f7af2aa43c1f703b1a17c8a56a770658d76f23d2bb636282281cb | database/migration | INDIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
-| `database/nifty_algo_db.py` | text | 229131 | 8a2ff238b93432c1f900262f788075514c62783ba9af81854711b7e9b10ed15d | database/migration | DIRECT | NOT_REVIEWED | PARTIAL: lines 903-1122, 1748-1947, 2212-2991, 3154-3403 read; rest located by grep only |
+| `database/master_contract_status_db.py` | text | 12112 | bdea2bffbf7f7af2aa43c1f703b1a17c8a56a770658d76f23d2bb636282281cb | database/migration | INDIRECT | NOT_REVIEWED | PARTIAL: session lifecycle lines via grep |
+| `database/nifty_algo_db.py` | text | 229131 | 8a2ff238b93432c1f900262f788075514c62783ba9af81854711b7e9b10ed15d | database/migration | DIRECT | NOT_REVIEWED | PARTIAL: lines 1-3953 and 5095-5260 read; 3953-5095 (recordings, experiments, opportunities, report store) located by grep only |
 | `database/nifty_notification_ops.py` | text | 20025 | c1b1e22085d9a45d43340e4777f9e0ea74d8f57208a5c5bfd6e41e047cc73703 | database/migration | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
 | `database/nifty_notifications.py` | text | 27390 | f60c24057c8cb285cc524ecb6ab2d82566997a6023b63ba2dad1e35378eb9209 | database/migration | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
-| `database/nifty_replay_storage.py` | text | 17100 | 38f197881cf0b8e855894ede12a39201e9cf633f145eb595b081db38dca38ec0 | database/migration | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
-| `database/nifty_research_analytics.py` | text | 26228 | 68a2737b33fef724d2fdca5f12b02002eb08d1c65f8b90e158b0ec59a610b90d | database/migration | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
+| `database/nifty_replay_storage.py` | text | 17100 | 38f197881cf0b8e855894ede12a39201e9cf633f145eb595b081db38dca38ec0 | database/migration | DIRECT | NOT_REVIEWED | PARTIAL: lines 200-280 read |
+| `database/nifty_research_analytics.py` | text | 26228 | 68a2737b33fef724d2fdca5f12b02002eb08d1c65f8b90e158b0ec59a610b90d | database/migration | DIRECT | NOT_REVIEWED | PARTIAL: lines 385-535 read |
 | `database/oauth_db.py` | text | 10182 | 19f70abb1ccdaf5293c4bdbdb72aa64eabb58bbdc8417a0cb6b410c16ec66262 | database/migration | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
 | `database/qty_freeze_db.py` | text | 10965 | 281e253988cca263e5a4d726960d6445c8144df17a1de00b8af0d81abbf03c36 | database/migration | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
 | `database/sandbox_db.py` | text | 35708 | 3f16d8b9c0dcf756778632d537299ca992ac11f6afd7dcd81bfdd408c1aa5d2d | database/migration | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
@@ -1225,7 +1234,7 @@ a review.
 | `docs/CHANGELOG.md` | text | 195701 | 4b261a7824b850e04e4a9c60e89d4ff76a67578727e7d06a3694358de95e30f9 | documentation | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
 | `docs/HEALTH_MONITORING_IMPLEMENTATION.md` | text | 5851 | 87428f6b001893dff91338e447bb9e130c60957aa0b5e2076ee92798e036b0e7 | documentation | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
 | `docs/HEALTH_MONITOR_REACT_FRONTEND.md` | text | 3803 | 13ce2d1bcaf23f202bf8b048a63000b6481a58493460772727f78f72832ffd4e | documentation | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
-| `docs/INDEX.md` | text | 8273 | bb495e8c997a1f568674a51bb2f367a3d5d9ef4a1832afc1668f1b4811c4462b | documentation | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
+| `docs/INDEX.md` | text | 8370 | 7e98a6f48a3aad5b8931cf0d74ded3383c998449491d93f51a7c5d7c5ce8d38b | documentation | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
 | `docs/alerts.md` | text | 8556 | 79d59b4d37de250cf757004c00449b1aee9d37edc76ebebf42453f9b18cdaa12 | documentation | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
 | `docs/api/README.md` | text | 13830 | 0919393448f4608d603c6afb9f54a7f8078789b41bad018f3d2dd212741b2de2 | documentation | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
 | `docs/api/account-services/charges.md` | text | 14657 | 7c97daddeaaf499f222df068d51532358f02c58e1e5d348052ec529f2390fb94 | documentation | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
@@ -1441,7 +1450,7 @@ a review.
 | `docs/nifty-algo/FUTURE_ANGELONE_LIVE_PLAN.md` | text | 5003 | a84388b17a5404e20064f7a0bfd23b3be41595720238603b13f1660b00d2067e | documentation | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
 | `docs/nifty-algo/HISTORICAL_REPLAY.md` | text | 8207 | 3a09b98c861232a8d9252a2ba2ba0a3af82aefb02bda201c3157e0eb16db0c10 | documentation | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
 | `docs/nifty-algo/IMPLEMENTATION_PLAN.md` | text | 5731 | ac7eee5ec176e4d701ce35a67cede214fdc9d815885737300e7dd27ad0c30213 | documentation | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
-| `docs/nifty-algo/MACD_THREE_CANDLE_WINDOW_2026-11.md` | text | 7972 | 8faeb2d3f9e64833628d4aab7f1f3b91ef52bdff0234d10370db7e66707c0c1f | documentation | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
+| `docs/nifty-algo/MACD_THREE_CANDLE_WINDOW_2026-11.md` | text | 8119 | a04cf493c7836dd17eb105d269fcf507f021ad92c57cd7c8818b3e6aa5b105de | documentation | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
 | `docs/nifty-algo/MASTER_DESIGN.md` | text | 3365 | 8ba0513554e76b13ca828e6bfc51042679c063be671b27845ed8efc5bfb23639 | documentation | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
 | `docs/nifty-algo/MIGRATION_ANALYSIS.md` | text | 24868 | aa94be7113bf1520e52dddf9540215fe265dde0f8b1dc93e74bb97a2433db8ad | documentation | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
 | `docs/nifty-algo/OFFLINE_ACCEPTANCE_2026-11.md` | text | 36262 | 8ffb55a1ab81d7012553c7b725ca64c8ba568eef2436dd83b597536d9d9e6d5d | documentation | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
@@ -3380,34 +3389,34 @@ a review.
 | `services/modify_gtt_order_service.py` | text | 8552 | 3a6895ba527b0649f319c534f801968e78a87f63eac983351e1685812f8a7fa2 | backend source | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
 | `services/modify_order_service.py` | text | 11180 | 3d3a9e77a09314560dccd06919eea26bbe9ddaa3a4855bed4c224465aab2e808 | backend source | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
 | `services/multi_strike_oi_service.py` | text | 10237 | 98f30b09dbf93e8c59c6ce08d4737b4030256f65c43523a4d229bf25c19fa22c | backend source | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
-| `services/nifty_algo/__init__.py` | text | 68 | 14e22addb9b89d86086b8db3e308dab741fca972d50157e7f150a2ec36458e40 | backend source | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
-| `services/nifty_algo/analytics.py` | text | 8691 | 0bdb54522f3be782de319540d71643817df8aeb326f9c47398409b8d1e38316a | backend source | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
-| `services/nifty_algo/analytics_report.py` | text | 3323 | b0e740cc647299cea84120e9a393d5e590af1e8a75adfe2f3dbec251ec819350 | backend source | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
+| `services/nifty_algo/__init__.py` | text | 68 | 14e22addb9b89d86086b8db3e308dab741fca972d50157e7f150a2ec36458e40 | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
+| `services/nifty_algo/analytics.py` | text | 8691 | 0bdb54522f3be782de319540d71643817df8aeb326f9c47398409b8d1e38316a | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
+| `services/nifty_algo/analytics_report.py` | text | 3323 | b0e740cc647299cea84120e9a393d5e590af1e8a75adfe2f3dbec251ec819350 | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
 | `services/nifty_algo/assessment.py` | text | 8312 | 06a405984520af227b2ce5de1f7da05453b44e38eeb7c591d24e98d61120f7b0 | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
 | `services/nifty_algo/calendar.py` | text | 3433 | 98a85e56a682b100389bd640a8d6533d2f6b8879a9a0a65d1436fdbf9321cfa4 | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
-| `services/nifty_algo/calendar_import.py` | text | 11282 | 169b31de2fb767a67c65bbe0c918cb5879c268b4398516d34bda69868d63fcaa | backend source | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
+| `services/nifty_algo/calendar_import.py` | text | 11282 | 169b31de2fb767a67c65bbe0c918cb5879c268b4398516d34bda69868d63fcaa | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
 | `services/nifty_algo/confidence.py` | text | 3096 | 6e8c4cf52e69b83a6f3b632b16232a0c5b8d17415439de02d6863ba935e94b10 | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
-| `services/nifty_algo/config.py` | text | 13239 | a4bf3bca71bccb7b006cf5093368f29254ec3b18f277dc43f1ab74f60add10ce | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
+| `services/nifty_algo/config.py` | text | 13507 | e72e68b21ece543e04e4afa31493aa694f21f23716bf08a6c55afd831407b6ac | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
 | `services/nifty_algo/contract_resolver.py` | text | 16747 | 11c892599e5ab3e2617521510e4207483d42e6678fc3b7acbeb356fb6696eb43 | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
 | `services/nifty_algo/depth_quote.py` | text | 4451 | c86826cf86bbbdfb4971d9925fad630ac8216d0388cbd7068864a6bc26e70e87 | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
-| `services/nifty_algo/discord_bot.py` | text | 22650 | 22b278e2adc77cac485fe9df1f35435f5d8c0e378006776d9e4be3ec4745b279 | backend source | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
-| `services/nifty_algo/execution_quality.py` | text | 4865 | 469a1e0af456b559c6ac65bee89869d9f61b97aa9e872a1f46edae8959430da5 | backend source | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
-| `services/nifty_algo/execution_replay.py` | text | 31857 | 393f45fe4cbb55172cd67fa222be8058f544a8384f525616d1db0d45f7a84bc3 | backend source | DIRECT | NOT_REVIEWED | PARTIAL: lines 30-389 read |
+| `services/nifty_algo/discord_bot.py` | text | 22650 | 22b278e2adc77cac485fe9df1f35435f5d8c0e378006776d9e4be3ec4745b279 | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
+| `services/nifty_algo/execution_quality.py` | text | 4865 | 469a1e0af456b559c6ac65bee89869d9f61b97aa9e872a1f46edae8959430da5 | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
+| `services/nifty_algo/execution_replay.py` | text | 31857 | 393f45fe4cbb55172cd67fa222be8058f544a8384f525616d1db0d45f7a84bc3 | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
 | `services/nifty_algo/indicators.py` | text | 8020 | d8c0f2e41814c0c1e777ec505e1d314153f29885a02b048ae5fbcda513b1c277 | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
-| `services/nifty_algo/ledger_analytics.py` | text | 5434 | 64c416962429bb38fc23b09a003ff6a86ad0dd40b515314b7a9527b1c825bfff | backend source | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
+| `services/nifty_algo/ledger_analytics.py` | text | 5434 | 64c416962429bb38fc23b09a003ff6a86ad0dd40b515314b7a9527b1c825bfff | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
 | `services/nifty_algo/market_data.py` | text | 4641 | 916e97bb8dcc4170dea2a0ed4494ed5478badfd4c6e9687e6f1cfeae60d4645f | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
 | `services/nifty_algo/models.py` | text | 4185 | b49a97a64e48e8fa95f2d83be929b49abe9a20d95260eb5eb226361ae18cbd17 | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
 | `services/nifty_algo/native_data.py` | text | 16994 | 71c8aaeffd147450f12db847082dcba359f081e06cdeba20b17fd092b5fef2f6 | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
-| `services/nifty_algo/notification_worker.py` | text | 9918 | d8a01488bfa4b43d09de8914572a3ee49f746dc1b59273a7cfed20e55f4ecd09 | backend source | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
+| `services/nifty_algo/notification_worker.py` | text | 9918 | d8a01488bfa4b43d09de8914572a3ee49f746dc1b59273a7cfed20e55f4ecd09 | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
 | `services/nifty_algo/paper_executor.py` | text | 34369 | c0928dd2511a248b7f68df950b26311a5c4df2214e6555f2cdc1780c27b34258 | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
 | `services/nifty_algo/protection.py` | text | 14309 | 55cc3cb9815ac9c02292c4ab9d401c25595982991a588670baec96f6abac5145 | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
-| `services/nifty_algo/replay_lab.py` | text | 5659 | 23a9b5971a739187fc114321105210740344232e3571e5d7d5f03d56d79623ba | backend source | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
-| `services/nifty_algo/replay_worker.py` | text | 4271 | b6a0f1564339a3093cb8d8d4dafc12db943f0064f5b502b130b509e5f4b45a3a | backend source | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
-| `services/nifty_algo/reports.py` | text | 34723 | e1fbd330a3bba7e3431d8bccb70a4954d753902e2706cdbcd0eefebad25e5a0a | backend source | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
-| `services/nifty_algo/research.py` | text | 24661 | b57ff9028e64dace0e844dd2adcd826bce3504c7ca48efef4b71a58fddf6bae0 | backend source | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
+| `services/nifty_algo/replay_lab.py` | text | 5659 | 23a9b5971a739187fc114321105210740344232e3571e5d7d5f03d56d79623ba | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
+| `services/nifty_algo/replay_worker.py` | text | 4271 | b6a0f1564339a3093cb8d8d4dafc12db943f0064f5b502b130b509e5f4b45a3a | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
+| `services/nifty_algo/reports.py` | text | 34723 | e1fbd330a3bba7e3431d8bccb70a4954d753902e2706cdbcd0eefebad25e5a0a | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
+| `services/nifty_algo/research.py` | text | 24661 | b57ff9028e64dace0e844dd2adcd826bce3504c7ca48efef4b71a58fddf6bae0 | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
 | `services/nifty_algo/risk_manager.py` | text | 9734 | 04951e9edd53c5a339662ee057537ea5503bf87db48c2164c4380a4907f7076e | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
 | `services/nifty_algo/runner.py` | text | 45374 | 2757136a01016f830259550cbf4811e0040116a4c2e14da4c148adf4995b0590 | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
-| `services/nifty_algo/safe_logging.py` | text | 608 | 2e562b14ce4c4f53120d85c9a394742aced2c7abbbebdcf7be3cb427256de93f | backend source | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
+| `services/nifty_algo/safe_logging.py` | text | 608 | 2e562b14ce4c4f53120d85c9a394742aced2c7abbbebdcf7be3cb427256de93f | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
 | `services/nifty_algo/selection_scoring.py` | text | 3612 | d6aec94aff2658c7f39ac7ea75820bc5c6a4a855d04291d818ab910a3cdd488e | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
 | `services/nifty_algo/shadow.py` | text | 6409 | d5b073855d34e8a8aee6a413d65a73e2c63cd005d3e8254271f6c77c5a2e3d25 | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
 | `services/nifty_algo/signal_engine.py` | text | 9319 | ca2688e505a4fb069828d80c460b2eb93f96050752ebbb6d7ac5dd225cee1e3b | backend source | DIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
@@ -3888,7 +3897,7 @@ a review.
 | `test/test_nifty_algo_notification_outbox.py` | text | 9675 | bc2169670c64cde7405976dd62fdef945ef622261187fff4ab05eb6d5742bb3a | test | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
 | `test/test_nifty_algo_offline_acceptance.py` | text | 89661 | e7af3697ebef6591466e205a5cf8a6c91b19561f6b12f29435af54f7238de5f8 | test | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
 | `test/test_nifty_algo_paper_executor.py` | text | 12267 | 0553322926c66c076d82d2f67c74d365bd2225ec6e1c2fe570130ea18f538bb2 | test | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
-| `test/test_nifty_algo_phase1.py` | text | 26065 | 3fe3ae02e81406db6771a51e319b624bba41dadb6cd90bf65d230a6b98ac33a2 | test | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
+| `test/test_nifty_algo_phase1.py` | text | 26781 | 48684b1131528e1753116a6e71fa5aff46b8e30054f163c60c85fb0b55621225 | test | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
 | `test/test_nifty_algo_phase2.py` | text | 13868 | 888b37f70c8266a0d8bff9bc7393d9e8655838153ffdc5acbb24c731a4c3d8bc | test | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
 | `test/test_nifty_algo_phase3b.py` | text | 11957 | 2ff62d56c385c019b19b8bdc5fef6f774261aa5ba3387504bdeb730f5ca6022c | test | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
 | `test/test_nifty_algo_phase4.py` | text | 28030 | 03ac81d4ed7f53c2c00d91c38e37ec8ecbf84034e8fc4a06942b16d3ce120c96 | test | DIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
@@ -4131,7 +4140,7 @@ a review.
 | `utils/broker_switch.py` | text | 6079 | af634666d3a19ba0cc69c9ce566bfcaa2d2c34c517620b83805e267f853373e8 | backend source | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
 | `utils/config.py` | text | 2583 | 507c349f0677be528a76473ad89038fc1570cc2f2a96d441ed35e6bf67c35fdc | backend source | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
 | `utils/constants.py` | text | 6161 | 193059eeef23315e5ce14bf0fe3400bca2d017cf0a0bbbf1cdffb75444563867 | backend source | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
-| `utils/db_sessions.py` | text | 8381 | 8fdd13fe07a2b1ed8bfce89bc2defba0a18f7ac671edac8beeac5a01fcf297f4 | backend source | INDIRECT | NOT_REVIEWED | hashed; searched by grep, not read end to end |
+| `utils/db_sessions.py` | text | 8381 | 8fdd13fe07a2b1ed8bfce89bc2defba0a18f7ac671edac8beeac5a01fcf297f4 | backend source | INDIRECT | FULL_TEXT_REVIEWED | read end to end in this audit |
 | `utils/email_debug.py` | text | 7554 | e3b6b08e484e63c9fbcd75e709aff0c56204bce8f2b0c11336a2ab5c6596e2e5 | backend source | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
 | `utils/email_utils.py` | text | 30414 | 4f1c31dcb95b480cf6b874314ee392aafaf59a3b1e88a8786190ad40b128761b | backend source | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
 | `utils/env_check.py` | text | 78557 | d8b7c9edd72886e78196f57772ab708e18dc45e3d472d581fd6ffed6ab9f3e8a | backend source | NONE_IDENTIFIED | NOT_REVIEWED | hashed only |
@@ -4652,7 +4661,9 @@ though production is meant to run 20/2.
 | F-20 | INFO | Shadow | Same timing rules | Shadow entries skip the early-close buffer and the monthly locks, which is documented | `shadow.py:31-47` | | | Research only | Confirmed | none |
 | F-21 | INFO | Inventory | Clean tree | Upstream `"openalgo": "file:.."` creates a recursive junction; the ignored `tmp/` holds 37k+ files from earlier runs | `frontend/package.json:61` | | | Tooling hazard, not runtime | Confirmed | none for NIFTY |
 
-**Counts:** CRITICAL 0, HIGH 3, MEDIUM 4, LOW 7, INFO 7.
+**Counts (first pass):** CRITICAL 0, HIGH 3, MEDIUM 4, LOW 7, INFO 7. The
+second pass adds F-22 to F-31 (section U). The combined counts are CRITICAL 0,
+HIGH 3, MEDIUM 5, LOW 13, INFO 10.
 
 ## P. Documentation contradictions
 
@@ -4713,12 +4724,12 @@ Tracked files, in non-overlapping categories:
 
 ```
 inventoried       = 4,055
-fully_reviewed    =    19
+fully_reviewed    =    36   (after the second pass; 19 after the first)
 binary_inspected  =     0
 generated_reviewed=     0
 access_blocked    =     0
-not_reviewed      = 4,036
-19 + 0 + 0 + 0 + 4,036 = 4,055
+not_reviewed      = 4,019
+36 + 0 + 0 + 0 + 4,019 = 4,055
 ```
 
 Ignored files (674,053) are inventoried by directory in C.2 and are all
@@ -4731,6 +4742,137 @@ including the 10 partly read files whose ranges are in the manifest notes. That
 covers all broker adapters, all shared infrastructure, all tests except part of
 one, all frontend files except one, all workflows and all documentation except
 targeted searches.
+
+
+## U. Second pass (2026-11-24): skills and deeper reading
+
+The trader asked for a complete check using the project's skills, with scope
+limited to NIFTY plus the shared modules it calls, and the pass kept read-only.
+This section records that pass. Sections A to T above remain the first-pass
+record. Coverage figures in B and S were regenerated, and the manifest in C.1
+reflects both passes.
+
+### U.1 Coverage added in this pass
+
+Every file in `services/nifty_algo/` (32 files, about 11,400 lines) has now been
+read end to end, as have `blueprints/nifty_algo.py`, `blueprints/nifty_discord.py`
+and `utils/db_sessions.py`. In total 36 tracked files are now
+`FULL_TEXT_REVIEWED`, up from 19. `database/nifty_algo_db.py` has been read
+except lines 3953 to 5095 (recording, experiment, opportunity and
+report-storage methods).
+
+Still not read end to end:
+
+- the rest of `database/nifty_algo_db.py`
+- `database/nifty_notifications.py` and `database/nifty_notification_ops.py`
+- most of `database/nifty_replay_storage.py` and
+  `database/nifty_research_analytics.py`
+- every NIFTY frontend file except `KeySettings.tsx`
+- every NIFTY test except part of one
+- every historical NIFTY document
+
+Audit coverage stays **`INCOMPLETE`**.
+
+### U.2 `fd-audit` skill (static; nothing measured)
+
+Resources checked and their release on success, exception and retry paths:
+
+| Resource | Where acquired | Release | Result |
+|---|---|---|---|
+| NIFTY store sessions | `NiftyStore.sessions = sessionmaker(...)` (`nifty_algo_db.py:652`), over the shared main engine from `create_db_engine` | every use is `with self.sessions()` or `with self.sessions.begin()` | released on every path |
+| Shared scoped sessions read from scheduler jobs (`database.symbol`, `auth_db`, `market_calendar_db`, `settings_db`, `user_db`, broker master-contract modules) | runner jobs | each job runs inside `app.app_context()` (`runner.py:930-935`); popping the context fires `teardown_appcontext` → `remove_all_scoped_sessions` (`app.py:1114-1124`, `utils/db_sessions.py:157-175`). `_load_instruments` and `_session` also remove in `finally` (`native_data.py:42-43`, `assessment.py:25-28`, `calendar.py:73-74`) | released |
+| `master_contract_status_db` sessions | `SessionLocal()` per call | `session.close()` in that module | released (outside the scoped-session registry by design) |
+| Worker-process engines | `create_db_engine(...)` in `notification_worker.main` and `replay_worker.main` | `engine.dispose()` in `finally` | released |
+| HTTP | Discord only, through the shared `get_httpx_client()` with `timeout=5` and no redirects (`discord_bot.py:264-284`) | shared client; `cleanup_httpx_client()` on worker exit | no per-call client |
+| SMTP | `utils.email_utils.send_email` with `timeout=20` (reports) or `timeout=5` (fallback) | inside that shared helper | not re-read in this pass |
+| Files | calendar blob `open("xb")` in `with`, unlinked if the DB write fails (`nifty_algo_db.py:700-741`); report PDFs through `write_atomic` (`mkstemp` + `fdopen` in `with`, `os.replace`, unlink on any exception, `reports.py:88-105`); archive and report reads in `with` or `read_bytes` | context managers | released |
+| Threads, executors, subprocesses | none created by NIFTY code; jobs run on the shared Python-strategy APScheduler | n/a | none |
+| WebSocket callbacks and subscriptions | `register_callback` on the shared native client (`runner.py:464-472`); NIFTY-owned subscriptions tracked in `owned_subscriptions` | unregistered on client change and in `close()`; non-wanted owned subscriptions released each feed cycle (`runner.py:537-540`) | released. `close()` clears `owned_subscriptions` without unsubscribing (`runner.py:907`); it runs only at shutdown, so this is not a leak |
+| Module-level state | `_ATTACH_LOCKS` (`runner.py:29`) and `app.extensions["nifty_algo_runners"]`, both keyed by user (single-user) | cleared at shutdown | bounded by the key space |
+| SocketIO rooms | `join_room(nifty_algo:<session user>)` | `leave_room` on unsubscribe; Flask-SocketIO drops rooms on disconnect | bounded |
+| Per-tick caches | `ReportService._sessions` (`reports.py:580`) | the service is rebuilt each tick and cleared in `due_periods` | bounded |
+
+**Result: no descriptor or memory leak found.** The check was static only; no
+descriptor counts were measured. Two growth observations follow, neither of
+them a leak:
+
+- **F-23 (INFO): durable tables grow without any retention policy.** These
+  include `nifty_algo_decision` (one row per completed 5-minute assessment),
+  `nifty_algo_event` (`contract_selector:*` events hold up to 100 candidate rows
+  each) and the research tables. All reads are row-limited, so this is disk
+  growth only.
+- **F-24 (INFO): month-end and milestone reports load a full month of events,
+  payloads included, into memory** (`report_inputs`, `nifty_algo_db.py:5167-5178`).
+  The memory is released after the tick. Filtering on the event kinds the report
+  uses would reduce the peak.
+
+### U.3 `security-review` skill
+
+The branch diff is empty, so the review was run over the NIFTY scope instead.
+Confirmed controls:
+
+- Every NIFTY route uses `@check_session_validity` and takes the user from
+  `session["user"]`.
+- Every lookup by bare primary key re-checks the owner (`trade_detail`,
+  `observe_exit_study`, `observe_shadow`, `finish_notification`).
+- CSRF covers everything except the Discord interaction route. That route checks
+  the Ed25519 signature over the raw body before parsing, limits the timestamp
+  to ±300 s and caps the body at 64 KiB (`nifty_discord.py:190-244`,
+  `discord_bot.py:98-110`).
+- Discord commands are read-only apart from `ack`, which never resolves an
+  incident. Each command requires a configured user or role, guild, channel and
+  application (`discord_bot.py:449-476`).
+- Outbound Discord traffic goes to a fixed origin with no redirects.
+- Report and archive paths are resolved inside their root (`reports.py:77-85`,
+  `nifty_replay_storage.py:208-217`).
+- Calendar uploads are capped at 2 MB, and PDFs are parsed with strict pypdf.
+- Exceptions are logged with their type only (`safe_logging.py`).
+- Broker status leaves the server as booleans only.
+
+**Result: no vulnerability at confidence ≥ 8.** None was reported.
+
+### U.4 `code-review` skill
+
+The review ran at `high` effort on `services/nifty_algo`. Its findings are in U.6.
+
+### U.5 New findings from the deeper reading
+
+| ID | Severity | Finding | Evidence | Impact | Recommendation (not implemented) |
+|---|---|---|---|---|---|
+| F-22 | LOW | Replay expires a pending entry at the TTL or `entry_before`, whichever comes first, but omits the early-close buffer that live PAPER applies | `execution_replay.py:665-668`, compared with `paper_executor.py:396-403` | On an early-close day, replay can fill an entry admitted within 10 s of the buffer that live would have expired. Narrow, research only | Share one expiry function |
+| F-23 | INFO | No retention on decision, event or research tables | U.2 | Disk growth | Define retention |
+| F-24 | INFO | Month-scale report input loads every event payload | U.2 | Transient memory peak | Filter by kind |
+
+Confirmed correct in this pass, with no finding:
+
+- The ledger reconciliation invariant `equity == available + Σ(entry_price × qty)`
+  agrees with fill accounting (`nifty_algo_db.py:1985`, `:2641-2642`,
+  `:2674-2710`).
+- Analytics refuse inconsistent fill evidence (`ledger_analytics.py:31-141`).
+- Replay applies the same R-gates, D-1 moneyness at fill, re-pricing, cooldown
+  and monthly locks as live PAPER.
+- Shadow positions never write primary tables, and mirror P&L is non-additive.
+
+### U.6 Code-review results
+
+The `code-review` skill (effort `high`, target `services/nifty_algo`) reported
+eight findings. Each was checked against the code read in this audit, and all
+eight hold. The severities below are this audit's; the review's own label is in
+brackets. One duplicate was merged into F-22.
+
+| ID | Severity | Finding | Evidence | Failure scenario | Recommendation (not implemented) |
+|---|---|---|---|---|---|
+| F-22 | LOW [review: important] | Replay omits the early-close buffer on pending-entry expiry (also found independently in U.5) | `execution_replay.py:665-668` and `paper_executor.py:402-403` | Close at 13:00; admitted at 12:54:58 with a 10 s TTL. Paper expires it at 12:55:00; replay fills at 12:55:08 and force-exits at once, paying both sides of the charges | Add `window[1] - SESSION_EXIT_BUFFER` to the replay `min()` |
+| F-25 | LOW [important] | At an exact midpoint across a gap, the D-1 ATM rule labels the upper strike ATM: the 25-point check is `<=`, and the missing lower strike is never checked | `contract_resolver.py:95-100` | Listed CE {24900, 25000}, 24950 missing, spot 24975. 25000 is labelled ATM, while on the complete grid 24950 is ATM and CE 25000 is OTM by 25 points. Selection, admission, the locked write and fill all accept it | Require the grid strike nearest spot to be listed, or treat the exact midpoint as unverified when the lower strike is missing |
+| F-26 | MEDIUM [important] | The MACD recency term `1 − age/(crossover_freshness + 1)` changes meaning with the 3.2.0 narrowing (denominator 4 → 3), while `confidence_method` stays `five-indicator-v1` | `confidence.py:42`; migration `config.py:227-234` | Age 2: recency 0.5 → 0.333, about −1.67 points. A 40.5-point signal (2 lots) becomes about 38.8 (1 lot), and its target fraction falls | Normalize against a fixed constant or version the method; confirm that the effect is approved (related to F-04) |
+| F-27 | LOW [pre-existing] | ITM mode quietly picks a deeper ITM strike when the adjacent one is missing | `contract_resolver.py:237-248` | CE, spot 24990, ATM 25000, 24950 missing: 24900 is selected as "adjacent" | Refuse `ITM_STRIKE_UNAVAILABLE` when the strike one interval inside ATM is not listed. ATM is the default mode, so this applies only under `selection="ITM"` |
+| F-28 | LOW [pre-existing] | The pending-entry cutoff is the literal 14:45, not `config.entry_before`, at admission and in the store fill | `paper_executor.py:398`; `nifty_algo_db.py:2485-2487` | With `entry_before=14:00`, an entry admitted at 13:59:55 can fill at 14:00:05; replay expires it at 14:00:00. Matches the approved 14:45 default | Use `config.entry_before` in both places |
+| F-29 | LOW [nit] | `SelectionUnavailable` (for example `ATM_REFERENCE_UNVERIFIED`) falls into the generic `except Exception`, is logged as a traceback and shown as `DATA_PIPELINE_UNAVAILABLE` | `runner.py:300-309`, `:346-373` | Each eligible boundary with spot outside the ladder logs an exception, and the trader sees a misleading data-pipeline fault | Catch `SelectionUnavailable` beside `OrderRefused` and report its code |
+| F-30 | INFO [nit] | The 5-minute exit buffer is duplicated as a literal | `risk_manager.py:11`; `protection.py:295` | Changing one without the other admits entries inside the forced-exit window | Share one constant |
+| F-31 | LOW [nit] | A 3.2.0 configuration with `crossover_freshness > 2` is refused with an empty field location, so the trader cannot tell which setting failed | `config.py:157-161`; `blueprints/nifty_algo.py:102-110` | `PUT /configuration` returns 400 with `fields: [[]]` | Use a field-level validator |
+
+**Combined counts across both passes:** CRITICAL 0, HIGH 3, MEDIUM 5, LOW 13,
+INFO 10.
 
 ## T. Final read-only verification
 
