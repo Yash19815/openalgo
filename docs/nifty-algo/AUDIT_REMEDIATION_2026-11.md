@@ -6,7 +6,9 @@ Execution batch A, incomplete overall remediation. Do not merge as certification
 
 - Starting origin/main: `dcfb8df6e0f5ef3e3d9365b6e449d91c81c1f09d`.
 - Audit report commit: `1cc30502d3d66a8611fd2127f29e5169e0b3f021`, fetched using Git without merging its branch.
-- Branch: `fix/nifty-audit-execution-correctness`; PR link pending publication.
+- Branch: `fix/nifty-audit-execution-correctness`; [draft PR #10](https://github.com/Yash19815/openalgo/pull/10).
+- Implementation commit: `d7a9f2a936712e69238db18104d3c55fbaa5969e`.
+- CI at publication: backend lint, frontend lint, one frontend build and several platform smoke checks passed; remaining jobs pending. No final green-CI claim.
 - Historical audit PR #9 was not modified. Findings below distinguish code evidence from unverified policy and feed assumptions.
 - This batch does not claim full end-to-end audit reproduction, full manifest reading, or completion of PR B/C.
 
