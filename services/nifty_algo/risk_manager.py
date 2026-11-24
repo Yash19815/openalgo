@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from .contract_resolver import liquid
 
 # Mirrors the five-minute boundary of ``protection.mandatory_exit_reason``.
-SESSION_EXIT_BUFFER = timedelta(minutes=5)
+from .session_policy import SESSION_EXIT_BUFFER, entry_cutoff
 
 
 @dataclass(frozen=True)
@@ -177,7 +177,7 @@ def entry_reasons(
     """
     local = now.astimezone(ZoneInfo("Asia/Kolkata"))
     reasons = []
-    before_exit_buffer = session_close is None or now < session_close - SESSION_EXIT_BUFFER
+    before_exit_buffer = now < entry_cutoff(now, config, session_close)
     checks = (
         (account.reconciled, "RECONCILIATION_REQUIRED"),
         (account.entries_enabled, "ENTRIES_PAUSED"),

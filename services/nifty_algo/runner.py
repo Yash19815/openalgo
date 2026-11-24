@@ -370,6 +370,8 @@ class NiftyRunner:
                 },
                 now,
             )
+            if isinstance(exc, SelectionUnavailable):
+                raise OrderRefused(reasons) from None
             raise
         self.store.record_event(
             self.user_id,

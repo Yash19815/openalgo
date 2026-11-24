@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 from services.nifty_algo.depth_quote import depth_quote
 from services.nifty_algo.depth_quote import epoch as _epoch
 from services.nifty_algo.models import Instrument
+from services.nifty_algo.session_policy import pending_entry_expiry
 from utils.logging import get_logger
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -395,12 +396,13 @@ class NiftyPaperExecutor:
         # an IST wall time is read back 5h30m late.
         expires_at = _utc(now + timedelta(seconds=config.order_ttl_seconds))
         if side == "BUY":
-            cutoff = datetime.combine(now.astimezone(IST).date(), time(14, 45), tzinfo=IST)
-            expires_at = min(expires_at, _utc(cutoff))
             # An early close pulls the mandatory exit forward; a pending entry
             # must not outlive the last instant an entry may be admitted.
-            if session["window"]:
-                expires_at = min(expires_at, _utc(session["window"][1] - SESSION_EXIT_BUFFER))
+            expires_at = _utc(
+                pending_entry_expiry(
+                    now, config, session["window"][1] if session["window"] else None
+                )
+            )
         order = {
             "order_id": uuid4().hex[:20],
             "intent_id": intent["intent_id"],

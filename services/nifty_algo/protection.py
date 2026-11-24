@@ -5,6 +5,7 @@ from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from zoneinfo import ZoneInfo
 
 from .confidence import target_fraction
+from .session_policy import SESSION_EXIT_BUFFER
 
 D = Decimal
 IST = ZoneInfo("Asia/Kolkata")
@@ -292,7 +293,7 @@ def mandatory_exit_reason(
         return "TECHNICAL_INVALIDATION"
     if (
         local.time().replace(tzinfo=None) >= config.exit_by
-        or (window and now >= window[1] - timedelta(minutes=5))
+        or (window and now >= window[1] - SESSION_EXIT_BUFFER)
         or not window
     ):
         return "SESSION_EXIT"

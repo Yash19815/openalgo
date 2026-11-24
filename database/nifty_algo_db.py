@@ -2482,9 +2482,10 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
                 return self._order_dict(order)
             account = db.get(NiftyAccount, user_id)
             quantity = order.quantity
-            if order.side == "BUY" and now.astimezone(ZoneInfo("Asia/Kolkata")).time().replace(
-                tzinfo=None
-            ) >= time(14, 45):
+            from services.nifty_algo.session_policy import entry_cutoff
+
+            config = StrategyConfig.model_validate(order.payload["configuration"])
+            if order.side == "BUY" and now >= entry_cutoff(now, config):
                 order.status, order.reason, order.resolved_at = "EXPIRED", "ENTRY_CUTOFF", now
                 return self._order_dict(order)
             if now < datetime.fromisoformat(_instant(order.eligible_at)):
