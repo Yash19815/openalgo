@@ -16,7 +16,7 @@ from database.nifty_algo_db import NiftyStore, StateConflict
 from extensions import socketio
 from services.nifty_algo import calendar as nifty_calendar
 from services.nifty_algo.analytics_report import analytics_pdf
-from services.nifty_algo.config import StrategyConfig
+from services.nifty_algo.config import StrategyConfig, active_configuration
 from services.nifty_algo.ledger_analytics import AnalyticsDataError
 from services.nifty_algo.paper_executor import NiftyPaperExecutor
 from services.nifty_algo.safe_logging import log_failure
@@ -206,7 +206,7 @@ def configuration():
         return jsonify(status="error", message="Provide revision and configuration"), 400
     if type(body["revision"]) is not int or body["revision"] < 1:
         return jsonify(status="error", message="Positive integer revision required"), 400
-    config = StrategyConfig.model_validate(body["configuration"])
+    config = active_configuration(body["configuration"])
     return success(store().change(session["user"], body["revision"], configuration=config))
 
 
@@ -302,7 +302,7 @@ def assessment():
             message="Configure the native OpenAlgo market-data session first.",
         ), 409
     state = store().read(session["user"])
-    config = StrategyConfig.model_validate(state["configuration"])
+    config = active_configuration(state["configuration"])
     try:
         decision = assess_current(key, config)
     except ValueError:

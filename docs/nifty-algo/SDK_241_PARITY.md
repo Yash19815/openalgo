@@ -137,6 +137,12 @@ means exactly three positions, the suggested alternative is ages **0, 1, 2**
 (for example, freshness 2 with the same inclusive comparator). That alternative
 requires owner approval and is not implemented here.
 
+**Resolution, 2026-11-24.** The owner approved the three-position reading.
+Strategy 3.2.0 admits ages **0, 1 and 2** and rejects age 3 (freshness 2, same
+inclusive comparator). The paragraph above records the 3.1.0 behaviour as it
+was audited. The indicator values compared in this report are unchanged; see
+[MACD_THREE_CANDLE_WINDOW_2026-11.md](MACD_THREE_CANDLE_WINDOW_2026-11.md).
+
 ## ADX
 
 **PARITY PASS** for Wilder(14) recurrence, true-range gap handling, strict
@@ -257,6 +263,15 @@ over 446 evaluated positions each; the exact tuples are regression assertions:
 These are gate disagreements caused primarily by persistent initial direction,
 not evidence of eligible trades or favorable outcomes.
 
+**Addendum, 2026-11-24 (strategy 3.2.0).** The census above was taken under the
+3.1.0 window (ages 0 to 3). The test keeps it, run against a 3.1.0 record, as
+evidence that the indicator mathematics did not change. Under the approved
+window (ages 0 to 2) the R-MACD rows become: isolated `(21,79)`, `(49,87)`,
+`(54,124)` (3); native direction adds `(4,79)` and `(4,80)` (5). The named
+sideways and low-volatility paths show 141 and 100 R-MACD disagreements instead
+of 189 and 126. The 3.1.0 counterexamples `(21,80)` and `(49,88)` now agree:
+both fail. The other gates and the ST side changes are unchanged.
+
 ## Warm-up, causality, and upgrade compatibility
 
 For the 525-bar seed-241 volatile path:
@@ -348,6 +363,7 @@ test/test_requirements_parity.py
   VWAP adapter. Use explicit IST markers or IST-aware timestamps.
 - Resolve the ages 0..3 versus 0..2 freshness interpretation separately. The
   production threshold and configuration remain unchanged.
+  Resolved 2026-11-24: ages 0..2, strategy 3.2.0.
 - A future SDK upgrade must rerun this suite. Private `_backend.ema_sma` is
   supplementary and may change; public API inspection and independent references
   remain necessary.

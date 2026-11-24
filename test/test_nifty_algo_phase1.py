@@ -186,7 +186,7 @@ def admit_direct(store, config, intent_id, created_at=NOW, expires_at=None, user
 
 def test_v3_defaults_validation_and_v2_migration():
     config = StrategyConfig()
-    assert config.strategy_version == "3.1.0"
+    assert config.strategy_version == "3.2.0"
     assert config.virtual_capital == D("20000")
     assert config.max_lots == 3 and config.max_daily_entries == 1
     assert config.candidate_strike_window == 2
@@ -220,13 +220,13 @@ def test_v3_defaults_validation_and_v2_migration():
         virtual_capital="100000",
     )
     migrated = migrate_configuration(old)
-    assert migrated.strategy_version == "3.1.0"
+    assert migrated.strategy_version == "3.2.0"
     assert migrated.max_lots == 3
     assert migrated.max_daily_entries == 1
     assert migrated.entry_after == time(10, 30)
     assert not hasattr(migrated, "risk_fraction")
     legacy = old | {"strategy_version": "1.0.0", "selection": "OTM"}
-    assert migrate_configuration(legacy).strategy_version == "3.1.0"
+    assert migrate_configuration(legacy).strategy_version == "3.2.0"
     assert migrate_configuration(legacy).selection == "ATM"
 
 
@@ -249,17 +249,17 @@ def test_new_account_capital_and_v2_migration_preserve_funding(store):
     state = store.read(USER)
     funded = store.account(USER, NOW)
     assert state["state"] == "PAUSED"
-    assert state["configuration"]["strategy_version"] == "3.1.0"
+    assert state["configuration"]["strategy_version"] == "3.2.0"
     assert D(funded["equity"]) == D("100000")
     assert D(funded["available"]) == D("100000")
     with store.sessions() as db:
         history = db.get(NiftyConfiguration, (USER, state["revision"]))
         events = list(db.scalars(select(NiftyEvent).where(NiftyEvent.user_id == USER)))
-    assert history.configuration["strategy_version"] == "3.1.0"
+    assert history.configuration["strategy_version"] == "3.2.0"
     migration = next(event for event in events if event.kind == "configuration_migration")
     assert migration.payload == {
         "from": "2.0.0",
-        "to": "3.1.0",
+        "to": "3.2.0",
         "revision": state["revision"],
     }
 
@@ -277,7 +277,7 @@ def test_v3_to_v31_migration_pauses_and_records_event(store):
     store.ensure_user(USER)
     state = store.read(USER)
     assert state["state"] == "PAUSED"
-    assert state["configuration"]["strategy_version"] == "3.1.0"
+    assert state["configuration"]["strategy_version"] == "3.2.0"
     assert state["configuration"]["selection"] == "ATM"
     with store.sessions() as db:
         event = db.scalar(
@@ -287,7 +287,7 @@ def test_v3_to_v31_migration_pauses_and_records_event(store):
             )
         )
     assert event.payload["from"] == "3.0.0"
-    assert event.payload["to"] == "3.1.0"
+    assert event.payload["to"] == "3.2.0"
 
 
 @pytest.mark.parametrize(("score", "lots"), [(39, 1), (40, 2), (70, 3)])
@@ -576,7 +576,7 @@ def test_v3_otm_migration_maps_selection_to_atm():
     migrated = migrate_configuration(
         {"strategy_version": "3.0.0", "selection": "OTM"}
     )
-    assert migrated.strategy_version == "3.1.0"
+    assert migrated.strategy_version == "3.2.0"
     assert migrated.selection == "ATM"
 
 

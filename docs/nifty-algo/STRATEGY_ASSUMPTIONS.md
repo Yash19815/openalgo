@@ -1,6 +1,6 @@
 # Strategy assumptions and rule provenance
 
-Current strategy configuration: 3.1.0. The strategy is a research hypothesis, not a
+Current strategy configuration: 3.2.0. The strategy is a research hypothesis, not a
 calibrated probability model or a claim of historical profitability.
 
 The current phase requirements in PAPER_SYSTEM_DESIGN.md supersede the older
@@ -19,7 +19,7 @@ later changes.
 
 Analysis uses the nearest eligible NIFTY future's actual OHLCV. Spot is a
 separate strike reference. SuperTrend uses ATR 10 and multiplier 3; MACD uses
-12/26/9 and a crossover within three completed entry bars; ADX uses Wilder 14
+12/26/9 and a recent crossover (below); ADX uses Wilder 14
 and minimum 25. Zero-line and DI confirmation remain configurable. Session
 VWAP uses the same future's completed entry-candle typical price and volume;
 missing session opening data or volume blocks execution, including a current
@@ -54,6 +54,25 @@ before an earlier native NFO close. The approved NFO calendar is required;
 special sessions remain disabled. A loss blocks the next eligible session.
 Monthly loss locks at ₹2,000; an optional configured profit target latches its
 own monthly lock. Locks do not block exits or reset equity.
+
+## The MACD crossover window
+
+A qualifying MACD crossover must be present in one of the latest three
+completed 5-minute candles. The crossover candle is age 0; ages 0, 1 and 2
+qualify, while age 3 or older does not.
+
+Forming candles never count. The crossover must also match the trade
+direction and the histogram must still agree with it; the optional zero-line
+confirmation is unchanged. `crossover_freshness` defaults to 2 and cannot
+exceed 2; 0 and 1 are stricter choices.
+
+Resolution note, 2026-11-24: strategy 3.1.0 compared `cross_age <= 3`, which
+admitted four candles (ages 0 to 3) against the wording above. The owner
+approved the three-candle reading, and 3.2.0 implements it. Saved 3.1.0
+configurations migrate to a window of at most 2. Stored 3.1.0 records still
+replay with their own rule but never decide a new entry. Root cause,
+compatibility and tests:
+[MACD_THREE_CANDLE_WINDOW_2026-11.md](MACD_THREE_CANDLE_WINDOW_2026-11.md).
 
 ## The at-the-money strike
 

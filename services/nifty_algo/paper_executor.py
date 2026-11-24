@@ -143,7 +143,7 @@ class NiftyPaperExecutor:
 
     def admit(self, intent, now=None):
         """Validate an intent through the risk manager, then persist it once."""
-        from services.nifty_algo.config import StrategyConfig
+        from services.nifty_algo.config import StrategyConfig, active_configuration
         from services.nifty_algo.risk_manager import (
             SESSION_EXIT_BUFFER,
             AccountRisk,
@@ -157,7 +157,7 @@ class NiftyPaperExecutor:
             return existing, False
         state = self.store.read(self.user_id)
         try:
-            config = self.config or StrategyConfig.model_validate(state["configuration"])
+            config = active_configuration(self.config or state["configuration"])
         except ValueError:
             if intent.get("side") != "SELL":
                 raise OrderRefused(["CONFIGURATION_INCOMPATIBLE"]) from None

@@ -1024,6 +1024,10 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
         now = datetime.now(UTC)
         values = {"revision": revision + 1, "updated_at": now}
         if configuration is not None:
+            from services.nifty_algo.config import active_configuration
+
+            # A legacy record may admit an older MACD crossover; never save one.
+            active_configuration(configuration)
             values.update(
                 configuration=configuration.model_dump(mode="json"),
                 configuration_id=configuration.version_id,

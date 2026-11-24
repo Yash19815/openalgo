@@ -25,6 +25,20 @@ from services.nifty_algo.models import Candle
 ATOL = 1e-9
 RTOL = 1e-12
 IST = ZoneInfo("Asia/Kolkata")
+
+
+def legacy_31(**changes):
+    """A stored strategy 3.1.0 record: crossover ages 0..3 were admitted.
+
+    The census below was frozen under that rule. It is kept as historical
+    evidence that the indicator mathematics did not change when 3.2.0 narrowed
+    the window to ages 0..2 (approved 2026-11-24).
+    """
+    values = StrategyConfig(**changes).model_dump(mode="json")
+    values.update(strategy_version="3.1.0", crossover_freshness=3)
+    return StrategyConfig.model_validate(values)
+
+
 PATTERNS = ("rising", "falling", "sideways", "volatile", "reversal", "low_volatility")
 GATES = ("R-ST", "R-MACD", "R-ADX", "R-VWAP")
 
@@ -663,15 +677,27 @@ def test_missing_history_is_refused_or_trimmed_before_vwap():
     ]
 
 
-@pytest.mark.parametrize("age,passed", ((0, True), (1, True), (2, True), (3, True), (4, False)))
-def test_actual_macd_freshness_boundary_unchanged(monkeypatch, age, passed):
+@pytest.mark.parametrize(
+    "legacy,age,passed",
+    (
+        (False, 0, True),
+        (False, 1, True),
+        (False, 2, True),
+        (False, 3, False),
+        (False, 4, False),
+        # A stored 3.1.0 record replays with the rule it was decided under.
+        (True, 3, True),
+        (True, 4, False),
+    ),
+)
+def test_actual_macd_freshness_boundary(monkeypatch, legacy, age, passed):
     bars = fixture_bars(n=80)
     snap = signal_engine.snapshot(bars, StrategyConfig())
     direction = snap["supertrend"]["direction"]
     snap["macd"].update(cross_direction=direction, cross_age=age, histogram=float(direction))
     monkeypatch.setattr(signal_engine, "snapshot", lambda bars, config: snap if bars else {})
-    config = StrategyConfig()
-    assert config.crossover_freshness == 3
+    config = legacy_31() if legacy else StrategyConfig()
+    assert config.crossover_freshness == (3 if legacy else 2)
     result = signal_engine.Rules().evaluate(
         bars, [], None, bars[-1].end, config, config.version_id, bars[0].token
     )
@@ -692,7 +718,7 @@ def test_actual_adx_inclusive_25_boundary(monkeypatch, value, passed):
     assert result["indicator_states"]["adx"]["gate"] == ("PASS" if passed else "FAIL")
 
 
-def decision_disagreements(seed_count=64, isolate_direction=True):
+def decision_disagreements(seed_count=64, isolate_direction=True, config=None):
     """Frozen census: 64 PCG64 paths, 525 bars, indices 79..524 inclusive.
 
     Hold custom ST direction fixed for MACD/ADX/VWAP to isolate each indicator.
@@ -700,7 +726,7 @@ def decision_disagreements(seed_count=64, isolate_direction=True):
     """
     disagreements = {gate: [] for gate in GATES}
     side_changes = []
-    config = StrategyConfig()
+    config = config or StrategyConfig()
     for seed in range(seed_count):
         bars = fixture_bars(seed=seed)
         custom, sdk = comparison(bars)
@@ -727,13 +753,28 @@ def decision_disagreements(seed_count=64, isolate_direction=True):
     return disagreements, side_changes
 
 
+@pytest.mark.parametrize("legacy", (True, False), ids=("v3.1.0-ages-0-3", "current-ages-0-2"))
 @pytest.mark.parametrize("isolate_direction", (True, False))
-def test_deterministic_decision_disagreement_census(isolate_direction):
-    disagreements, side_changes = decision_disagreements(isolate_direction=isolate_direction)
+def test_deterministic_decision_disagreement_census(isolate_direction, legacy):
+    disagreements, side_changes = decision_disagreements(
+        isolate_direction=isolate_direction,
+        config=legacy_31() if legacy else StrategyConfig(),
+    )
+    if legacy:
+        macd = ([] if isolate_direction else [(4, 79), (4, 80), (4, 81)]) + [
+            (21, 80),
+            (49, 88),
+            (54, 124),
+        ]
+    else:
+        macd = ([] if isolate_direction else [(4, 79), (4, 80)]) + [
+            (21, 79),
+            (49, 87),
+            (54, 124),
+        ]
     assert disagreements == {
         "R-ST": [],
-        "R-MACD": ([] if isolate_direction else [(4, 79), (4, 80), (4, 81)])
-        + [(21, 80), (49, 88), (54, 124)],
+        "R-MACD": macd,
         "R-ADX": [(1, 90), (20, 106), (45, 149), (57, 97)],
         "R-VWAP": [] if isolate_direction else [(4, i) for i in range(79, 90)],
     }
@@ -741,20 +782,26 @@ def test_deterministic_decision_disagreement_census(isolate_direction):
 
 
 @pytest.mark.parametrize(
-    "pattern,counts,side_changes",
+    "legacy,pattern,counts,side_changes",
     (
-        ("rising", (0, 0, 0, 0), 0),
-        ("falling", (0, 0, 0, 0), 0),
-        ("sideways", (0, 189, 0, 444), 446),
-        ("volatile", (0, 0, 0, 0), 0),
-        ("reversal", (0, 0, 0, 0), 0),
-        ("low_volatility", (0, 126, 0, 446), 446),
+        (True, "rising", (0, 0, 0, 0), 0),
+        (True, "falling", (0, 0, 0, 0), 0),
+        (True, "sideways", (0, 189, 0, 444), 446),
+        (True, "volatile", (0, 0, 0, 0), 0),
+        (True, "reversal", (0, 0, 0, 0), 0),
+        (True, "low_volatility", (0, 126, 0, 446), 446),
+        (False, "rising", (0, 0, 0, 0), 0),
+        (False, "falling", (0, 0, 0, 0), 0),
+        (False, "sideways", (0, 141, 0, 444), 446),
+        (False, "volatile", (0, 0, 0, 0), 0),
+        (False, "reversal", (0, 0, 0, 0), 0),
+        (False, "low_volatility", (0, 100, 0, 446), 446),
     ),
 )
-def test_named_fixture_native_direction_gate_disagreements(pattern, counts, side_changes):
+def test_named_fixture_native_direction_gate_disagreements(legacy, pattern, counts, side_changes):
     bars = fixture_bars(pattern)
     custom, sdk = comparison(bars)
-    config = StrategyConfig()
+    config = legacy_31() if legacy else StrategyConfig()
     actual_counts = dict.fromkeys(GATES, 0)
     actual_sides = 0
     for i in range(79, 525):
@@ -768,26 +815,33 @@ def test_named_fixture_native_direction_gate_disagreements(pattern, counts, side
 
 
 @pytest.mark.parametrize(
-    "seed,index,gate",
+    "legacy,seed,index,gate",
     (
-        (21, 80, "R-MACD"),
-        (49, 88, "R-MACD"),
-        (54, 124, "R-MACD"),
-        (1, 90, "R-ADX"),
-        (20, 106, "R-ADX"),
-        (45, 149, "R-ADX"),
-        (57, 97, "R-ADX"),
-        (4, 79, None),
-        (241, 79, None),
+        (True, 21, 80, "R-MACD"),
+        (True, 49, 88, "R-MACD"),
+        (True, 54, 124, "R-MACD"),
+        (False, 21, 79, "R-MACD"),
+        (False, 49, 87, "R-MACD"),
+        (False, 54, 124, "R-MACD"),
+        # The 3.1.0 counterexamples agree under the three-candle window.
+        (False, 21, 80, None),
+        (False, 49, 88, None),
+        (False, 1, 90, "R-ADX"),
+        (False, 20, 106, "R-ADX"),
+        (False, 45, 149, "R-ADX"),
+        (False, 57, 97, "R-ADX"),
+        (False, 4, 79, None),
+        (False, 241, 79, None),
     ),
 )
 @pytest.mark.parametrize("zero_required,di_confirmation", ((False, False), (True, True)))
 def test_gate_projection_matches_actual_rules(
-    monkeypatch, seed, index, gate, zero_required, di_confirmation
+    monkeypatch, legacy, seed, index, gate, zero_required, di_confirmation
 ):
     bars = fixture_bars(seed=seed)
     custom, sdk = comparison(bars)
-    config = StrategyConfig(macd_zero_required=zero_required, di_confirmation=di_confirmation)
+    settings = {"macd_zero_required": zero_required, "di_confirmation": di_confirmation}
+    config = legacy_31(**settings) if legacy else StrategyConfig(**settings)
     actual_states = []
     for series in (custom, sdk):
         st, momentum, strength, vw = [rows[index] for rows in series]
@@ -810,6 +864,9 @@ def test_gate_projection_matches_actual_rules(
         actual_states.append(actual)
     if gate is not None and not zero_required:
         assert actual_states[0][gate] != actual_states[1][gate]
+    if gate is None and (seed, index) in ((21, 80), (49, 88)):
+        assert actual_states[0]["R-MACD"] is False
+        assert actual_states[1]["R-MACD"] is False
         if (seed, index) == (54, 124):
             assert [all(state.values()) for state in actual_states] == [False, True]
 
