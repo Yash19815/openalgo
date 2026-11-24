@@ -15,6 +15,8 @@ real-market fills. See ``docs/nifty-algo/OFFLINE_ACCEPTANCE_2026-11.md``.
 
 The MACD crossover freshness boundary (``cross_age <= 3``) is deliberately not
 touched here; it is an open interpretation question owned elsewhere.
+Resolved 2026-11-24 (strategy 3.2.0, ages 0..2): see
+``test/test_nifty_algo_macd_window.py``.
 """
 
 import ast

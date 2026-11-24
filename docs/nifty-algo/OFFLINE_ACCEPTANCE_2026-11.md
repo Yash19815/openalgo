@@ -24,6 +24,8 @@ or about whether the strategy has any edge. Real-feed items are listed under
 The MACD crossover freshness boundary (`cross_age <= 3`, default freshness 3)
 was not touched and is not assessed here. It remains an open interpretation
 question owned elsewhere; no indicator logic or configuration changed.
+Resolved 2026-11-24 after this record: strategy 3.2.0 admits ages 0, 1 and 2
+only ([MACD_THREE_CANDLE_WINDOW_2026-11.md](MACD_THREE_CANDLE_WINDOW_2026-11.md)).
 
 ## Method
 

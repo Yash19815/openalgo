@@ -292,6 +292,7 @@ Not executed here: real Angel One history, option chains, Greeks, the 15-minute 
 ### N-05 (Low, UNVERIFIED): crossover-freshness wording
 
 - `cross_age <= 3` admits a crossover on the fourth most recent completed bar; the document says "within three completed entry bars". Confirm the intended count and add a boundary test at age 3 and age 4. No change unless the owner says otherwise.
+- Resolution, 2026-11-24: the owner approved three completed candles (ages 0, 1 and 2). Strategy 3.2.0 caps the window at age 2, with boundary tests at ages 0 to 4. See `docs/nifty-algo/MACD_THREE_CANDLE_WINDOW_2026-11.md`.
 
 ### N-01 (Low): no regression test compares against `openalgo.ta`
 

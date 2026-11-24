@@ -16,7 +16,7 @@ from utils.logging import get_logger
 
 from .assessment import assess_current
 from .calendar import IST
-from .config import StrategyConfig
+from .config import StrategyConfig, active_configuration
 from .contract_resolver import Resolver, SelectionUnavailable
 from .models import Instrument
 from .native_data import NativeDataAdapter
@@ -125,7 +125,7 @@ class NiftyRunner:
             return None
         state = self.store.read(self.user_id)
         try:
-            config = StrategyConfig.model_validate(state["configuration"])
+            config = active_configuration(state["configuration"])
         except ValueError:
             self.ready = False
             self.last_issue = "CONFIGURATION_INCOMPATIBLE"

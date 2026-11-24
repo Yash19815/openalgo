@@ -5,14 +5,24 @@ from decimal import Decimal
 from hashlib import sha256
 from typing import Literal
 
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, ValidationError, model_validator
 
 from .models import Model
+
+CURRENT_STRATEGY_VERSION = "3.2.0"
+# Strategy versions whose stored records (held protection, pending orders,
+# research manifests, replay baselines) still load and replay with their own
+# rules. None of them may evaluate a new entry: see active_configuration.
+LEGACY_STRATEGY_VERSIONS = ("3.1.0",)
+# Approved 2026-11-24: a qualifying MACD crossover lies in one of the latest
+# three completed 5-minute candles. The crossover candle is age 0, so ages 0,
+# 1 and 2 qualify and age 3 or older does not. Version 3.1.0 admitted age 3.
+MAX_MACD_CROSSOVER_AGE = 2
 
 
 class StrategyConfig(Model):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False, frozen=True)
-    strategy_version: Literal["3.1.0"] = "3.1.0"
+    strategy_version: Literal["3.1.0", "3.2.0"] = CURRENT_STRATEGY_VERSION
     confidence_method: Literal["five-indicator-v1"] = "five-indicator-v1"
     virtual_capital: Decimal = Field(
         default=Decimal("20000"), ge=Decimal("20000"), le=Decimal("20000")
@@ -22,7 +32,10 @@ class StrategyConfig(Model):
     macd_fast: int = Field(default=12, ge=2, le=100)
     macd_slow: int = Field(default=26, ge=3, le=200)
     macd_signal: int = Field(default=9, ge=2, le=100)
-    crossover_freshness: int = Field(default=3, ge=0, le=20)
+    # Oldest admitted crossover age, inclusive. The range stays 0..20 only so
+    # stored 3.1.0 records still load and replay unchanged; from 3.2.0 the
+    # validator below caps it at MAX_MACD_CROSSOVER_AGE.
+    crossover_freshness: int = Field(default=MAX_MACD_CROSSOVER_AGE, ge=0, le=20)
     macd_zero_required: bool = False
     adx_period: int = Field(default=14, ge=2, le=100)
     adx_min: float = Field(default=25, ge=0, le=100)
@@ -141,6 +154,11 @@ class StrategyConfig(Model):
             raise ValueError("Trailing distance must equal minimum trailing candidate")
         if self.trailing_distance_points != Decimal("1.5"):
             raise ValueError("Trailing distance is fixed at 1.5 option-premium points")
+        if (
+            self.strategy_version not in LEGACY_STRATEGY_VERSIONS
+            and self.crossover_freshness > MAX_MACD_CROSSOVER_AGE
+        ):
+            raise ValueError("MACD crossover must lie in the latest three completed entry candles")
         return self
 
     @property
@@ -154,11 +172,34 @@ class StrategyConfig(Model):
         return sha256(self.model_dump_json(exclude=excluded).encode()).hexdigest()
 
 
+def active_configuration(values):
+    """Return a configuration allowed to evaluate new entries.
+
+    A legacy version validates as a stored record so its protection, fills and
+    replay keep their own rules, but it is refused here: a 3.1.0 record may
+    admit a crossover older than age 2. Raises ValidationError, a ValueError.
+    """
+    config = values if isinstance(values, StrategyConfig) else StrategyConfig.model_validate(values)
+    if config.strategy_version != CURRENT_STRATEGY_VERSION:
+        raise ValidationError.from_exception_data(
+            "StrategyConfig",
+            [
+                {
+                    "type": "literal_error",
+                    "loc": ("strategy_version",),
+                    "input": config.strategy_version,
+                    "ctx": {"expected": repr(CURRENT_STRATEGY_VERSION)},
+                }
+            ],
+        )
+    return config
+
+
 def migrate_configuration(values):
-    """Return a validated v3.1 revision; unknown versions remain blocked."""
+    """Return a validated current revision; unknown versions remain blocked."""
     version = values.get("strategy_version", "1.0.0")
-    if version not in ("1.0.0", "2.0.0", "3.0.0"):
-        return StrategyConfig.model_validate(values)
+    if version not in ("1.0.0", "2.0.0", "3.0.0", "3.1.0"):
+        return active_configuration(values)
     changed = dict(values)
     if version == "1.0.0":
         changed.pop("target", None)
@@ -183,6 +224,14 @@ def migrate_configuration(values):
         if changed.get("selection") == "OTM":
             changed["selection"] = "ATM"
         changed["strategy_version"] = "3.1.0"
+    if changed.get("strategy_version") == "3.1.0":
+        # Narrow the MACD window to the approved three completed candles. A
+        # stricter saved value (0 or 1) is the trader's choice and is kept; a
+        # value that is not an integer is left for validation to refuse.
+        freshness = changed.get("crossover_freshness", 3)
+        if type(freshness) is int and freshness > MAX_MACD_CROSSOVER_AGE:
+            changed["crossover_freshness"] = MAX_MACD_CROSSOVER_AGE
+        changed["strategy_version"] = CURRENT_STRATEGY_VERSION
 
     def _clamp(name, floor, ceiling=None):
         if name not in changed:
@@ -216,4 +265,4 @@ def migrate_configuration(values):
             changed["profit_lock_activation_net"] = "400"
     except (ArithmeticError, TypeError, ValueError):
         pass
-    return StrategyConfig.model_validate(changed)
+    return active_configuration(changed)

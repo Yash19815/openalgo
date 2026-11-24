@@ -18,6 +18,17 @@
 
 ### Fix
 
+- Admit a MACD crossover only from the latest three completed 5-minute
+  candles (ages 0, 1 and 2), as the strategy text says. Strategy 3.1.0
+  compared `cross_age <= 3` and also admitted age 3. Strategy version is now
+  3.2.0. A saved configuration migrates once, its window lowered to at most
+  2, and the strategy is left paused until the trader starts it again.
+  Stored 3.1.0 records still replay with their own rule but can no longer
+  decide a new entry, and a configuration with a window above 2 is refused.
+  Signals that relied on an age-3 crossover no longer qualify, and MACD
+  recency scores up to 1.67 points lower at ages 1 and 2, which can size an
+  entry one lot smaller. No new entry is permitted. See
+  [MACD_THREE_CANDLE_WINDOW_2026-11.md](MACD_THREE_CANDLE_WINDOW_2026-11.md).
 - Feed fresh source OI to PAPER selection. The PAPER depth reader dropped OI,
   so the approved OI-capped volume term was always zero there while replay
   used it, and the two could pick different contracts from the same snapshot.

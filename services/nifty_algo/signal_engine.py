@@ -94,11 +94,15 @@ class Rules:
             "Latest completed 15-minute SuperTrend agrees",
             bool(h.get("supertrend")),
         )
+        # Age 0 is the latest completed entry candle. From strategy 3.2.0 the
+        # configuration caps freshness at 2, so only the latest three completed
+        # candles qualify; a stored 3.1.0 record replays with its own value.
+        cross_age = momentum.get("cross_age") if momentum else None
         macd_ok = (
             bool(momentum)
             and momentum["cross_direction"] == direction
-            and momentum["cross_age"] is not None
-            and momentum["cross_age"] <= config.crossover_freshness
+            and type(cross_age) is int
+            and 0 <= cross_age <= config.crossover_freshness
             and momentum["histogram"] * direction > 0
         )
         if config.macd_zero_required:
