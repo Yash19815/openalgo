@@ -22,9 +22,18 @@ separate strike reference. SuperTrend uses ATR 10 and multiplier 3; MACD uses
 12/26/9 and a crossover within three completed entry bars; ADX uses Wilder 14
 and minimum 25. Zero-line and DI confirmation remain configurable. Session
 VWAP uses the same future's completed entry-candle typical price and volume;
-missing session opening data or volume blocks execution. Maximum VWAP
-extension is 80 basis points. At least 80 entry and higher-timeframe bars are
-required. Histories never combine futures identities across rollover.
+missing session opening data or volume blocks execution, including a current
+session whose first completed entry candle does not start at the open. Maximum
+VWAP extension is 80 basis points. At least 80 entry and higher-timeframe bars
+are required. Histories never combine futures identities across rollover.
+
+Missing broker candles are never repaired or interpolated. A gap inside the
+session being evaluated blocks that series. A gap in an earlier session
+discards everything up to it, and only the verified continuous suffix after the
+latest gap is evaluated; the 80-bar warm-up, freshness, 15-minute and session
+VWAP requirements then apply to that suffix unchanged. Before this, one missing
+minute anywhere in the nine-day window blocked every signal until that day left
+the window.
 
 PCR defaults to OI, with volume explicitly selectable. Scope is one dated
 expiry's full native master strike universe, not the 47-strike tracker window.

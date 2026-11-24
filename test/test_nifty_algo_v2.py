@@ -343,8 +343,8 @@ def test_expired_exit_latch_retries_after_restart_and_retains_exposure(store):
 def test_nondefault_tick_slippage_and_fill_risk_budget(store, ask, status):
     running(store)
     market = FakeMarket()
-    exe = executor(store, market=market)
     contract = instrument().model_copy(update={"tick_size": D(".2")})
+    exe = executor(store, market=market, master=lambda now: [contract])
     exe.admit(buy_intent(instrument=contract))
     market.ask = ask
     market.bid = str(D(ask) - D("0.2"))

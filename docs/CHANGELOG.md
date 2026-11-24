@@ -8,6 +8,18 @@ fix, live in [docs/releases](releases/).
 
 ## [Unreleased]
 
+### Security
+
+- **API key and order-mode changes apply only to the signed-in account.**
+  `POST /apikey` and `POST /apikey/mode` took the account to change from the
+  request body's `user_id`, so a signed-in session could rotate another
+  account's key, switch its order mode, or create a key for an account that
+  does not exist. Both now act on the session's own account. A request naming
+  any other `user_id` is refused with 403 and changes nothing; a request that
+  names its own account, or none, works as before. CSRF protection on both is
+  unchanged. Nothing to do on upgrade; a script that posts another account's
+  `user_id` to these routes now receives 403.
+
 ### Fix
 
 - Correct NIFTY PAPER test-import compatibility, cooperative Discord queue

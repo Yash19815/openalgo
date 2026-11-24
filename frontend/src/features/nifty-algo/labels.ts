@@ -11,6 +11,11 @@ const LABELS: Record<string, string> = {
     'Fresh NIFTY spot is unavailable. Check the market feed before the next assessment.',
   DATA_PIPELINE_UNAVAILABLE:
     'Market data is unavailable. Check your broker connection and market feed, then wait for the next assessment.',
+  OTM_PROHIBITED: 'The option is out of the money at the current NIFTY spot, so it was not bought.',
+  MASTER_FRESHNESS_UNVERIFIED:
+    "Today's contract list is not verified yet. Wait for the daily contract download to finish.",
+  INSTRUMENT_IDENTITY_MISMATCH:
+    "The contract no longer matches today's contract list. Wait for the next assessment.",
   RUNNER_RESTORE_FAILED:
     'Position monitoring could not restart. Check the server logs and restore monitoring before starting entries.',
   // Live readiness (Phase 5)

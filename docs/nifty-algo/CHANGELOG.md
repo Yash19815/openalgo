@@ -18,6 +18,28 @@
 
 ### Fix
 
+- Feed fresh source OI to PAPER selection. The PAPER depth reader dropped OI,
+  so the approved OI-capped volume term was always zero there while replay
+  used it, and the two could pick different contracts from the same snapshot.
+  Both now read OI through one parser, only from the contract's own identified
+  source record; missing or malformed OI stays missing, never zero. Weights
+  (30/25/15/20/10) are unchanged. PAPER contract choice can differ from before.
+- Use one ATM rule everywhere: the listed strike nearest to fresh spot, the
+  lower one at the midpoint, and only while listed strikes bracket spot.
+  Admission, the locked admission write, the fill and replay recompute it from
+  today's verified master instead of reusing the selection label. A nearest
+  strike on the far side of spot is no longer refused as OTM at admission; a
+  contract the underlying moves away from is still refused (`OTM_PROHIBITED`),
+  and without a verified master nothing is admitted or filled. More entries
+  can now be admitted than before; none is OTM at the price used.
+- A missing broker minute in an earlier session no longer blocks every signal
+  for up to nine days. Only the continuous suffix after the latest gap is
+  evaluated, never a repaired series, and the warm-up and every other gate
+  apply to it unchanged. A gap in the session being evaluated still refuses.
+- Refuse a current session whose first completed 5-minute candle does not start
+  at the open (`SESSION_VWAP_INCOMPLETE`). A dropped opening bucket previously
+  passed and started that session's VWAP late.
+
 - Correct pytest application/SDK namespace separation while retaining packaged
   and legacy test helpers. Preserve all Python and operating-system CI cells.
 - Bound Discord SQLite lock retries cooperatively, isolate runner restoration

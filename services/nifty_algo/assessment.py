@@ -172,7 +172,14 @@ def assess_current(
         decision["eligible"] = False
     today_window = windows.get(today)
     today_bars = [b for b in bars if b.start.astimezone(IST).date() == today]
-    if not today_window or not today_bars or today_bars[0].start != today_window[0]:
+    today_entry = [c for c in entry if c.start.astimezone(IST).date() == today]
+    if (
+        not today_window
+        or not today_bars
+        or today_bars[0].start != today_window[0]
+        # A dropped opening bucket would start today's VWAP after the open.
+        or (today_entry and today_entry[0].start != today_window[0])
+    ):
         decision["reasons"].append("SESSION_VWAP_INCOMPLETE")
         decision["eligible"] = False
     eligible = decision["eligible"] and not observation_only

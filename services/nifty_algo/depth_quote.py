@@ -53,6 +53,29 @@ def _best_level(entries, high=True, *, strict=False):
     return best
 
 
+_MALFORMED = object()
+
+
+def open_interest(instrument, raw, *, strict=False):
+    """Source OI of exactly this contract; None when missing or not provably its own.
+
+    Only a record naming this contract's symbol and exchange can supply OI, so a
+    display fallback or another contract's packet never does. A missing value
+    stays None and is never read as zero. A malformed value (a bool, a float, a
+    string or a negative count) refuses a strict research read, as it always
+    has, and is dropped to None on the PAPER path, where the same quote also
+    drives protective exits that must not depend on OI.
+    """
+    if raw.get("symbol") != instrument.symbol or raw.get("exchange") != instrument.exchange:
+        return None
+    value = raw.get("oi")
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return _MALFORMED if strict else None
+    return value
+
+
 def depth_quote(instrument, raw, now, max_age=5, *, strict=False):
     """Normalize one source snapshot; absent depth stays absent, never LTP depth."""
     try:
@@ -65,6 +88,9 @@ def depth_quote(instrument, raw, now, max_age=5, *, strict=False):
         if received is None or received < stamp or received > now:
             return None
         if any(level and level[0] % instrument.tick_size != 0 for level in (bid, ask)):
+            return None
+        oi = open_interest(instrument, raw, strict=strict)
+        if oi is _MALFORMED:
             return None
         ltp = raw.get("ltp")
         if isinstance(ltp, dict):
@@ -79,6 +105,7 @@ def depth_quote(instrument, raw, now, max_age=5, *, strict=False):
             bid_size=0 if bid is None else bid[1],
             ask_size=0 if ask is None else ask[1],
             volume=raw.get("volume"),
+            oi=oi,
             provider="native_depth",
         )
     except (AttributeError, ValueError, TypeError, ArithmeticError):

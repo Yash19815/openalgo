@@ -224,12 +224,10 @@ class NativeDataAdapter:
             quote = depth_quote(instrument, raw, now or self.clock(), self.max_age, strict=True)
             if quote is None or quote.bid is None or quote.ask is None:
                 return None
+            # OI comes from depth_quote, the parser PAPER selection also uses,
+            # so replay and PAPER rank equivalent snapshots identically.
             return Quote.model_validate(
-                {
-                    **quote.model_dump(),
-                    "oi": raw.get("oi"),
-                    "sequence": raw.get("sequence_number", 0),
-                }
+                {**quote.model_dump(), "sequence": raw.get("sequence_number", 0)}
             )
         except (AttributeError, TypeError, ValueError, RuntimeError):
             return None

@@ -2457,6 +2457,7 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
         displayed_size=None,
         observation=None,
         spot=None,
+        atm_strike=None,
     ):
         """Resolve a pending order and move money atomically.
 
@@ -2602,7 +2603,10 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
                 elif (
                     spot is not None
                     # Selection-time ATM evidence must not override current spot.
-                    and moneyness(instrument, spot) == "OTM"
+                    # ``atm_strike`` is the caller's listed ATM for this same spot,
+                    # recomputed from today's master; without it the strict
+                    # spot-only rule applies.
+                    and moneyness(instrument, spot, atm_strike) == "OTM"
                 ):
                     order.status, order.reason = "REJECTED", "OTM_PROHIBITED"
                 elif (

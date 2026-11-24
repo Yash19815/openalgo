@@ -25,6 +25,8 @@ the existing supplied cache. Display fallbacks, missing sides, stale timestamps,
 malformed levels and depth lists over 20 entries are refused. It reuses the
 paper depth parser without changing the paper path's default policy. Native OI
 and packet sequence remain source fields, not a certification of provenance.
+Both paths take OI from that one parser, which accepts it only from the
+contract's own identified source record and never fills a missing value.
 
 Internal sample deduplication persists owner/recording-scoped identities with
 the evidence transaction. Repeated polling retains first availability, including

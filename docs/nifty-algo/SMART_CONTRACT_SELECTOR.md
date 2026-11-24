@@ -31,6 +31,31 @@ OI uses the same validated source observation and freshness gates as the quote.
 Rankings expose OI availability, raw OI and the capped volume. This is a scoring
 input, not a substitute for the full-quantity depth and risk admission checks.
 
+PAPER selection and research replay read OI through one parser
+(`depth_quote.open_interest`), so equivalent snapshots rank identically. OI is
+taken only from a mode-3 source record naming the same symbol and exchange as
+the contract, as a non-negative whole number. A display fallback, another
+contract's packet, a missing value or a malformed one (a bool, a float, a
+string, a negative count) never supplies OI: PAPER keeps the quote with OI
+missing, because the same quote also prices exits, and a strict research read
+refuses a malformed value as before. Missing OI is never read as zero.
+
+## ATM at selection, admission and fill
+
+ATM is the listed strike of the selected expiry nearest to spot; at the exact
+midpoint between two strikes the lower one is ATM. The selector, admission, the
+locked admission write, the fill and execution replay all apply this one rule
+(`contract_resolver.current_moneyness`), and each recomputes it against its own
+fresh spot. A selection-time ATM label is never carried forward, so a contract
+the underlying has moved away from is OTM at the later step and refused with
+`OTM_PROHIBITED`. The ladder comes from today's verified contract master,
+read before the ledger lock; a contract the master does not list identically
+is refused (`INSTRUMENT_IDENTITY_MISMATCH`), and with no verified master
+nothing is admitted or filled (`MASTER_FRESHNESS_UNVERIFIED`). The nearest
+strike counts as ATM only while listed strikes lie on both sides of spot;
+outside the listed range the strict spot comparison applies, so a sparse ladder
+never widens eligibility. Genuinely OTM contracts stay ineligible.
+
 Only pairs meeting existing loss, reward, funds, confidence lot limits and
 entry/exit displayed-depth requirements are scored. One-to-one reward/risk is
 not a hard gate. Required cash includes entry and modeled exit charges.

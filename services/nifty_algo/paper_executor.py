@@ -60,6 +60,7 @@ class NiftyPaperExecutor:
         market_data=None,
         clock=None,
         session_reader=None,
+        master=None,
     ):
         self.store = store
         self.user_id = user_id
@@ -67,6 +68,24 @@ class NiftyPaperExecutor:
         self.market_data = market_data
         self.clock = clock or (lambda: datetime.now(UTC))
         self.session_reader = session_reader
+        # Callable(now) -> verified current-master instruments. A runner shares
+        # its own adapter; otherwise the native adapter proves master freshness.
+        self.master = master
+
+    def _listed(self, now):
+        """Current verified master contracts, read outside any ledger lock."""
+        try:
+            if self.master is None:
+                from .native_data import NativeDataAdapter
+
+                return NativeDataAdapter(clock=lambda: now).instruments(now)
+            return list(self.master(now))
+        except Exception as error:
+            from .safe_logging import log_failure
+
+            # No master evidence refuses the entry; it never relaxes moneyness.
+            log_failure(logger, "NIFTY contract master read", error)
+            return []
 
     def _bound(self):
         return self.store is not None and self.user_id is not None
@@ -188,35 +207,8 @@ class NiftyPaperExecutor:
                 else []
             )
             decision = decisions[0] if decisions else {}
-            from .contract_resolver import liquid, moneyness
+            from .contract_resolver import current_moneyness, liquid
 
-            supplied_metadata = intent.get("candidate_metadata") or []
-            metadata = {
-                item.get("token"): item
-                for item in supplied_metadata
-                if isinstance(item, dict) and item.get("token")
-            }
-            for candidate in candidate_instruments:
-                details = metadata.get(candidate.token, {})
-                spot_reference = details.get("spot_reference", decision.get("spot_reference"))
-                atm_strike = details.get("atm_strike", decision.get("atm_strike"))
-                classification = (
-                    moneyness(candidate, spot_reference, atm_strike)
-                    if spot_reference is not None
-                    else details.get("moneyness")
-                )
-                if classification not in ("ATM", "ITM"):
-                    raise OrderRefused(["OTM_PROHIBITED"])
-                candidate_metadata.append(
-                    {
-                        "token": candidate.token,
-                        "moneyness": classification,
-                        "spot_reference": (
-                            str(spot_reference) if spot_reference is not None else None
-                        ),
-                        "atm_strike": str(atm_strike) if atm_strike is not None else None,
-                    }
-                )
             confidence = decision.get("confidence")
             if (
                 not decision.get("eligible")
@@ -254,6 +246,29 @@ class NiftyPaperExecutor:
                 for candidate in candidate_instruments
             ):
                 raise OrderRefused(["INSTRUMENT_RESTRICTED"])
+            # Selection-time moneyness labels are never trusted here; this runs
+            # after the cheaper refusals so their reasons still come first. Each
+            # candidate is reclassified against fresh spot and the ATM listed
+            # in today's verified master, so a move away from the contract
+            # between selection and admission refuses it.
+            listed = self._listed(now)
+            admission_spot = self._spot(now, config)
+            for candidate in candidate_instruments:
+                classification, atm_strike, refusal = current_moneyness(
+                    candidate, admission_spot, listed
+                )
+                if refusal:
+                    raise OrderRefused([refusal])
+                if classification not in ("ATM", "ITM"):
+                    raise OrderRefused(["OTM_PROHIBITED"])
+                candidate_metadata.append(
+                    {
+                        "token": candidate.token,
+                        "moneyness": classification,
+                        "spot_reference": str(admission_spot),
+                        "atm_strike": str(atm_strike) if atm_strike is not None else None,
+                    }
+                )
             entry_session_open = bool(
                 session["status"] == "TRADING"
                 and session["window"]
@@ -410,11 +425,16 @@ class NiftyPaperExecutor:
                 or order["symbol"] != instrument.symbol
             ):
                 raise OrderRefused(["INSTRUMENT_IDENTITY_MISMATCH"])
-            # Cache-only read at the locked write; never reuse selection-time ATM.
+            # Cache-only spot read at the locked write; never reuse selection-time
+            # ATM. The master ladder was read before the lock (no database or
+            # network read is added under it) and is today's dated evidence.
             spot = self._spot(now, config)
             if spot is None:
                 raise OrderRefused(["SPOT_REFERENCE_UNAVAILABLE"])
-            if moneyness(instrument, spot) == "OTM":
+            classification, _, refusal = current_moneyness(instrument, spot, listed)
+            if refusal:
+                raise OrderRefused([refusal])
+            if classification == "OTM":
                 raise OrderRefused(["OTM_PROHIBITED"])
             # The cache can change between ranking and this locked reservation.
             # Re-price the selected proposal; changed approvals require a new decision.
@@ -557,7 +577,7 @@ class NiftyPaperExecutor:
             elif not self._session_open(now):
                 continue
             tick = Decimal(str(order["payload"]["instrument"]["tick_size"]))
-            spot = None
+            spot = fill_atm_strike = None
             if order["side"] == "BUY":
                 instrument = Instrument.model_validate(order["payload"]["instrument"])
                 if (
@@ -569,6 +589,13 @@ class NiftyPaperExecutor:
                     continue
                 spot = self._spot(now, config)
                 if spot is None:
+                    continue
+                from .contract_resolver import current_moneyness
+
+                # Fill-time revalidation against fresh spot and today's master.
+                # Without that evidence the BUY waits; it never fills on a label.
+                _, fill_atm_strike, refusal = current_moneyness(instrument, spot, self._listed(now))
+                if refusal:
                     continue
                 price = quote.ask + tick * config.slippage_ticks
                 size = quote.ask_size
@@ -596,6 +623,7 @@ class NiftyPaperExecutor:
                     displayed_size=size,
                     observation=quote.model_dump(mode="json"),
                     spot=spot,
+                    atm_strike=fill_atm_strike,
                 )
             )
         if any(row["side"] == "SELL" and row["status"] == "FILLED" for row in resolved):

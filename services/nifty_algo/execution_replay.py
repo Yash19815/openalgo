@@ -17,7 +17,7 @@ from pydantic import Field, model_validator
 
 from .analytics import performance
 from .config import StrategyConfig
-from .contract_resolver import Resolver, moneyness
+from .contract_resolver import Resolver, current_moneyness
 from .market_data import aggregate
 from .models import PCR, Candle, Instrument, Model, Quote
 from .paper_executor import _charges
@@ -528,7 +528,9 @@ def _run(events, config, profit_lock, start, end):
                 spot is None
                 or spot.ltp is None
                 or not 0 <= (now - spot.source_time).total_seconds() <= config.quote_max_age
-                or moneyness(instrument, spot.ltp) == "OTM"
+                # The same listed-ATM rule PAPER applies at fill, against the
+                # recorded master of this frame.
+                or current_moneyness(instrument, spot.ltp, frame.instruments)[0] in (None, "OTM")
             ):
                 reject("CURRENT_SPOT_UNAVAILABLE_OR_OTM", now)
                 pending = None

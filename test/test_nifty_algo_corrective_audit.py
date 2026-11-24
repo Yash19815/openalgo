@@ -15,6 +15,7 @@ from test.test_nifty_algo_paper_executor import (
     buy_intent,
     executor,
     instrument,
+    listed,
     running,
 )
 from test.test_nifty_algo_safety_center import store as store
@@ -167,7 +168,7 @@ def test_illiquid_first_candidate_does_not_hide_valid_fallback(store):
         return data
 
     market.get_all_data = depth
-    order, created = executor(store, market=market).admit(
+    order, created = executor(store, market=market, master=listed(fallback)).admit(
         buy_intent(candidates=[first, fallback]), NOW
     )
     assert created

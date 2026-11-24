@@ -48,6 +48,10 @@ class NiftyRunner:
         self.executor = executor or NiftyPaperExecutor(
             store, user_id, market_data=self.native.market_data
         )
+        if getattr(self.executor, "master", None) is None:
+            # Admission and fill revalidate against the master this runner
+            # selected from, not a second copy that could disagree with it.
+            self.executor.master = self.native.instruments
         self.assessment = assessment
         self.shadow = ShadowBook(
             store,

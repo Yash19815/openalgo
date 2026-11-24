@@ -584,6 +584,9 @@ def test_buy_admission_rejects_otm_candidates(store):
     config = active_config(store)
     exe = executor(store, config=config)
     contract = instrument().model_copy(update={"strike": 22100})
+    # The stale label below is ignored: admission reclassifies against fresh
+    # spot (22000) and today's ladder, where 22000 is ATM and CE 22100 is OTM.
+    exe.master = lambda now: [instrument().model_copy(update={"token": "token-atm"}), contract]
     with pytest.raises(OrderRefused) as refused:
         exe.admit(
             buy_intent(

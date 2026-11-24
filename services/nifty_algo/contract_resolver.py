@@ -50,6 +50,60 @@ def moneyness(instrument, spot, atm_strike=None):
     raise ValueError("Moneyness requires a CE or PE instrument")
 
 
+def nearest_listed_strike(strikes, spot):
+    """The listed ATM strike: nearest to spot, the lower strike at the exact midpoint."""
+    spot = Decimal(str(spot))
+    strikes = sorted({Decimal(str(strike)) for strike in strikes if strike is not None})
+    return min(strikes, key=lambda strike: (abs(strike - spot), strike)) if strikes else None
+
+
+def listed_chain(instrument, instruments):
+    """Current listed contracts of this option's own side and expiry, by token.
+
+    Mirrors the selector's ladder: same exchange, underlying, expiry and side,
+    tradable, on the same dated master. A strike outside it is not listed now.
+    """
+    return {
+        item.token: item
+        for item in instruments
+        if item.exchange == instrument.exchange
+        and item.underlying == instrument.underlying
+        and item.expiry == instrument.expiry
+        and item.kind == instrument.kind
+        and item.tradable
+        and item.master_date == instrument.master_date
+    }
+
+
+def current_moneyness(instrument, spot, instruments):
+    """Classify an option against fresh spot and the ATM listed in current metadata.
+
+    Returns (classification, atm_strike, reason). The ATM label is recomputed
+    from the given spot every time, never carried from an earlier selection, so
+    a contract that the underlying has moved away from becomes OTM and is
+    refused. ``reason`` is set and the classification is None when the current
+    verified metadata cannot vouch for this exact contract.
+
+    The nearest strike is ATM only while listed strikes lie on both sides of
+    spot. Outside the listed range, or on a ladder too sparse to bracket spot,
+    "nearest" says nothing about moneyness, so the strict spot comparison
+    applies and ``atm_strike`` is None: a sparse ladder never widens eligibility.
+    """
+    if spot is None:
+        return None, None, "SPOT_REFERENCE_UNAVAILABLE"
+    spot = Decimal(str(spot))
+    chain = listed_chain(instrument, instruments)
+    if not chain:
+        return None, None, "MASTER_FRESHNESS_UNVERIFIED"
+    if chain.get(instrument.token) != instrument:
+        return None, None, "INSTRUMENT_IDENTITY_MISMATCH"
+    strikes = [item.strike for item in chain.values()]
+    atm = nearest_listed_strike(strikes, spot)
+    if not min(strikes) <= spot <= max(strikes):
+        atm = None
+    return moneyness(instrument, spot, atm), atm, None
+
+
 class SelectionUnavailable(ValueError):
     """Stable audit reason without exposing provider exception text."""
 
@@ -108,8 +162,8 @@ class Resolver:
         )
         expiry_options = options
         strikes = sorted({i.strike for i in options})
-        atm = min(strikes, key=lambda s: (abs(s - spot), s))
-        atm_strike = atm
+        # The same rule admission and fill re-apply against fresh spot.
+        atm_strike = nearest_listed_strike(strikes, spot)
         if config.selection == "ITM":
             itm_strikes = [
                 strike

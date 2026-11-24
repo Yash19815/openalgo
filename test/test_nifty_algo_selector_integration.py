@@ -1,6 +1,7 @@
 """Selector audit reads remain owner-scoped and separate from order authority."""
 
 from datetime import timedelta
+from decimal import Decimal
 
 import pytest
 
@@ -104,7 +105,12 @@ def test_admission_preserves_candidate_evidence_for_fill_revalidation(store):
     intent = buy_intent()
     order, created = executor(store).admit(intent)
     assert created
-    assert order["payload"]["candidate_metadata"] == intent["candidate_metadata"]
+    # Admission records the evidence it re-derived from fresh spot and today's
+    # master, not the selection-time label it was handed.
+    [stored] = order["payload"]["candidate_metadata"]
+    assert stored["token"] == intent["candidate_metadata"][0]["token"]
+    assert stored["moneyness"] == "ATM" and stored["atm_strike"] == "22000"
+    assert Decimal(stored["spot_reference"]) == Decimal("22000")
 
 
 def test_recorded_atm_hint_cannot_override_current_otm_at_fill(store):

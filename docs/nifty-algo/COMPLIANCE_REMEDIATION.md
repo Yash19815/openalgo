@@ -205,3 +205,68 @@ guarantee recovery from power loss across filesystem/database commits.
 
 Verdict: **PARTIAL**, pending GitHub CI and external acceptance. No local Linux,
 WSL, Docker, VM, Gunicorn/eventlet/gthread runtime, real order or real message.
+
+## Security and strategy-integration corrections — 24 November 2026 (second pass)
+
+Starting HEAD `36baadbfae4704f04e90fe387ef63d6cfdd5f46c` (local equals
+`origin/feat/nifty-paper-trading-system`). The first pass above is pushed and
+was not repeated. No commit, push, merge or PR.
+
+| Finding | Evidence | Correction |
+| --- | --- | --- |
+| S-01 (platform) | `blueprints/apikey.py` took the target of `POST /apikey` and `POST /apikey/mode` from the body's `user_id`, unchanged from upstream `main`. | Both writes act on `session["user"]`. An explicit other `user_id` (another account or one that does not exist) gets 403 and writes nothing; the owner's own `user_id`, or none, works as before. A non-object body cannot name a target. CSRF is untouched and still required. |
+| N-02 | Reproduced on HEAD: a mode-3 source with `oi=5000` gave a PAPER quote with `oi=None`, while the research reader copied it. | `depth_quote.open_interest` is the one parser for both paths: only the contract's own identified source record, a non-negative non-bool `int`, missing stays `None`. PAPER drops a malformed value and keeps the quote (it also prices exits); strict research reads refuse it as before. `recording_quote` no longer overrides OI. |
+| N-03 | Demonstrated from HEAD source: the runner sent `atm_strike: None`, admission classified against selection-time spot, and the locked write, fill and replay used spot-only `moneyness`, so the nearest strike on the far side of spot was refused. | `contract_resolver.current_moneyness`: nearest listed strike of the same side and expiry on today's verified master, lower at the midpoint, recomputed from fresh spot at admission, at the locked write, at fill and in replay; the selector uses the same `nearest_listed_strike`. The ladder is read before the ledger lock. The ATM label applies only while listed strikes bracket spot, so a sparse ladder cannot widen eligibility (found by an existing 21900 test once a one-strike fixture ladder was added). No master or a contract it does not list identically refuses. The check runs after the cooldown, monthly-lock and restriction checks, so their reasons still come first. |
+| N-04 | Reproduced on HEAD: dropping one minute of the oldest session made the end-to-end fixture ineligible. | `completed_series` keeps the continuous suffix after the latest same-day gap when that gap is in an earlier session, refuses when it is in the session being evaluated, and repairs nothing. Whole-series value, identity (rollover) and overlap refusals are unchanged; R-WARMUP decides suffix length. |
+| N-04, related | Reproduced on HEAD: with today's minute 1 missing (opening 5-minute bucket dropped), the fixture was **eligible** and no `SESSION_VWAP_INCOMPLETE` was recorded. | `assess_current` also requires today's first completed entry candle to start at the open. |
+
+Priority 5 checks, verified by reading and by the suites below:
+
+- Discord interaction limiter is still applied before the owner lookup;
+  `test_public_interaction_limits_run_before_owner_lookup` and
+  `test_rate_limited_surface_still_verifies_signed_ping` pass.
+- `db/nifty_reports/` and `db/nifty_calendar/` match `.gitignore`; no file in
+  either is tracked.
+- Single-user administration: S-01 changes only who a write targets; the
+  `GET /apikey` view, session checks and the one-account model are unchanged.
+- Selector weights: five values, each 0 to 100, summing to 100; NaN, infinity
+  and wrong arity are refused; a change makes a new configuration identity, so
+  a decision made under other weights cannot be admitted. Key Settings still
+  lets the trader set other weights deliberately; pinning them to 30/25/15/20/10
+  is an owner decision and was not made here.
+- No Live order route: nothing under `services/nifty_algo/`, the NIFTY
+  blueprints or `database/nifty_*.py` imports a broker order function;
+  `LiveAdapterStub.submit` always raises `LIVE_NOT_READY`.
+- Other blueprints reading a user id from the request: only the broker
+  sign-in forms in `blueprints/brlogin.py`, which carry the broker client ID
+  under the broker-login invariant, not an OpenAlgo account target.
+
+Not changed, for the owner: the Angel adapter defaults a missing `open_interest`
+to `0` in its normalized `oi` field, but the source observation NIFTY reads
+uses `source_oi`, which stays `None`. A genuine OI of zero and a missing OI
+score the same (the capped volume is zero either way), so ranking is
+unaffected. N-05 (crossover-age wording) and N-01 (`openalgo.ta` parity tests)
+are not addressed in this pass.
+
+Verification of the second pass (Windows, Python 3.12, `uv run --no-sync`):
+
+- Every file in CI's offline NIFTY step, plus `test_apikey_session_owner.py`,
+  `test_logout_csrf.py` and `test_auth_logout.py`: **932 passed in 318.29 s**,
+  after all Python changes.
+- New `test_apikey_session_owner.py`: 14 cases. New
+  `test_nifty_algo_strategy_integration.py`: 32 cases.
+- Against HEAD in a temporary worktree: the oldest-session gap was ineligible,
+  the dropped opening bucket was eligible, and PAPER OI was `None`. The new
+  tests assert the corrected behaviour for each.
+- An intermediate run with the master check in place but no fixture master
+  failed 124 tests; with the shared fixture listing its contract, the
+  remaining failures exposed the sparse-ladder broadening and the reason-order
+  change described above, both fixed rather than worked around.
+- `ruff check` clean on every changed Python file. Two older test files were
+  already unformatted at HEAD and are left as they were. Biome and
+  `tsc --noEmit` clean for the frontend label change. `git diff --check` clean.
+- **PENDING GITHUB CI**: the full matrix (Python 3.12/3.13/3.14, gthread,
+  eventlet, platforms) and the frontend jobs.
+
+Verdict for this pass: **PARTIAL**, pending GitHub CI and real-feed validation
+of OI availability, minute-history completeness and the listed ladder.

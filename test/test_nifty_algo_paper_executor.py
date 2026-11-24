@@ -131,7 +131,16 @@ def buy_intent(intent_id="i-1", **extra):
     return payload
 
 
-def executor(store, market=None, config=None, clock=None):
+def listed(*extra):
+    """Dated-master fixture: the verified chain the fixture contract is listed in.
+
+    Admission and fill revalidate moneyness against current master evidence, so
+    an executor needs one. Tests that admit other contracts list them here.
+    """
+    return lambda now: [instrument(), *extra]
+
+
+def executor(store, market=None, config=None, clock=None, master=None):
     # Explicit offline qualifying-decision fixture; never real indicator evidence.
     config = _paper_test_config(config)
     store.ensure_user(USER)
@@ -162,6 +171,7 @@ def executor(store, market=None, config=None, clock=None):
             "start_ms": NOW.replace(hour=3, minute=45).timestamp() * 1000,
             "end_ms": NOW.replace(hour=10, minute=0).timestamp() * 1000,
         },
+        master=master or listed(),
     )
 
 

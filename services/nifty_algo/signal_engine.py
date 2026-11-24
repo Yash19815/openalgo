@@ -19,13 +19,23 @@ def completed_series(bars, now, token, timeframe):
     if any(left.end > right.start for left, right in zip(known, known[1:], strict=False)):
         return []
     local = ZoneInfo("Asia/Kolkata")
-    if any(
-        left.end != right.start
+    # A missing broker candle is never repaired. A gap inside the session being
+    # evaluated leaves its candles and session VWAP incomplete, so that series
+    # is refused outright. A gap in an earlier session discards everything up
+    # to it: only the verified continuous suffix after the latest gap is used,
+    # and the R-WARMUP gate decides whether that suffix is long enough.
+    gaps = [
+        index + 1
+        for index, (left, right) in enumerate(zip(known, known[1:], strict=False))
+        if left.end != right.start
         and left.start.astimezone(local).date() == right.start.astimezone(local).date()
-        for left, right in zip(known, known[1:], strict=False)
-    ):
+    ]
+    if not gaps:
+        return known
+    suffix = known[gaps[-1] :]
+    if suffix[0].start.astimezone(local).date() == known[-1].start.astimezone(local).date():
         return []
-    return known
+    return suffix
 
 
 def snapshot(bars, config):

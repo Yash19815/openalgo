@@ -42,6 +42,35 @@ def generate_api_key():
     return secrets.token_hex(32)
 
 
+def _json_body():
+    """The request's JSON object, or an empty one for a missing or non-object body."""
+    body = request.get_json(silent=True)
+    return body if isinstance(body, dict) else {}
+
+
+def _session_owner_target(body):
+    """Return the account a key or mode write may change, or a refusal.
+
+    The target is always the signed-in user. A body ``user_id`` is accepted
+    only as a restatement of that user, because the page sends it; any other
+    value is refused, so a request can never rotate another account's key,
+    change its order mode or create a key for an account that does not exist.
+    """
+    owner = session.get("user")
+    if not owner:
+        return None, (jsonify({"error": "Sign in again to continue."}), 401)
+    requested = body.get("user_id")
+    if requested is not None and requested != owner:
+        logger.warning("Refused an API key change for an account other than the signed-in user")
+        return None, (
+            jsonify(
+                {"error": "You can only change the API key of the account you are signed in to."}
+            ),
+            403,
+        )
+    return owner, None
+
+
 @api_key_bp.route("/apikey", methods=["GET", "POST"])
 @check_session_validity
 def manage_api_key():
@@ -79,10 +108,9 @@ def manage_api_key():
             order_mode=order_mode,
         )
     else:
-        user_id = request.json.get("user_id")
-        if not user_id:
-            logger.error("API key update attempted without user ID")
-            return jsonify({"error": "User ID is required"}), 400
+        user_id, refusal = _session_owner_target(_json_body())
+        if refusal is not None:
+            return refusal
 
         # Generate new API key
         api_key = generate_api_key()
@@ -105,12 +133,11 @@ def manage_api_key():
 def update_api_key_mode():
     """Update order mode (auto/semi_auto) for a user"""
     try:
-        user_id = request.json.get("user_id")
-        mode = request.json.get("mode")
-
-        if not user_id:
-            logger.error("Order mode update attempted without user ID")
-            return jsonify({"error": "User ID is required"}), 400
+        body = _json_body()
+        user_id, refusal = _session_owner_target(body)
+        if refusal is not None:
+            return refusal
+        mode = body.get("mode")
 
         if not mode or mode not in ["auto", "semi_auto"]:
             logger.error(f"Invalid order mode: {mode}")
