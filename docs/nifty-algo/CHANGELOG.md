@@ -1,5 +1,35 @@
 # NIFTY ALGO changelog
 
+## 0.7.0 — 2026-11-25 (unreleased)
+
+### Fix
+
+- Add strategy 3.3.0 with approved SuperTrend 20/2 defaults, historical default
+  loading, exposure-aware migration and explicit consent for ambiguous 10/3.
+- Add structured length/factor settings and research factor overrides. Record
+  effective configuration with each new decision and indicator diagnostic.
+- Preserve historical 10/3 parity and add independent 20/2 regressions.
+- Activate the owner-approved version-pinned confidence method for 3.3.0,
+  retaining historical v1 scoring, configuration identities and protection.
+- Add durable bounded candle-publication retries, shared session completeness
+  and calendar disagreement locks without blocking fresh protective PAPER sells.
+- Preserve exchange quote/trade/receipt timestamp meanings through Angel's native
+  cache, reject untyped depth freshness and record bounded allowlisted evidence.
+- Filter report event queries and add an additive index. Retire source patchers
+  without deleting historical code. No destructive retention is enabled.
+- A day on which the approved and native calendars disagree is now recorded by
+  the report scanner as an unknown session and rechecked, instead of being
+  skipped. A protective PAPER sell is blocked only by a valid native window that
+  excludes the time, never by an unreadable or disagreeing calendar.
+- Saving a configuration of the same strategy version stays allowed while a
+  position is held; a strategy-version change waits until no order is pending
+  and no position is open.
+- Upgrade notes: 3.2.0 configurations with omitted indicator keys become 3.3.0
+  with SuperTrend 20/2 and entries paused. A stored explicit 10/3 stays 3.2.0
+  and paused until reviewed on the settings page. 3.3.0 replays are not
+  comparable with 3.2.0 replays. Charge inputs below the published floors refuse
+  a new 3.3.0 entry.
+
 ## 0.6.0 — 2026-11-24 (unreleased)
 
 ### Feature

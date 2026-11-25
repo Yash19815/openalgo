@@ -142,6 +142,7 @@ REPLACEMENTS: dict[str, list[tuple[str, str]]] = {
 
 
 def main() -> int:
+    raise SystemExit("RETIRED: historical source patcher; use reviewed Git commits. No files changed.")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="actually write files (default dry-run)")
     parser.add_argument("--root", type=Path, default=Path.cwd(), help="OpenAlgo checkout root")
