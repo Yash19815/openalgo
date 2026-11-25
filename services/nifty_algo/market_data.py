@@ -8,6 +8,50 @@ from .models import Candle
 IST = ZoneInfo("Asia/Kolkata")
 
 
+def session_series(bars, windows, now):
+    """Shared PAPER/replay completeness policy using only available minutes.
+
+    Drop history through the latest incomplete prior session. Refuse a current
+    session with a missing minute, opening bucket or confirmation bucket.
+    Windows must be causal calendar evidence supplied by the caller.
+    """
+    today = now.astimezone(IST).date()
+    entries, higher = [], []
+    current_complete = False
+    discarded = []
+    for day, window in sorted(windows.items()):
+        if window is False and day <= today:
+            entries, higher = [], []
+            discarded.append(day.isoformat())
+        if not window or day > today:
+            continue
+        opening, closing = window
+        minutes = [
+            b for b in bars if b.complete and opening <= b.start and b.end <= min(now, closing)
+        ]
+        count = max(0, int((min(now, closing) - opening).total_seconds() // 60))
+        complete = len(minutes) == count and all(
+            b.start == opening + timedelta(minutes=i) and b.end == b.start + timedelta(minutes=1)
+            for i, b in enumerate(minutes)
+        )
+        entry = aggregate(minutes, 5, now, opening)
+        confirmation = aggregate(minutes, 15, now, opening)
+        complete = complete and (count < 5 or bool(entry) and entry[0].start == opening)
+        complete = complete and (
+            count < 15 or bool(confirmation) and confirmation[0].start == opening
+        )
+        if not complete:
+            if day < today:
+                entries, higher = [], []
+                discarded.append(day.isoformat())
+            continue
+        entries.extend(entry)
+        higher.extend(confirmation)
+        if day == today:
+            current_complete = count >= 5
+    return entries, higher, current_complete, discarded
+
+
 def aggregate(bars, minutes, now, session_open=None):
     if minutes not in (1, 5, 15):
         raise ValueError("Unsupported candle timeframe")

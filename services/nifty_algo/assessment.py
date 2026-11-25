@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .config import StrategyConfig
-from .market_data import aggregate
+from .market_data import session_series
 from .models import Candle
 from .native_data import NativeDataAdapter, _timestamp
 from .signal_engine import Rules
@@ -86,6 +86,16 @@ def _candles(rows, token, now, first_day, session_reader):
         window = windows[day]
         if window and window[0] <= start and end <= window[1]:
             bars.append(bar)
+    # Detect a whole missing session between observed sessions, not only gaps
+    # inside a day. A truncated history prefix already fails/limits warmup.
+    first_known = min(
+        (bar.start.astimezone(IST).date() for bar in bars), default=now.astimezone(IST).date()
+    )
+    day = first_known
+    while day <= now.astimezone(IST).date():
+        if day not in windows:
+            windows[day] = _window(day, session_reader)
+        day += timedelta(days=1)
     return sorted(bars, key=lambda bar: bar.start), windows
 
 
@@ -147,12 +157,7 @@ def assess_current(
             issue = "HISTORY_UNAVAILABLE"
     else:
         issue = "CURRENT_NIFTY_FUTURE_UNAVAILABLE"
-    entry, higher = [], []
-    for day, window in sorted(windows.items()):
-        if window:
-            session_bars = [bar for bar in bars if bar.start.astimezone(IST).date() == day]
-            entry.extend(aggregate(session_bars, 5, now, session_open=window[0]))
-            higher.extend(aggregate(session_bars, 15, now, session_open=window[0]))
+    entry, higher, session_complete, discarded_sessions = session_series(bars, windows, now)
     pcr_result = (pcr_reader or native.get_pcr)(config, now)
     decision = Rules().evaluate(
         entry,
@@ -170,16 +175,7 @@ def assess_current(
     if instrument and instrument.get("master_freshness") != "VERIFIED":
         decision["reasons"].append("MASTER_FRESHNESS_UNVERIFIED")
         decision["eligible"] = False
-    today_window = windows.get(today)
-    today_bars = [b for b in bars if b.start.astimezone(IST).date() == today]
-    today_entry = [c for c in entry if c.start.astimezone(IST).date() == today]
-    if (
-        not today_window
-        or not today_bars
-        or today_bars[0].start != today_window[0]
-        # A dropped opening bucket would start today's VWAP after the open.
-        or (today_entry and today_entry[0].start != today_window[0])
-    ):
+    if not session_complete:
         decision["reasons"].append("SESSION_VWAP_INCOMPLETE")
         decision["eligible"] = False
     eligible = decision["eligible"] and not observation_only
@@ -204,6 +200,7 @@ def assess_current(
                 "minute_bars": len(bars),
                 "entry_bars": len(entry),
                 "confirmation_bars": len(higher),
+                "discarded_incomplete_sessions": discarded_sessions,
             },
         }
     )

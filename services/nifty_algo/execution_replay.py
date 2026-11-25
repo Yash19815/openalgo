@@ -18,7 +18,7 @@ from pydantic import Field, model_validator
 from .analytics import performance
 from .config import StrategyConfig
 from .contract_resolver import Resolver, current_moneyness
-from .market_data import aggregate
+from .market_data import aggregate, session_series
 from .models import PCR, Candle, Instrument, Model, Quote
 from .paper_executor import _charges
 from .protection import (
@@ -33,7 +33,7 @@ from .session_policy import pending_entry_expiry
 from .signal_engine import Rules
 
 IST = ZoneInfo("Asia/Kolkata")
-ENGINE = "causal-options-execution-v1"
+ENGINE = "causal-options-execution-v2"
 D = Decimal
 RESEARCH_FIELDS = {
     "adx_min",
@@ -274,6 +274,32 @@ def session_window(frame, day):
 
 
 def decision_at(frame, now, config):
+    if config.strategy_version in ("3.1.0", "3.2.0"):
+        return _legacy_decision_at(frame, now, config)
+    windows = {
+        day: session_window(frame, day)
+        for day in {b.start.astimezone(IST).date() for b in frame.minute_bars}
+    }
+    first_day = min(windows, default=now.astimezone(IST).date())
+    day = first_day
+    while day <= now.astimezone(IST).date():
+        row = next((s for s in frame.sessions if s["date"] == day.isoformat()), None)
+        windows[day] = session_window(frame, day) if row else False
+        day += timedelta(days=1)
+    entries, higher, complete, discarded = session_series(frame.minute_bars, windows, now)
+    pcr = frame.pcr if frame.pcr_available_at and frame.pcr_available_at <= now else None
+    decision = Rules().evaluate(
+        entries, higher, pcr, now, config, config.version_id, frame.analysis_instrument.token
+    )
+    if not complete:
+        decision["eligible"] = False
+        decision["reasons"].append("SESSION_VWAP_INCOMPLETE")
+    decision["discarded_incomplete_sessions"] = discarded
+    return decision
+
+
+def _legacy_decision_at(frame, now, config):
+    """Historical v1 completeness semantics; never used by a new 3.3.0 entry."""
     entries, higher = [], []
     for day in sorted({b.start.astimezone(IST).date() for b in frame.minute_bars}):
         window = session_window(frame, day)
@@ -745,7 +771,9 @@ def compare(events, baseline, experimental, splits):
             }
         )
     result = {
-        "engine_version": ENGINE,
+        "engine_version": "causal-options-execution-v1"
+        if baseline.strategy_version in ("3.1.0", "3.2.0")
+        else ENGINE,
         "mode": "RESEARCH",
         "dataset_sha256": event_identity(known),
         "dataset_hash_policy": "length-framed-record-sha256-v1",

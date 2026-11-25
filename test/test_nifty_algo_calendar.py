@@ -1,4 +1,4 @@
-from datetime import date, time
+from datetime import date, datetime, time, timedelta
 from hashlib import sha256
 from io import BytesIO
 from types import SimpleNamespace
@@ -150,9 +150,7 @@ def test_approval_revisions_audit_and_history(store):
         "alice",
     )
     approve(store, corrected)
-    second = approve(store, draft(store, "alice", [
-        {"date": "2026-01-26", "name": "Republic Day"}
-    ]))
+    second = approve(store, draft(store, "alice", [{"date": "2026-01-26", "name": "Republic Day"}]))
     assert second["status"] == "APPROVED"
     assert second["supersedes_id"] == corrected["id"]
     assert len(store.calendar_versions("alice", 2026)) == 2
@@ -179,16 +177,26 @@ class FakeMarketCalendar:
         return self.special if self.special == day else None
 
     def get_effective_session_window(self, day, exchange):
-        return self.windows.get(day)
+        if day == date(2026, 1, 12):
+            return None  # Explicit native holiday in get_holidays_by_year.
+        opening = datetime.combine(day, time(9, 15), authority.IST)
+        return self.windows.get(
+            day,
+            {
+                "start_ms": opening.timestamp() * 1000,
+                "end_ms": (opening + timedelta(hours=6, minutes=25)).timestamp() * 1000,
+            },
+        )
 
     def get_market_timing(self, exchange):
-        return {"start_offset": 9 * 60 * 60 * 1000 + 15 * 60 * 1000,
-                "end_offset": 15 * 60 * 60 * 1000 + 40 * 60 * 1000}
+        return {
+            "start_offset": 9 * 60 * 60 * 1000 + 15 * 60 * 1000,
+            "end_offset": 15 * 60 * 60 * 1000 + 40 * 60 * 1000,
+        }
 
     def get_holidays_by_year(self, year):
         return [
-            {"date": "2026-01-12", "holiday_type": "TRADING_HOLIDAY",
-             "closed_exchanges": ["NFO"]}
+            {"date": "2026-01-12", "holiday_type": "TRADING_HOLIDAY", "closed_exchanges": ["NFO"]}
         ]
 
 
@@ -203,12 +211,18 @@ def test_approved_calendar_overrides_legacy_and_disables_special(store, monkeypa
     monkeypatch.setattr(authority, "_legacy_calendar", lambda: market)
     approved(store)
     working_day = authority.nifty_session("alice", date(2026, 1, 12), store=store)
-    assert working_day["status"] == "TRADING"
-    assert working_day["window"][0].time() == time(9, 15)
+    assert working_day["status"] == "CALENDAR_DISAGREEMENT"
+    assert working_day["window"] is None
+    assert authority.nifty_session("alice", date(2026, 1, 14), store=store)["window"][
+        0
+    ].time() == time(9, 15)
     holiday = approved(store, [{"date": "2026-01-13"}])
     assert holiday["status"] == "APPROVED"
     assert authority.nifty_session("alice", date(2026, 1, 13), store=store)["status"] == "HOLIDAY"
-    assert authority.nifty_session("alice", date(2026, 1, 15), store=store)["status"] == "SPECIAL_SESSION_DISABLED"
+    assert (
+        authority.nifty_session("alice", date(2026, 1, 15), store=store)["status"]
+        == "SPECIAL_SESSION_DISABLED"
+    )
     assert authority.nifty_session("alice", date(2026, 1, 17), store=store)["status"] == "WEEKEND"
     diff = authority.preview_diff([{"date": "2026-01-13"}], 2026)
     assert diff == {"legacy_only": ["2026-01-12"], "calendar_only": ["2026-01-13"]}
@@ -218,13 +232,22 @@ def test_approved_calendar_overrides_legacy_and_disables_special(store, monkeypa
 def test_unapproved_calendar_and_next_eligible_sessions(store, monkeypatch):
     market = FakeMarketCalendar()
     monkeypatch.setattr(authority, "_legacy_calendar", lambda: market)
-    assert authority.nifty_session("alice", date(2026, 1, 9), store=store)["status"] == "CALENDAR_UNAPPROVED"
+    assert (
+        authority.nifty_session("alice", date(2026, 1, 9), store=store)["status"]
+        == "CALENDAR_UNAPPROVED"
+    )
     approved(store)
-    assert authority.next_eligible_session("alice", date(2026, 1, 9), store=store) == date(2026, 1, 12)
+    assert authority.next_eligible_session("alice", date(2026, 1, 9), store=store) == date(
+        2026, 1, 13
+    )
     approved(store, [{"date": "2026-01-13"}])
-    assert authority.next_eligible_session("alice", date(2026, 1, 12), store=store) == date(2026, 1, 14)
+    assert authority.next_eligible_session("alice", date(2026, 1, 12), store=store) == date(
+        2026, 1, 14
+    )
     approved(store, [{"date": "2026-01-12"}])
-    assert authority.next_eligible_session("alice", date(2026, 1, 9), store=store) == date(2026, 1, 13)
+    assert authority.next_eligible_session("alice", date(2026, 1, 9), store=store) == date(
+        2026, 1, 13
+    )
 
 
 def test_calendar_mutation_route_requires_auth_and_csrf(tmp_path, monkeypatch):

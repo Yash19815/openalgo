@@ -4,15 +4,12 @@ from hashlib import sha256
 def seed_market_timing():
     from database import market_calendar_db
 
-    market_calendar_db.MarketTiming.__table__.create(
-        market_calendar_db.engine, checkfirst=True
-    )
+    # Effective windows query holiday tables as well as timing templates.
+    market_calendar_db.Base.metadata.create_all(market_calendar_db.engine)
     session = market_calendar_db.db_session()
     try:
         timing = (
-            session.query(market_calendar_db.MarketTiming)
-            .filter_by(exchange_code="NFO")
-            .first()
+            session.query(market_calendar_db.MarketTiming).filter_by(exchange_code="NFO").first()
         )
         if timing is None:
             timing = market_calendar_db.MarketTiming(exchange_code="NFO")
@@ -38,13 +35,11 @@ def seed_approved_nfo_calendar(store, user_id, year, entries=()):
 
     # Use a genuine known holiday as the empty-fixture default; never
     # approve a blank production calendar just to satisfy unit tests.
-    entries = list(entries) or [
-        {"date": f"{year}-01-26", "name": "Republic Day (test fixture)"}
-    ]
-    data = ("date,name\n" + "".join(
-        f"{entry['date']},{entry.get('name') or 'Test holiday'}\n"
-        for entry in entries
-    )).encode("utf-8")
+    entries = list(entries) or [{"date": f"{year}-01-26", "name": "Republic Day (test fixture)"}]
+    data = (
+        "date,name\n"
+        + "".join(f"{entry['date']},{entry.get('name') or 'Test holiday'}\n" for entry in entries)
+    ).encode("utf-8")
     draft = store.create_calendar_draft(
         user_id,
         year=year,

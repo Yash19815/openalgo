@@ -139,7 +139,7 @@ def test_real_crossover_age_boundary(age, gate, direction):
 
 def test_default_window_is_the_latest_three_completed_candles():
     config = StrategyConfig()
-    assert config.strategy_version == CURRENT_STRATEGY_VERSION == "3.2.0"
+    assert config.strategy_version == CURRENT_STRATEGY_VERSION == "3.3.0"
     assert config.crossover_freshness == MAX_MACD_CROSSOVER_AGE == 2
     assert StrategyConfig(crossover_freshness=0).crossover_freshness == 0
     assert StrategyConfig(crossover_freshness=1).crossover_freshness == 1
@@ -277,7 +277,14 @@ def test_zero_line_option_unchanged(zero_required):
 
 def legacy_record(freshness=3, **changes):
     values = StrategyConfig().model_dump(mode="json")
-    values.update({"strategy_version": "3.1.0", "crossover_freshness": freshness} | changes)
+    values.update(
+        {
+            "strategy_version": "3.1.0",
+            "confidence_method": "five-indicator-v1",
+            "crossover_freshness": freshness,
+        }
+        | changes
+    )
     return values
 
 
@@ -314,7 +321,7 @@ def test_current_version_cannot_claim_a_wider_window():
 
 @pytest.mark.parametrize(("saved", "migrated"), ((0, 0), (1, 1), (2, 2), (3, 2), (20, 2)))
 def test_migration_narrows_never_widens(saved, migrated):
-    config = migrate_configuration(legacy_record(saved))
+    config = migrate_configuration(legacy_record(saved), target_version="3.2.0")
     assert config.strategy_version == "3.2.0"
     assert config.crossover_freshness == migrated
     # Nothing else in the record changes.
@@ -329,7 +336,7 @@ def test_migration_narrows_never_widens(saved, migrated):
 @pytest.mark.parametrize("version", ("1.0.0", "2.0.0", "3.0.0"))
 def test_older_chains_reach_the_three_candle_window(version):
     record = legacy_record(20, strategy_version=version)
-    config = migrate_configuration(record)
+    config = migrate_configuration(record, target_version="3.2.0")
     assert config.strategy_version == "3.2.0"
     assert config.crossover_freshness == 2
 
@@ -337,7 +344,7 @@ def test_older_chains_reach_the_three_candle_window(version):
 @pytest.mark.parametrize("value", ("3", 3.5, -1))
 def test_migration_refuses_an_unreadable_window(value):
     with pytest.raises(ValidationError):
-        migrate_configuration(legacy_record(value))
+        migrate_configuration(legacy_record(value), target_version="3.2.0")
 
 
 def test_unknown_version_stays_blocked():
@@ -392,7 +399,7 @@ def test_stored_legacy_configuration_migrates_with_history(store):
     store.ensure_user(USER)
     state = store.read(USER)
     assert state["state"] == "PAUSED"
-    assert state["configuration"]["strategy_version"] == "3.2.0"
+    assert state["configuration"]["strategy_version"] == CURRENT_STRATEGY_VERSION
     assert state["configuration"]["crossover_freshness"] == 2
     assert (
         state["configuration_id"]
@@ -414,7 +421,7 @@ def test_stored_legacy_configuration_migrates_with_history(store):
     assert history.configuration == state["configuration"]
     assert events[-1].payload == {
         "from": "3.1.0",
-        "to": "3.2.0",
+        "to": CURRENT_STRATEGY_VERSION,
         "revision": state["revision"],
     }
     # Idempotent: a second start does not migrate again.

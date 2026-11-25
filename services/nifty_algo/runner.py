@@ -31,6 +31,21 @@ logger = get_logger(__name__)
 
 
 class NiftyRunner:
+    def _history_session(self, day, exchange):
+        from .calendar import nifty_session
+
+        result = nifty_session(self.user_id, day, store=self.store)
+        if result["status"] in (
+            "CALENDAR_DISAGREEMENT",
+            "CALENDAR_UNAPPROVED",
+            "SESSION_WINDOW_UNAVAILABLE",
+        ):
+            raise OrderRefused([result["status"]])
+        if not result["window"]:
+            return None
+        opening, closing = result["window"]
+        return {"start_ms": opening.timestamp() * 1000, "end_ms": closing.timestamp() * 1000}
+
     def __init__(
         self,
         store,
@@ -124,20 +139,29 @@ class NiftyRunner:
         if not self._lease(now):
             return None
         state = self.store.read(self.user_id)
+        entry_configuration_valid = True
         try:
             config = active_configuration(state["configuration"])
         except ValueError:
+            entry_configuration_valid = False
             self.ready = False
             self.last_issue = "CONFIGURATION_INCOMPATIBLE"
-            if self.assessment is None:
-                try:
-                    # This profile supplies read-only feed parameters only.
-                    # Existing exposure keeps its own valid entry configuration.
-                    self._native_feed(StrategyConfig(), now)
-                except Exception as error:
-                    log_failure(logger, "NIFTY protection feed bootstrap", error)
-            self._lease(now)
-            return None
+            try:
+                config = StrategyConfig.model_validate(state["configuration"])
+            except ValueError:
+                config = None
+            if config is None or not self.store.positions(self.user_id):
+                if self.assessment is None:
+                    try:
+                        # This profile supplies read-only feed parameters only.
+                        # Existing exposure keeps its own valid entry configuration.
+                        self._native_feed(StrategyConfig(), now)
+                    except Exception as error:
+                        log_failure(logger, "NIFTY protection feed bootstrap", error)
+                self._lease(now)
+                return None
+            # A held legacy position still receives technical exit assessments
+            # using its pinned inputs. It cannot authorize a primary/shadow entry.
         if self.assessed_configuration_id != config.version_id:
             self.ready = False
         self.executor.config = config
@@ -157,13 +181,22 @@ class NiftyRunner:
                 self.ready, self.last_issue = False, issue
                 self._lease(now)
                 return None
-        # One source history request per completed five-minute boundary. Startup
-        # and reconnect establish a new causal floor; missed signals are not replayed.
+        # Startup and reconnect establish a new causal floor. Retry only within
+        # the existing 30-second window; durable claims fence overlapping jobs.
         boundary = int(now.timestamp()) // 300
-        if boundary == self.last_boundary:
+        claim_id = self.store.claim_assessment(
+            self.user_id, self.owner, boundary, config.version_id, now
+        )
+        if claim_id is None:
+            if now.timestamp() - boundary * 300 > 30:
+                self.ready = False
+                self.last_issue = "AWAITING_NEXT_COMPLETED_ENTRY_BAR"
+                self._lease(now)
             return None
         self.last_boundary = boundary
         shadow_decision = None
+        retry = False
+        attempt_finished = False
         try:
             decision = (
                 self.assessment(config, now)
@@ -173,10 +206,27 @@ class NiftyRunner:
                     config,
                     now,
                     native=self.native,
+                    session_reader=self._history_session,
                     observation_only=False,
                     evidence_sink=self._record_analysis_frame,
                 )
             )
+            observed_at = max(now, self.clock())
+            retry = any(
+                c["rule"] in ("R-FRESH", "R-HISTORY") and c["state"] != "PASS"
+                for c in decision["checks"]
+            )
+            if retry:
+                self.ready = False
+                self.last_issue = "COMPLETED_CANDLE_TEMPORARILY_UNAVAILABLE"
+                return None
+            if not self.store.finish_assessment(
+                self.user_id, self.owner, boundary, config.version_id, claim_id, observed_at
+            ):
+                self.ready = False
+                self.last_issue = "ASSESSMENT_WINDOW_EXPIRED_OR_FENCED"
+                return None
+            attempt_finished = True
             self.assessed_configuration_id = config.version_id
             self.last_assessed_at = now
             self.ready = not any(
@@ -191,6 +241,7 @@ class NiftyRunner:
                     for reason in ("MASTER_FRESHNESS_UNVERIFIED", "SESSION_VWAP_INCOMPLETE")
                 )
                 and self.reconciled
+                and entry_configuration_valid
             )
             self.last_issue = None if self.ready else "; ".join(decision["reasons"])
             decision = self.store.record_decision(self.user_id, decision)
@@ -297,6 +348,10 @@ class NiftyRunner:
                 now,
             )
             return decision
+        except (TimeoutError, ConnectionError):
+            retry = True
+            self.ready = False
+            self.last_issue = "HISTORY_TEMPORARILY_UNAVAILABLE"
         except OrderRefused as exc:
             self.last_issue = ", ".join(exc.reasons)
             self.ready = False
@@ -308,6 +363,16 @@ class NiftyRunner:
             self.last_issue = "DATA_PIPELINE_UNAVAILABLE"
             self.store.record_event(self.user_id, "data_blocked", {"reason": self.last_issue}, now)
         finally:
+            if not attempt_finished:
+                self.store.finish_assessment(
+                    self.user_id,
+                    self.owner,
+                    boundary,
+                    config.version_id,
+                    claim_id,
+                    max(now, self.clock()),
+                    retry=retry,
+                )
             # Shadows follow the primary attempt, so a pending primary BUY takes precedence.
             if shadow_decision is not None:
                 self._shadow_entry(shadow_decision, config, now)
