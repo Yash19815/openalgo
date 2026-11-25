@@ -432,7 +432,20 @@ class MarketDataService:
                 # Missing source/OI/volume stays missing for execution consumers.
                 observed = {
                     key: market_data.get(key)
-                    for key in ("ltp", "ltt", "volume", "oi", "sequence_number", "depth", "bids", "asks")
+                    for key in (
+                        "ltp",
+                        "ltt",
+                        "volume",
+                        "oi",
+                        "sequence_number",
+                        "depth",
+                        "bids",
+                        "asks",
+                        "quote_time",
+                        "last_trade_time",
+                        "broker_time",
+                        "timestamp_kind",
+                    )
                 }
                 observed["received_time"] = time.time()
                 if "source_volume" in market_data:
@@ -443,10 +456,29 @@ class MarketDataService:
                 observed["exchange"] = exchange
                 observations = dict(cache_entry.get("source_observations", {}))
                 previous = observations.get(str(mode), {})
-                source = observed.get("ltt")
-                prior_source = previous.get("ltt")
+                source = (
+                    observed.get("quote_time")
+                    if "quote_time" in market_data
+                    else observed.get("ltt")
+                )
+                prior_source = previous.get("quote_time") or previous.get("ltt")
+                sequence, prior_sequence = (
+                    observed.get("sequence_number"),
+                    previous.get("sequence_number"),
+                )
+                duplicate = (
+                    source is not None
+                    and source == prior_source
+                    and isinstance(sequence, int)
+                    and isinstance(prior_sequence, int)
+                    and sequence <= prior_sequence
+                )
                 # Do not replace a source snapshot with an out-of-order packet.
-                if not (isinstance(source, (int, float)) and isinstance(prior_source, (int, float)) and source < prior_source):
+                if not duplicate and not (
+                    isinstance(source, (int, float))
+                    and isinstance(prior_source, (int, float))
+                    and source < prior_source
+                ):
                     observations[str(mode)] = observed
                     cache_entry["source_observations"] = observations
 

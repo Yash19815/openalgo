@@ -42,6 +42,7 @@ def feed(store, monkeypatch):
                     symbol=symbol,
                     exchange=exchange,
                     ltt=self.stamp - timedelta(seconds=2),
+                    quote_time=self.stamp - timedelta(seconds=2),
                     received_time=self.stamp - timedelta(seconds=1),
                 )
             return result
