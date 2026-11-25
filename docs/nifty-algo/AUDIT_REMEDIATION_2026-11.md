@@ -173,3 +173,74 @@ not counted as successful verification. The complete clean run above finished
 with exit code zero; no tests were suppressed to obtain that result. Python
 3.13/3.14 and compiled-kernel validation remain GitHub Actions responsibilities.
 
+
+## PR #11 CI correction: assessment claim check-then-act gate - 2026-11-25
+
+Inspected Actions run `45571710187`, jobs `gthread-gates` (`139059700964`) and
+`gthread-migration` (`139059700922`). Both failed on one site:
+`database/nifty_algo_db.py` `NiftyStore.claim_assessment`, `guard-augassign
+row.attempts`. In `gthread-migration` the same scanner runs inside
+`test/test_gthread_deploy_gates.py`, which was the single failure there (1 failed,
+1471 passed, 3 skipped). Nothing else failed in either job.
+
+Finding: **protected, not a race.** The new durable retry budget (added with the
+bounded candle-retry work) reads `row.attempts` and writes `row.attempts += 1`.
+The scanner flags every read-then-write of an attribute and cannot see a lock held
+by a helper. The whole method runs inside one `sessions.begin()` transaction whose
+first statement is `_lock(db, user_id)`, an `UPDATE` of the user's
+`NiftyState` row. That is the SQLite write lock or a PostgreSQL row lock and it is
+held to commit. The runner lease, the state row, the attempt row, the
+`COMPLETE` / `attempts >= 7` / `next_at` check and the increment all follow it, so
+a second claimant is parked on the lock and decides only on the committed result.
+`finish_assessment` takes the same lock and compares `claim_id`, `owner`, status
+and the live lease, so a stale holder cannot finish a newer claim. No production
+code changed.
+
+The site is recorded in `scripts/gthread_check_then_act_reviewed.txt` with that
+reason and the tests that prove it. It is not a blanket entry: the key is the
+function and the attribute, so a second unguarded increment added to the method
+would still be reported.
+
+Proof, in `test/test_nifty_algo_assessment_claim_concurrency.py` (6 tests):
+
+- A competing claim is staged at the attempt write itself, for a first claim and
+  for a retry claim. The competitor's first statement is the owner lock, it waits
+  there while the first claim writes, and it then loses: one claim id, attempts 1
+  (or 2), status `IN_FLIGHT`.
+- Four writers per five-second step across ten steps grant exactly one claim at
+  each of the seven steps inside the thirty-second window and none after it;
+  attempts end at 7.
+- A completed boundary is not claimed again by four racing writers.
+- Restart recovery: an owner whose lease expired is replaced, cannot claim or
+  finish afterwards, the replacement waits for `next_at` and then claims once
+  (attempts 2), and the dead owner's claim id is fenced.
+- Retry expiry: a claim at exactly the deadline is granted, one microsecond later
+  is refused.
+
+Mutation check (not committed): with `_lock` replaced by a no-op, 3 of the 6
+tests fail (both staged-write cases and the four-writer budget case); with it in
+place all 6 pass. The three that pass either way cover sequential fencing and
+deadline semantics, which do not depend on the lock. The existing
+`test_nifty_algo_boundary_retry.py` (7 tests, including the single-flight and
+fenced-expiry cases) is unchanged and passes.
+
+Verification (Windows, Python 3.12.11, `-o addopts=''`, `--timeout=120`):
+`scripts/gthread_check_then_act.py` exits 0 (the site is REVIEWED);
+`scripts/gthread_sleep_gate.py` exits 0; `test/test_gthread_deploy_gates.py`
+**10 passed**; the remaining `test/test_gthread_*.py` files (all but the two
+named below): **1315 passed, 126 skipped, 1 failed**; `test/test_nifty_algo_*.py` plus
+`test/risk`: **1614 passed**, no failures or skips. The 126 skips are the Linux and
+eventlet-only tests, which is why the Linux job is the authority.
+
+Unresolved. The Linux `gthread-migration` run cannot be reproduced locally: WSL
+has no Linux distribution, and most gthread files skip on Windows. On Windows,
+`test_gthread_brokers_a_deltaexchange_session.py` hangs in
+`test_a_pooled_thread_holds_no_connection_after_the_lookup` until the timeout
+dump; it does not touch NIFTY code, was left out of the local run and is covered
+by the Linux CI job. `test_gthread_sandbox_positions.py::
+test_orders_on_different_positions_do_not_wait_for_each_other` fails on this Windows
+machine on a wall-clock bound (about 1.4 s against `< 1.0`, repeated twice in
+isolation). The branch changes no sandbox code and the test was not run against
+`main` here, so whether it also fails there is unconfirmed; the Linux job decides.
+The open findings listed above (F-05, F-21, F-06, F-07,
+F-15, F-16, F-18, F-23) are unchanged by this correction.

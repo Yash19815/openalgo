@@ -21,6 +21,8 @@
   the report scanner as an unknown session and rechecked, instead of being
   skipped. A protective PAPER sell is blocked only by a valid native window that
   excludes the time, never by an unreadable or disagreeing calendar.
+- Record the reviewed concurrency guard on the assessment retry counter and add
+  concurrent-claim, restart and retry-expiry regression tests. No behavior change.
 - Saving a configuration of the same strategy version stays allowed while a
   position is held; a strategy-version change waits until no order is pending
   and no position is open.
