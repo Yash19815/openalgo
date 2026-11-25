@@ -29,6 +29,7 @@ from .protection import (
     observe_bid,
 )
 from .risk_manager import AccountRisk, entry_reasons, plan_entry
+from .session_policy import pending_entry_expiry
 from .signal_engine import Rules
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -662,10 +663,7 @@ def _run(events, config, profit_lock, start, end):
             "plan": plan,
             "decision": decision,
             "eligible": now + timedelta(milliseconds=config.latency_ms),
-            "expires": min(
-                now + timedelta(seconds=config.order_ttl_seconds),
-                datetime.combine(day, config.entry_before, IST),
-            ),
+            "expires": pending_entry_expiry(now, config, window[1]),
         }
     if held or pending:
         coverage.add("UNRESOLVED_OPERATION_AT_SPLIT_END")

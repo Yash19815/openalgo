@@ -1578,9 +1578,9 @@ def test_a_complete_ladder_keeps_itm_otm_and_the_strict_midpoint_split(kind):
 @pytest.mark.parametrize(
     ("strikes", "spot", "listed_atm"),
     [
-        # one strike missing: the nearest is still within 25 points, so ATM holds
+        # One adjacent grid record is missing: distance alone cannot verify ATM.
         (tuple(s for s in GRID_50 if s != 22050), "22040", None),
-        (tuple(s for s in GRID_50 if s != 22050), "22010", 22000),
+        (tuple(s for s in GRID_50 if s != 22050), "22010", None),
         # the strike nearest to spot is missing and the next one is 50 away
         (tuple(s for s in GRID_50 if s != 22050), "22050", None),
         # several strikes around spot missing
@@ -1598,7 +1598,9 @@ def test_a_complete_ladder_keeps_itm_otm_and_the_strict_midpoint_split(kind):
         # a 100-point ladder is not NSE weekly or monthly: nothing 50 away is ATM
         (GRID_100, "22050", None),
         (GRID_100, "22030", None),
-        (GRID_100, "22020", 22000),
+        (GRID_100, "22020", None),
+        # An exact listed grid strike needs no interpolation, even on sparse data.
+        (GRID_100, "22000", 22000),
     ],
 )
 def test_atm_reference_is_only_issued_within_half_an_interval_of_spot(
@@ -1726,10 +1728,15 @@ def test_selector_admission_fill_and_replay_label_every_offered_contract_alike(
     config = StrategyConfig(selection=selection, candidate_strike_window=2)
     quotes = {i.token: None for i in ladder}
     offered_total = 0
-    for spot in [D(s) for s in range(21440, 22561, 11)] + [D("22025"), D("22075")]:
+    refusals = []
+    # Include an exact listed strike: sparse-100 ATM can qualify there, but its
+    # adjacent 50-point ITM strike is still absent on both sides.
+    spots = [D(s) for s in range(21440, 22561, 11)] + [D("22000"), D("22025"), D("22075")]
+    for spot in spots:
         try:
             report = Resolver().assess(ladder, quotes, spot, kind, ist(THU, 10, 31), config)
         except SelectionUnavailable as refusal:
+            refusals.append(refusal.code)
             # A refusal is explicit. It is never a crash, and a missing ATM is the
             # reason unless an ITM selection simply has no ITM strike left.
             from services.nifty_algo.contract_resolver import atm_reference
@@ -1755,8 +1762,54 @@ def test_selector_admission_fill_and_replay_label_every_offered_contract_alike(
                 # Selected for assessment: it must be one admission will not call OTM.
                 offered_total += 1
                 assert label in ("ATM", "ITM"), (name, kind, selection, spot, item.strike)
-    if name in ("complete-50", "complete-100", "one-missing"):
+    if name == "complete-100" and selection == "ITM":
+        # This fixture omits every adjacent 50-point strike. No deeper listed
+        # strike may substitute for it. Assert the refusal, not a vacuous sweep.
+        assert offered_total == 0 and len(refusals) == len(spots)
+        assert set(refusals) == {"ATM_REFERENCE_UNVERIFIED", "ITM_STRIKE_UNAVAILABLE"}
+    elif name in ("complete-50", "complete-100", "one-missing"):
         assert offered_total > 0  # the sweep genuinely offered candidates
+
+
+@pytest.mark.parametrize("kind", ["CE", "PE"])
+@pytest.mark.parametrize("missing", [22000, 22050])
+@pytest.mark.parametrize("spot", ["22000.05", "22024.95", "22025", "22025.05", "22049.95"])
+def test_missing_either_grid_neighbor_refuses_atm_on_both_sides_of_midpoint(kind, missing, spot):
+    from services.nifty_algo.contract_resolver import atm_reference
+
+    strikes = tuple(s for s in GRID_50 if s != missing)
+    assert atm_reference(strikes, D(spot)) is None
+    # Without grid evidence every actual contract keeps its strict spot label.
+    for strike in strikes:
+        assert _label(strikes, spot, strike, kind) == (_strict(kind, strike, D(spot)), None, None)
+    for selection in ("ATM", "ITM"):
+        with pytest.raises(SelectionUnavailable) as refused:
+            Resolver().assess(
+                _ladder(strikes, kind),
+                {},
+                D(spot),
+                kind,
+                ist(THU, 10, 31),
+                StrategyConfig(selection=selection),
+            )
+        assert refused.value.code == "ATM_REFERENCE_UNVERIFIED"
+
+
+@pytest.mark.parametrize("kind,adjacent", [("CE", 21950), ("PE", 22050)])
+def test_itm_requires_adjacent_50_point_strike_even_at_exact_sparse_atm(kind, adjacent):
+    now = ist(THU, 10, 31)
+    config = StrategyConfig(selection="ITM", candidate_strike_window=0)
+    with pytest.raises(SelectionUnavailable) as refused:
+        Resolver().assess(_ladder(GRID_100, kind), {}, D("22000"), kind, now, config)
+    assert refused.value.code == "ITM_STRIKE_UNAVAILABLE"
+    # Restore only the required adjacent contract, leaving other holes intact.
+    # It must now be assessed instead of a deeper 100-point substitute.
+    ladder = _ladder((*GRID_100, adjacent), kind)
+    for master in (ladder, list(reversed(ladder))):
+        report = Resolver().assess(master, {}, D("22000"), kind, now, config)
+        offered = [row for row in report["candidates"] if row["reasons"] == ["QUOTE_UNAVAILABLE"]]
+        assert [D(row["instrument"]["strike"]) for row in offered] == [D(adjacent)]
+        assert offered[0]["moneyness"] == "ITM"
 
 
 def test_the_selector_refuses_with_an_explicit_reason_when_no_atm_can_be_verified():
@@ -1821,6 +1874,40 @@ def test_a_pending_entry_is_rejected_at_fill_when_the_master_turns_sparse(store)
     fills = desk.process(ist(THU, 10, 30, 1))
     assert [(row["status"], row["reason"]) for row in fills] == [("REJECTED", "OTM_PROHIBITED")]
     assert store.positions(USER) == []
+    assert D(store.account(USER, ist(THU, 10, 31))["equity"]) == D("20000")
+
+
+@pytest.mark.parametrize(
+    "kind,strike,spot,missing",
+    [
+        ("CE", 22050, "22040", 22000),
+        ("PE", 22000, "22010", 22050),
+    ],
+)
+@pytest.mark.parametrize("phase", ["admission", "fill"])
+def test_missing_grid_neighbor_cannot_soften_otm_at_execution_boundaries(
+    store, kind, strike, spot, missing, phase
+):
+    desk = Desk(store, feed=Feed(ist(THU, 10, 30), spot=spot))
+    desk.running()
+    if phase == "fill":
+        admitted = desk.buy(ist(THU, 10, 30), strike=strike, kind=kind)
+        assert admitted["payload"]["candidate_metadata"][0]["moneyness"] == "ATM"
+    desk.STRIKES = tuple(s for s in desk.STRIKES if s != missing)
+    # The master still brackets spot and the contract is only 10 points away.
+    # Missing the required neighbor must nevertheless remove its ATM exemption.
+    assert min(desk.STRIKES) < D(spot) < max(desk.STRIKES)
+    assert _label(desk.STRIKES, spot, strike, kind) == ("OTM", None, None)
+    if phase == "admission":
+        with pytest.raises(OrderRefused) as refused:
+            desk.buy(ist(THU, 10, 30), strike=strike, kind=kind)
+        assert refused.value.reasons == ["OTM_PROHIBITED"]
+    else:
+        resolved = desk.process(ist(THU, 10, 30, 1))
+        assert [(row["status"], row["reason"]) for row in resolved] == [
+            ("REJECTED", "OTM_PROHIBITED")
+        ]
+    assert store.pending_orders(USER) == [] and store.positions(USER) == []
     assert D(store.account(USER, ist(THU, 10, 31))["equity"]) == D("20000")
 
 

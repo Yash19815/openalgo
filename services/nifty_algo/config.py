@@ -5,7 +5,7 @@ from decimal import Decimal
 from hashlib import sha256
 from typing import Literal
 
-from pydantic import ConfigDict, Field, ValidationError, model_validator
+from pydantic import ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from .models import Model
 
@@ -116,6 +116,16 @@ class StrategyConfig(Model):
     slippage_ticks: int = Field(default=1, ge=0, le=20)
     order_ttl_seconds: int = Field(default=10, ge=1, le=60)
 
+    @field_validator("crossover_freshness")
+    @classmethod
+    def valid_crossover_freshness(cls, value, info):
+        if (
+            info.data.get("strategy_version") not in LEGACY_STRATEGY_VERSIONS
+            and value > MAX_MACD_CROSSOVER_AGE
+        ):
+            raise ValueError("MACD crossover must lie in the latest three completed entry candles")
+        return value
+
     @model_validator(mode="after")
     def ordered(self):
         if (
@@ -154,11 +164,6 @@ class StrategyConfig(Model):
             raise ValueError("Trailing distance must equal minimum trailing candidate")
         if self.trailing_distance_points != Decimal("1.5"):
             raise ValueError("Trailing distance is fixed at 1.5 option-premium points")
-        if (
-            self.strategy_version not in LEGACY_STRATEGY_VERSIONS
-            and self.crossover_freshness > MAX_MACD_CROSSOVER_AGE
-        ):
-            raise ValueError("MACD crossover must lie in the latest three completed entry candles")
         return self
 
     @property

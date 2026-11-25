@@ -96,6 +96,14 @@ out-of-the-money option is refused, and an ATM or ITM selection is refused with
 broker master lists every strike NSE lists is not verified; the tests use
 synthetic ladders.
 
+November 2026 execution correction: between grid strikes, both actual adjacent
+50-point grid records must be present. The lower grid strike wins a midpoint
+tie even when another master row is closer. An exact listed grid strike needs
+no interpolation. ITM selection requires the strike exactly one interval inside
+ATM; it refuses a missing adjacent strike instead of substituting a deeper one.
+Pending primary entries expire at the earliest of their TTL, configured entry
+cutoff, 14:45 IST and five minutes before session close, including replay.
+
 ## Strength method: five-indicator-v1
 
 Scoring runs only after every mandatory gate passes. Each component is clipped

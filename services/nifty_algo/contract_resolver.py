@@ -96,7 +96,15 @@ def atm_reference(strikes, spot):
     listed = sorted({Decimal(str(strike)) for strike in strikes if strike is not None})
     if not listed or not listed[0] <= spot <= listed[-1]:
         return None
-    nearest = nearest_listed_strike(listed, spot)
+    # Verify the actual grid neighbors, not the nearest surviving master row.
+    # An exact listed grid strike needs no interpolation; between strikes both
+    # adjacent grid rows must exist, including the lower midpoint tie-break.
+    step = NIFTY_SHORT_TERM_STRIKE_INTERVAL
+    lower = (spot // step) * step
+    upper = lower if spot == lower else lower + step
+    if lower not in listed or upper not in listed:
+        return None
+    nearest = nearest_listed_strike((lower, upper), spot)
     return nearest if abs(nearest - spot) <= MAX_ATM_DISTANCE else None
 
 
@@ -241,11 +249,16 @@ class Resolver:
                 if moneyness(next(i for i in options if i.strike == strike), spot, atm_strike)
                 == "ITM"
             ]
-            if not itm_strikes:
+            adjacent = atm_strike + (
+                -NIFTY_SHORT_TERM_STRIKE_INTERVAL
+                if side == "CE"
+                else NIFTY_SHORT_TERM_STRIKE_INTERVAL
+            )
+            if adjacent not in itm_strikes:
                 raise SelectionUnavailable(
                     "ITM_STRIKE_UNAVAILABLE", "Adjacent listed ITM strike missing"
                 )
-            selected_strike = min(itm_strikes, key=lambda strike: abs(strike - atm_strike))
+            selected_strike = adjacent
             ordered_strikes = [selected_strike]
             if config.candidate_strike_window:
                 ordered_strikes.append(atm_strike)
