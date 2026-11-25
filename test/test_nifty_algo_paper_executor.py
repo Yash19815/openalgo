@@ -82,6 +82,7 @@ class FakeMarket:
         if self.ask is not None:
             depth["sell"] = [{"price": float(self.ask), "quantity": self.size}]
         depth["ltt"] = self.stamp
+        depth["quote_time"] = self.stamp
         return {
             "depth": depth,
             "ltp": float(self.ltp),

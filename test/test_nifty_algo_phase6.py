@@ -326,16 +326,23 @@ def test_report_backlog_scans_old_days_and_intermediate_months(tmp_path):
         value.engine.dispose()
 
 
-def test_unknown_session_window_is_recorded_and_retried(store, monkeypatch):
+@pytest.mark.parametrize(
+    ("status", "window"),
+    [
+        # Native hours that cannot describe this IST day (end not after start).
+        ("SESSION_WINDOW_UNAVAILABLE", lambda day: {"start_ms": 2.0, "end_ms": 1.0}),
+        # Native calendar closed while the approved NIFTY calendar says trading.
+        ("CALENDAR_DISAGREEMENT", lambda day: None),
+    ],
+)
+def test_unknown_session_window_is_recorded_and_retried(store, monkeypatch, status, window):
     class MissingMarketHours(Phase1MarketCalendar):
         @staticmethod
-        def get_market_timing(exchange):
-            return None
+        def get_effective_session_window(day, exchange):
+            return window(day)
 
     monkeypatch.setattr(session_calendar, "_legacy_calendar", lambda: MissingMarketHours())
-    assert session_calendar.nifty_session(USER, SESSION, store=store)["status"] == (
-        "SESSION_WINDOW_UNAVAILABLE"
-    )
+    assert session_calendar.nifty_session(USER, SESSION, store=store)["status"] == status
     service(store, Clock(AFTER_CLOSE), send=ok_send()).tick(AFTER_CLOSE)
     assert not [item for item in rows(store) if item["kind"] == "DAILY"]
     # Forward scanning may advance, but the undecidable session is retained.
@@ -345,7 +352,7 @@ def test_unknown_session_window_is_recorded_and_retried(store, monkeypatch):
     blocked = store.report_scan_status(USER)
     assert blocked["blocked_count"] == 1
     assert blocked["blocked_examples"] == [{
-        "day": SESSION.isoformat(), "reason": "SESSION_WINDOW_UNAVAILABLE"
+        "day": SESSION.isoformat(), "reason": status
     }]
 
     # When authoritative market hours recover, the day must be reconsidered.

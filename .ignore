@@ -1,0 +1,9 @@
+# Avoid recursive dependency junctions and generated test output in rg/indexers.
+**/node_modules/
+.venv/
+**/__pycache__/
+**/dist/
+tmp*/
+.pytest*/
+.ruff_cache/
+.code-review-graph/

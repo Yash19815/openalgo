@@ -314,7 +314,7 @@ export interface ExperimentRequest {
   expected_sha256: string
   train_end: string
   validation_end: string
-  configuration_overrides: { adx_min?: number; atr_period?: number }
+  configuration_overrides: { adx_min?: number; atr_period?: number; atr_multiplier?: number }
 }
 
 export async function defineExperiment({

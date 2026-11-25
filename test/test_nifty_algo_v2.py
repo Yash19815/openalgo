@@ -40,7 +40,7 @@ def store(request):
 
 
 def confidence(score=50):
-    return {"method": "five-indicator-v1", "score": score}
+    return {"method": StrategyConfig().confidence_method, "score": score}
 
 
 @pytest.mark.parametrize(
@@ -169,10 +169,12 @@ def test_source_timestamp_and_displayed_quantity_are_mandatory(store):
         exe.admit(buy_intent())
     raw = FakeMarket().get_all_data("", "")
     raw["depth"].pop("ltt")
+    raw["depth"].pop("quote_time")
     raw["depth"]["timestamp"] = NOW.timestamp()
     exe.market_data = Mock(get_all_data=Mock(return_value=raw))
     assert exe._depth(instrument(), NOW) is None
     raw["depth"]["ltt"] = NOW.replace(tzinfo=None)
+    raw["depth"]["quote_time"] = NOW.replace(tzinfo=None)
     assert exe._depth(instrument(), NOW) is None
 
 
@@ -286,9 +288,7 @@ def test_entry_snapshot_does_not_follow_later_config(store):
 def test_partial_exit_allocates_entry_fees_and_preserves_trailing(store):
     running(store)
     market = FakeMarket()
-    config = StrategyConfig(
-        slippage_ticks=0, max_lots=1, lot_score_thresholds=(D("0"),)
-    )
+    config = StrategyConfig(slippage_ticks=0, max_lots=1, lot_score_thresholds=(D("0"),))
     exe = executor(store, config=config, market=market)
     exe.admit(buy_intent())
     exe.process(NOW + timedelta(seconds=1))
@@ -342,7 +342,9 @@ def test_expired_exit_latch_retries_after_restart_and_retains_exposure(store):
 @pytest.mark.parametrize(("ask", "status"), [("160", "FILLED"), ("200", "REJECTED")])
 def test_nondefault_tick_slippage_and_fill_risk_budget(store, ask, status):
     running(store)
-    market = FakeMarket()
+    # Admission at 160 (not 165): under the 3.3.0 published-rate charge estimate
+    # a 165 entry already exceeds the INR 400 planned-loss cap for one lot.
+    market = FakeMarket(bid="159.8", ask="160", ltp="159.9")
     contract = instrument().model_copy(update={"tick_size": D(".2")})
     exe = executor(store, market=market, master=lambda now: [contract])
     exe.admit(buy_intent(instrument=contract))
@@ -414,9 +416,7 @@ def test_depth_only_observation_can_fill_without_using_ltp(store):
         store,
         market=Mock(
             get_all_data=Mock(
-                side_effect=lambda symbol, exchange: index
-                if exchange == "NSE_INDEX"
-                else raw
+                side_effect=lambda symbol, exchange: index if exchange == "NSE_INDEX" else raw
             )
         ),
     )

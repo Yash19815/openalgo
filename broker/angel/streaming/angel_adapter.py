@@ -776,8 +776,17 @@ class AngelWebSocketAdapter(BaseBrokerWebSocketAdapter):
         def price(key):
             return message.get(key, 0) / div
 
+        provenance = {
+            "quote_time": message.get("exchange_timestamp"),
+            "last_trade_time": message.get("last_traded_timestamp"),
+            "broker_time": message.get("packet_received_time"),
+            "sequence_number": message.get("sequence_number"),
+            "timestamp_kind": "EXCHANGE_PACKET",
+        }
+
         if mode == 1:  # LTP mode
             return {
+                **provenance,
                 "ltp": price("last_traded_price"),
                 "ltt": message.get("exchange_timestamp", 0),
             }
@@ -786,6 +795,7 @@ class AngelWebSocketAdapter(BaseBrokerWebSocketAdapter):
             # closed_price is the previous day's close.
             last_qty = message.get("last_traded_quantity", 0)
             result = {
+                **provenance,
                 "ltp": price("last_traded_price"),
                 "ltt": message.get("exchange_timestamp", 0),
                 "volume": message.get("volume_trade_for_the_day", 0),

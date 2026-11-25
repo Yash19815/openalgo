@@ -262,7 +262,7 @@ class NativeDataAdapter:
         except (TypeError, ValueError, AttributeError):
             return instrument, None
 
-    def quote(self, instrument, now=None, max_age=None):
+    def quote(self, instrument, now=None, max_age=None, *, evidence_sink=None):
         """Read causal source fields, never display defaults, for PCR and selection."""
         from .models import Quote
 
@@ -274,7 +274,13 @@ class NativeDataAdapter:
         cached = self.market_data.get_all_data(instrument.symbol, instrument.exchange)
         sources = cached.get("source_observations", {})
         raw = sources.get("3") or sources.get("2") or {}
-        source, received = _timestamp(raw.get("ltt")), _timestamp(raw.get("received_time"))
+        if evidence_sink is not None:
+            from .feed_diagnostics import snapshot_evidence
+
+            evidence_sink(snapshot_evidence(instrument, raw, now))
+        if raw.get("symbol") != instrument.symbol or raw.get("exchange") != instrument.exchange:
+            return None
+        source, received = _timestamp(raw.get("quote_time")), _timestamp(raw.get("received_time"))
         if (
             source is None
             or received is None
@@ -328,7 +334,16 @@ class NativeDataAdapter:
         expiry = config.pcr_expiry or min((i.expiry for i in contracts), default=None)
         contracts = [i for i in contracts if i.expiry == expiry]
         scope = f"NIFTY:NFO:{expiry}:ALL_LISTED_STRIKES"
-        quotes = {i.token: self.quote(i, now, config.pcr_max_age) for i in contracts}
+        evidence = []
+        quotes = {
+            i.token: self.quote(
+                i,
+                now,
+                config.pcr_max_age,
+                evidence_sink=(evidence.append if len(evidence) < 1000 else None),
+            )
+            for i in contracts
+        }
         value = pcr(
             contracts, quotes, config.pcr_kind, scope, now, config.pcr_max_age, verified=True
         )
@@ -348,6 +363,11 @@ class NativeDataAdapter:
             "scope": scope,
             "expected_contracts": len(contracts),
             "observed_contracts": sum(q is not None for q in quotes.values()),
+            "timestamp_policy": "EXPLICIT_EXCHANGE_QUOTE_TIME_V1",
+            "feed_evidence": evidence,
+            "evidence_truncated": len(contracts) > len(evidence),
+            "required_native_subscriptions": len(contracts) + 2,
+            "native_session_quota": 1000,
         }
 
     def get_contracts(self):

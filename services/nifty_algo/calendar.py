@@ -58,17 +58,13 @@ def nifty_session(user_id, day, *, store):
 
         timing = market.get_effective_session_window(day, "NFO")
         if timing is None:
-            timing = market.get_market_timing("NFO")
-            if timing is None:
-                return {"status": "SESSION_WINDOW_UNAVAILABLE", "window": None}
-            start_ms = int(timing["start_offset"])
-            end_ms = int(timing["end_offset"])
-            midnight = datetime.combine(day, datetime.min.time(), tzinfo=IST)
-            start = datetime.fromtimestamp(midnight.timestamp() + start_ms / 1000, IST)
-            end = datetime.fromtimestamp(midnight.timestamp() + end_ms / 1000, IST)
-        else:
-            start = datetime.fromtimestamp(timing["start_ms"] / 1000, IST)
-            end = datetime.fromtimestamp(timing["end_ms"] / 1000, IST)
+            # A regular timing template cannot reopen a native holiday or prove
+            # an unavailable session. Both authorities must permit new entries.
+            return {"status": "CALENDAR_DISAGREEMENT", "window": None}
+        start = datetime.fromtimestamp(timing["start_ms"] / 1000, IST)
+        end = datetime.fromtimestamp(timing["end_ms"] / 1000, IST)
+        if start.date() != day or end.date() != day or start >= end:
+            return {"status": "SESSION_WINDOW_UNAVAILABLE", "window": None}
         return {"status": "TRADING", "window": (start, end)}
     finally:
         market.db_session.remove()

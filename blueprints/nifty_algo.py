@@ -333,6 +333,9 @@ def indicators():
         {
             "available": True,
             "snapshot": decisions[0].get("snapshot"),
+            "config_id": decisions[0].get("config_id"),
+            "effective_configuration": decisions[0].get("effective_configuration"),
+            "charge_model": decisions[0].get("charge_model"),
             "timestamp": decisions[0].get("timestamp"),
             "pcr": decisions[0].get("pcr"),
             "confidence": decisions[0].get("confidence"),

@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { DataRecord, RecordValue } from './api'
@@ -48,10 +49,81 @@ export function KeySettings({
   const profitTarget = asText(value.monthly_profit_target)
   const lossError = amountError(lossLimit, { allowEmpty: false, positive: false })
   const targetError = amountError(profitTarget, { allowEmpty: true, positive: true })
+  const length = asText(value.atr_period)
+  const factor = asText(value.atr_multiplier)
+  const lengthValid =
+    length !== '' &&
+    Number.isInteger(Number(length)) &&
+    Number(length) >= 2 &&
+    Number(length) <= 100
+  const factorValid =
+    factor !== '' && Number.isFinite(Number(factor)) && Number(factor) > 0 && Number(factor) <= 10
   const set = (key: string, next: RecordValue) => onChange({ ...value, [key]: next })
+  const feeFloors = { brokerage: 20, transaction_rate: 0.000355299, stt_sell_rate: 0.0015,
+    gst_rate: 0.18, sebi_rate: 0.000001, stamp_buy_rate: 0.00003 }
+  const feeNeedsReview = Object.entries(feeFloors).some(([key, minimum]) =>
+    value[key] !== undefined && Number(value[key]) < minimum)
   return (
     <div className="nifty-key-settings">
       <div className="nifty-form">
+        <Label htmlFor="nifty-supertrend-length">SuperTrend length</Label>
+        <Input
+          id="nifty-supertrend-length"
+          type="number"
+          min={2}
+          max={100}
+          step={1}
+          value={length}
+          aria-invalid={!lengthValid}
+          onChange={(event) =>
+            set('atr_period', event.target.value === '' ? '' : Number(event.target.value))
+          }
+        />
+        {!lengthValid && <p role="alert">SuperTrend length: enter an integer from 2 to 100.</p>}
+        <Label htmlFor="nifty-supertrend-factor">SuperTrend factor</Label>
+        <Input
+          id="nifty-supertrend-factor"
+          type="number"
+          min={0}
+          max={10}
+          step="any"
+          value={factor}
+          aria-invalid={!factorValid}
+          onChange={(event) =>
+            set('atr_multiplier', event.target.value === '' ? '' : Number(event.target.value))
+          }
+        />
+        {!factorValid && (
+          <p role="alert">SuperTrend factor: enter a number greater than 0 and at most 10.</p>
+        )}
+        <p className="nifty-muted">
+          Approved defaults: length 20, factor 2 on completed 5-minute and 15-minute candles.
+        </p>
+        {value.strategy_version !== '3.3.0' && (
+          <Button
+            type="button"
+            onClick={() =>
+              onChange({
+                ...value,
+                strategy_version: '3.3.0',
+                confidence_method: 'five-indicator-v2-pinned',
+                atr_period: 20,
+                atr_multiplier: 2,
+                crossover_freshness: Math.min(Number(value.crossover_freshness ?? 2), 2),
+              })
+            }
+          >
+            Review approved 20/2 upgrade
+          </Button>
+        )}
+        {feeNeedsReview && (
+          <>
+            <p role="alert">Stored charge inputs need review before new PAPER entries. Estimates are not broker contract-note charges.</p>
+            <Button type="button" onClick={() => onChange({ ...value, ...Object.fromEntries(
+              Object.entries(feeFloors).map(([key, minimum]) => [key, Math.max(Number(value[key] ?? minimum), minimum)])
+            ) })}>Review published charge estimate</Button>
+          </>
+        )}
         {['Liquidity', 'Spread', 'Delta', 'Net reward-to-risk', 'Capital efficiency'].map(
           (factor, index) => (
             <div key={factor}>
@@ -133,6 +205,7 @@ export function KeySettings({
       </div>
       <Facts
         rows={[
+          ['Strategy version', asText(value.strategy_version) || 'Unavailable'],
           ['Max lots', `${asText(value.max_lots) || 'Unavailable'} (sizing may choose 0)`],
           ['Planned loss ceiling (Rs)', asText(value.max_planned_loss) || 'Unavailable'],
           [

@@ -69,6 +69,7 @@ class NiftyConfiguration(Base):
 
 class NiftyEvent(Base):
     __tablename__ = "nifty_algo_event"
+    __table_args__ = (Index("ix_nifty_event_report", "user_id", "kind", "created_at"),)
     id = Column(Integer, primary_key=True)
     user_id = Column(String(255), nullable=False, index=True)
     kind = Column(String(40), nullable=False)
@@ -337,6 +338,20 @@ class NiftyDepthUse(Base):
     user_id = Column(String(255), primary_key=True)
     snapshot_id = Column(String(128), primary_key=True)
     quantity = Column(Integer, nullable=False)
+
+
+class NiftyAssessmentAttempt(Base):
+    """Durable, fenced retries; unsuccessful fetches are not strategy decisions."""
+
+    __tablename__ = "nifty_algo_assessment_attempt"
+    user_id = Column(String(255), primary_key=True)
+    boundary = Column(Integer, primary_key=True)
+    configuration_id = Column(String(64), primary_key=True)
+    claim_id = Column(String(32), nullable=False)
+    owner = Column(String(64), nullable=False)
+    attempts = Column(Integer, nullable=False)
+    status = Column(String(16), nullable=False)
+    next_at = Column(DateTime(timezone=True), nullable=False)
 
 
 class NiftyCooldown(Base):
@@ -655,6 +670,10 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
 
     def initialize(self):
         Base.metadata.create_all(self.engine)
+        # create_all does not add an index to an already existing table.
+        for index in NiftyEvent.__table__.indexes:
+            if index.name == "ix_nifty_event_report":
+                index.create(self.engine, checkfirst=True)
 
     @staticmethod
     def _calendar_dict(row):
@@ -918,8 +937,21 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
                         source_version = existing.configuration.get("strategy_version", "1.0.0")
                         if source_version != config.strategy_version:
                             try:
+                                if db.scalar(
+                                    select(NiftyOrder.order_id)
+                                    .where(
+                                        NiftyOrder.user_id == user_id,
+                                        NiftyOrder.status.in_(("PENDING", "PARTIAL")),
+                                    )
+                                    .limit(1)
+                                ) or db.scalar(
+                                    select(NiftyPosition.token)
+                                    .where(NiftyPosition.user_id == user_id)
+                                    .limit(1)
+                                ):
+                                    raise ValueError("MIGRATION_EXPOSURE_ACTIVE")
                                 migrated = migrate_configuration(existing.configuration)
-                            except ValueError:
+                            except ValueError as error:
                                 if existing.state not in ("PAUSED", "KILLED"):
                                     existing.state = "KILLED" if existing.killed else "PAUSED"
                                     existing.revision += 1
@@ -927,7 +959,16 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
                                         NiftyEvent(
                                             user_id=user_id,
                                             kind="configuration_incompatible",
-                                            payload={"reason": "VALIDATION_REQUIRED"},
+                                            payload={
+                                                "reason": str(error)
+                                                if str(error)
+                                                in (
+                                                    "SUPERTrend_MIGRATION_APPROVAL_REQUIRED",
+                                                    "MIGRATION_EXPOSURE_ACTIVE",
+                                                    "FEE_MIGRATION_APPROVAL_REQUIRED",
+                                                )
+                                                else "VALIDATION_REQUIRED"
+                                            },
                                             created_at=now,
                                         )
                                     )
@@ -1045,6 +1086,30 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
             self._lock(db, user_id)
             # Killing is monotonic. Configuration and pause cannot clear it.
             row = db.get(NiftyState, user_id)
+            # A strategy-version change is a migration. It waits for flat exposure
+            # so no pending order or held position changes its pinned semantics.
+            # Same-version edits are allowed: exposure keeps its own configuration.
+            if (
+                configuration is not None
+                and (row.configuration or {}).get("strategy_version", "1.0.0")
+                != configuration.strategy_version
+                and (
+                    db.scalar(
+                        select(NiftyOrder.order_id)
+                        .where(
+                            NiftyOrder.user_id == user_id,
+                            NiftyOrder.status.in_(("PENDING", "PARTIAL")),
+                        )
+                        .limit(1)
+                    )
+                    or db.scalar(
+                        select(NiftyPosition.token).where(NiftyPosition.user_id == user_id).limit(1)
+                    )
+                )
+            ):
+                raise StateConflict(
+                    "A strategy-version change requires no pending order or open position"
+                )
             if action == "start":
                 if self._safety_reasons(db, user_id):
                     raise StateConflict("Safety interlock requires operator recovery.")
@@ -1146,6 +1211,65 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
             row = db.get(NiftyRunnerLease, user_id)
             if row is not None and row.owner == owner:
                 db.delete(row)
+
+    def claim_assessment(self, user_id, owner, boundary, configuration_id, now):
+        deadline = datetime.fromtimestamp(boundary * 300, UTC) + timedelta(seconds=30)
+        if now > deadline:
+            return None
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            lease = db.get(NiftyRunnerLease, user_id)
+            state = db.get(NiftyState, user_id)
+            if (
+                lease is None
+                or lease.owner != owner
+                or datetime.fromisoformat(_instant(lease.expires_at)) <= now
+                or state is None
+                or state.configuration_id != configuration_id
+            ):
+                return None
+            key = (user_id, boundary, configuration_id)
+            row = db.get(NiftyAssessmentAttempt, key)
+            if row is not None and (
+                row.status == "COMPLETE"
+                or row.attempts >= 7
+                or datetime.fromisoformat(_instant(row.next_at)) > now
+            ):
+                return None
+            if row is None:
+                row = NiftyAssessmentAttempt(
+                    user_id=user_id,
+                    boundary=boundary,
+                    configuration_id=configuration_id,
+                    attempts=0,
+                )
+                db.add(row)
+            row.claim_id, row.owner = uuid4().hex, owner
+            row.attempts += 1
+            row.status = "IN_FLIGHT"
+            row.next_at = now + timedelta(seconds=5)
+            return row.claim_id
+
+    def finish_assessment(
+        self, user_id, owner, boundary, configuration_id, claim_id, now, *, retry=False
+    ):
+        with self.sessions.begin() as db:
+            self._lock(db, user_id)
+            row = db.get(NiftyAssessmentAttempt, (user_id, boundary, configuration_id))
+            lease = db.get(NiftyRunnerLease, user_id)
+            if (
+                row is None
+                or row.claim_id != claim_id
+                or row.owner != owner
+                or row.status != "IN_FLIGHT"
+                or lease is None
+                or lease.owner != owner
+                or datetime.fromisoformat(_instant(lease.expires_at)) <= now
+            ):
+                return False
+            deadline = datetime.fromtimestamp(boundary * 300, UTC) + timedelta(seconds=30)
+            row.status = "RETRY" if retry and now < deadline else "COMPLETE"
+            return now <= deadline
 
     def runner_status(self, user_id, now=None):
         with self.sessions() as db:
@@ -5165,16 +5289,20 @@ class NiftyStore(NotificationStore, ResearchAnalyticsStore):
                     .order_by(NiftyDecision.created_at, NiftyDecision.decision_id)
                 )
             ]
+            from services.nifty_algo.report_policy import REPORT_EVENT_KINDS
+
             events = [
                 {"kind": row.kind, "payload": dict(row.payload or {})}
                 for row in db.scalars(
                     select(NiftyEvent)
                     .where(
                         NiftyEvent.user_id == user_id,
+                        NiftyEvent.kind.in_(REPORT_EVENT_KINDS),
                         NiftyEvent.created_at >= start,
                         NiftyEvent.created_at < end,
                     )
                     .order_by(NiftyEvent.id)
+                    .execution_options(yield_per=200)
                 )
             ]
             shadows = [

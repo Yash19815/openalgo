@@ -176,6 +176,7 @@ class Feed:
             "symbol": symbol,
             "exchange": exchange,
             "ltt": self.stamp,
+            "quote_time": self.stamp,
             "received_time": self.received or self.stamp,
             "depth": depth,
             "ltp": str(self.ask or self.bid or "100"),
@@ -1198,6 +1199,7 @@ def source_snapshot(item, *, bid="129.90", size=25, volume=3000, oi=5000, **chan
         "symbol": item.symbol,
         "exchange": item.exchange,
         "ltt": ist(THU, 10, 30, 58),
+        "quote_time": ist(THU, 10, 30, 58),
         "received_time": ist(THU, 10, 30, 59),
         "depth": {
             "buy": [{"price": bid, "quantity": size}],
@@ -1303,7 +1305,16 @@ class ChainFeed:
         )
         return {
             "source_observations": {
-                "3": {"ltt": stamp, "received_time": stamp, "ltp": 100, "volume": 5000, "oi": value}
+                "3": {
+                    "symbol": symbol,
+                    "exchange": exchange,
+                    "ltt": stamp,
+                    "quote_time": stamp,
+                    "received_time": stamp,
+                    "ltp": 100,
+                    "volume": 5000,
+                    "oi": value,
+                }
             }
         }
 

@@ -48,6 +48,55 @@ Execution batch A, incomplete overall remediation. Do not merge as certification
 | F-30 | Yes | `FIXED_AND_TESTED` | One SESSION_EXIT_BUFFER definition shared by risk, expiry and protection. | Audit regression / focused existing suites | A | Offline proof; full acceptance matrix remains pending |
 | F-31 | Yes | `FIXED_AND_TESTED` | Field validator reports crossover_freshness instead of empty model location. | Audit regression / focused existing suites | A | Offline proof; full acceptance matrix remains pending |
 
+## Batch B disposition (strategy 3.3.0) - 2026-11-25
+
+Supersedes the table above for every finding it re-dispositions. The table above
+is kept as the record of what batch A claimed. Details, behaviour changes and the
+failures found in this pass: [REMAINING_REMEDIATION_2026-11.md](REMAINING_REMEDIATION_2026-11.md).
+Batch B sits on top of batch A locally; PR #10 was still an open draft, so
+nothing was pushed to its branch.
+
+Status words: FIXED_AND_TESTED needs an offline regression that failed before or
+guards the rule. It never means real-feed or contract-note evidence exists.
+
+| Finding | Orig. | Class | Status | Disposition | Tests | Open risk or evidence |
+|---|---|---|---|---|---|---|
+| F-01 | HIGH | Confirmed | `FIXED_AND_TESTED` | ATR length 20 for new 3.3.0 configurations on both timeframes; legacy keep 10. | `test_nifty_algo_supertrend_alignment.py`, `test_nifty_algo_phase1.py` | Existing explicit 10/3 needs trader review. |
+| F-02 | HIGH | Confirmed | `FIXED_AND_TESTED` | Factor 2.0, same scope as F-01. | same | same |
+| F-03 | HIGH | Stale | `ALREADY_FIXED` | MACD ages 0-2 only; age 3 refused. Revalidated. | `test_nifty_algo_macd_window.py` | none |
+| F-04 | MED | Policy | `FIXED_AND_TESTED` | `five-indicator-v2-pinned` for 3.3.0 (ST /10, /3). v1 kept for legacy. | `test_nifty_algo_confidence_comparison.py`, `test_nifty_algo_pipeline.py` | Active on the approval recorded in the confidence decision document; owner to reconfirm. |
+| F-05 | MED | Confirmed | `DEFERRED_WITH_REASON` | Published rates and GST base applied to 3.3.0 estimates; legacy formula kept. Not a contract-note claim. | `test_nifty_algo_fee_candidates.py` | Rounding and IPFT invoicing evidence missing; Angel page contradicts itself on STT (0.15 vs 0.1 percent). |
+| F-06 | MED | Unverified | `REQUIRES_REAL_FEED_EVIDENCE` | Diagnostics, subscription-quota report and completeness tests added. Thresholds not weakened. | `test_nifty_algo_feed_provenance.py` | Needs raw full-chain packets and a dated master. |
+| F-07 | MED | Confirmed in code | `REQUIRES_REAL_FEED_EVIDENCE` | Depth freshness uses `quote_time` only; trade time cannot certify a book. | `test_nifty_algo_timestamp_provenance.py`, `test_nifty_algo_native_capture.py` | Whether Angel's `exchange_timestamp` is a book-update time is unproven. |
+| F-08 | LOW | Confirmed | `FIXED_AND_TESTED` | 20/2 parity against independent recursion and the installed Rust SDK and its fallback; 10/3 parity kept. | `test_nifty_algo_supertrend_alignment.py`, `test_nifty_algo_sdk_241_parity.py` | none |
+| F-09 | LOW | Confirmed | `FIXED_AND_TESTED` | Current docs state 20/2; historical docs keep their version. | doc review | none |
+| F-10 | LOW | Reproduced | `FIXED_AND_TESTED` | Durable bounded retry inside the existing 30 s window. | `test_nifty_algo_boundary_retry.py` | Real publication latency not measured. |
+| F-11 | LOW | Reproduced | `FIXED_AND_TESTED` | One completeness policy for live and replay. | `test_nifty_algo_session_completeness.py`, `test_nifty_algo_strategy_integration.py` | none |
+| F-12 | LOW | No fabrication | `VERIFIED_NOT_A_BUG` | OI stays None; zero volume term is conservative. | acceptance OI tests | none |
+| F-13 | LOW | Not a bug | `VERIFIED_NOT_A_BUG` | ADX 14/14. | indicator suite | none |
+| F-14 | LOW | Confirmed | `FIXED_AND_TESTED` | Patchers retired, kept for provenance. | `test_nifty_algo_retired_tools.py` | none |
+| F-15 | INFO | Arithmetic only | `REQUIRES_REAL_FEED_EVIDENCE` | Synthetic feasibility tables from the real planner. Risk limits unchanged. | `test_nifty_algo_confidence_comparison.py` | No observed premiums or lots. |
+| F-16 | INFO | Intentional | `REQUIRES_OWNER_DECISION` | Both definitions documented and pinned. No unification. | `test_nifty_algo_spread_definitions.py` | Owner decides if ranking should change. |
+| F-17 | INFO | Not a bug | `VERIFIED_NOT_A_BUG` | Session VWAP on the checked future. | active invariants | none |
+| F-18 | INFO | Historical | `REQUIRES_OWNER_DECISION` | Initialization unchanged; evidence in `evidence/initialization.md`. | evidence script | New seeding needs a version and approval. |
+| F-19 | INFO | Reproduced | `FIXED_AND_TESTED` | Disagreement locks entries; protective SELL needs only fresh bid depth and an unexcluded session. Report scanner records the day. | `test_nifty_algo_calendar_reconciliation.py`, `test_nifty_algo_phase6.py` | Authority between calendars is documented, not unified. |
+| F-20 | INFO | Intentional | `VERIFIED_NOT_A_BUG` | Shadow ledger separate. | existing | none |
+| F-21 | INFO | Tooling | `DEFERRED_WITH_REASON` | Mitigated with `.ignore` and a git-index inventory. Upstream package layout untouched. | inventory script | Recursive junction remains upstream. |
+| F-22 | LOW | Confirmed | `FIXED_AND_TESTED` | Batch A. Revalidated. | audit regression | none |
+| F-23 | INFO | Growth | `REQUIRES_OWNER_DECISION` | Additive report index only. Nothing deleted. | n/a | Retention policy needs approval. |
+| F-24 | INFO | Confirmed | `FIXED_AND_TESTED` | Report query selects only consumed kinds. | `test_nifty_algo_report_filtering.py` | none |
+| F-25 | LOW | Confirmed | `FIXED_AND_TESTED` | Batch A. Revalidated. | audit regression | none |
+| F-26 | MED | Confirmed | `FIXED_AND_TESTED` | MACD recency denominator 3 pinned for 3.3.0. | `test_nifty_algo_confidence_comparison.py` | Same approval note as F-04. |
+| F-27 | LOW | Confirmed | `FIXED_AND_TESTED` | Batch A. Revalidated. | audit regression | none |
+| F-28 | LOW | Confirmed | `FIXED_AND_TESTED` | Batch A. Revalidated. | audit regression | none |
+| F-29 | LOW | Confirmed | `FIXED_AND_TESTED` | Batch A. Revalidated. | audit regression | none |
+| F-30 | INFO | Confirmed | `FIXED_AND_TESTED` | Batch A. Revalidated. | audit regression | none |
+| F-31 | LOW | Confirmed | `FIXED_AND_TESTED` | Batch A. Revalidated. | audit regression | none |
+
+Totals: 23 resolved or closed (18 `FIXED_AND_TESTED`, 1 `ALREADY_FIXED`, 4
+`VERIFIED_NOT_A_BUG`); 8 open (F-05, F-21 deferred; F-06, F-07, F-15 need real
+feed evidence; F-16, F-18, F-23 need an owner decision).
+
 ## Regression evidence
 
 Before production edits, sparse midpoint CE/PE and reordered records, missing adjacent ITM, off-grid ladder and MACD validation location produced **9 failures / 4 passes**. After those fixes: **13 passed**. Configured 14:00 cutoff persisted PENDING across restart at exactly 14:00 before the expiry fix (**1 failed / 13 passed**); afterward **14 passed**. Early-close replay regression failed before the replay expiry change. An additional off-grid master-row test failed before restricting the ATM choice to grid neighbors. The 20-test expanded batch then passed. Selector refusal test failed with SelectionUnavailable before conversion into the established OrderRefused path.
@@ -124,3 +173,74 @@ not counted as successful verification. The complete clean run above finished
 with exit code zero; no tests were suppressed to obtain that result. Python
 3.13/3.14 and compiled-kernel validation remain GitHub Actions responsibilities.
 
+
+## PR #11 CI correction: assessment claim check-then-act gate - 2026-11-25
+
+Inspected Actions run `45571710187`, jobs `gthread-gates` (`139059700964`) and
+`gthread-migration` (`139059700922`). Both failed on one site:
+`database/nifty_algo_db.py` `NiftyStore.claim_assessment`, `guard-augassign
+row.attempts`. In `gthread-migration` the same scanner runs inside
+`test/test_gthread_deploy_gates.py`, which was the single failure there (1 failed,
+1471 passed, 3 skipped). Nothing else failed in either job.
+
+Finding: **protected, not a race.** The new durable retry budget (added with the
+bounded candle-retry work) reads `row.attempts` and writes `row.attempts += 1`.
+The scanner flags every read-then-write of an attribute and cannot see a lock held
+by a helper. The whole method runs inside one `sessions.begin()` transaction whose
+first statement is `_lock(db, user_id)`, an `UPDATE` of the user's
+`NiftyState` row. That is the SQLite write lock or a PostgreSQL row lock and it is
+held to commit. The runner lease, the state row, the attempt row, the
+`COMPLETE` / `attempts >= 7` / `next_at` check and the increment all follow it, so
+a second claimant is parked on the lock and decides only on the committed result.
+`finish_assessment` takes the same lock and compares `claim_id`, `owner`, status
+and the live lease, so a stale holder cannot finish a newer claim. No production
+code changed.
+
+The site is recorded in `scripts/gthread_check_then_act_reviewed.txt` with that
+reason and the tests that prove it. It is not a blanket entry: the key is the
+function and the attribute, so a second unguarded increment added to the method
+would still be reported.
+
+Proof, in `test/test_nifty_algo_assessment_claim_concurrency.py` (6 tests):
+
+- A competing claim is staged at the attempt write itself, for a first claim and
+  for a retry claim. The competitor's first statement is the owner lock, it waits
+  there while the first claim writes, and it then loses: one claim id, attempts 1
+  (or 2), status `IN_FLIGHT`.
+- Four writers per five-second step across ten steps grant exactly one claim at
+  each of the seven steps inside the thirty-second window and none after it;
+  attempts end at 7.
+- A completed boundary is not claimed again by four racing writers.
+- Restart recovery: an owner whose lease expired is replaced, cannot claim or
+  finish afterwards, the replacement waits for `next_at` and then claims once
+  (attempts 2), and the dead owner's claim id is fenced.
+- Retry expiry: a claim at exactly the deadline is granted, one microsecond later
+  is refused.
+
+Mutation check (not committed): with `_lock` replaced by a no-op, 3 of the 6
+tests fail (both staged-write cases and the four-writer budget case); with it in
+place all 6 pass. The three that pass either way cover sequential fencing and
+deadline semantics, which do not depend on the lock. The existing
+`test_nifty_algo_boundary_retry.py` (7 tests, including the single-flight and
+fenced-expiry cases) is unchanged and passes.
+
+Verification (Windows, Python 3.12.11, `-o addopts=''`, `--timeout=120`):
+`scripts/gthread_check_then_act.py` exits 0 (the site is REVIEWED);
+`scripts/gthread_sleep_gate.py` exits 0; `test/test_gthread_deploy_gates.py`
+**10 passed**; the remaining `test/test_gthread_*.py` files (all but the two
+named below): **1315 passed, 126 skipped, 1 failed**; `test/test_nifty_algo_*.py` plus
+`test/risk`: **1614 passed**, no failures or skips. The 126 skips are the Linux and
+eventlet-only tests, which is why the Linux job is the authority.
+
+Unresolved. The Linux `gthread-migration` run cannot be reproduced locally: WSL
+has no Linux distribution, and most gthread files skip on Windows. On Windows,
+`test_gthread_brokers_a_deltaexchange_session.py` hangs in
+`test_a_pooled_thread_holds_no_connection_after_the_lookup` until the timeout
+dump; it does not touch NIFTY code, was left out of the local run and is covered
+by the Linux CI job. `test_gthread_sandbox_positions.py::
+test_orders_on_different_positions_do_not_wait_for_each_other` fails on this Windows
+machine on a wall-clock bound (about 1.4 s against `< 1.0`, repeated twice in
+isolation). The branch changes no sandbox code and the test was not run against
+`main` here, so whether it also fails there is unconfirmed; the Linux job decides.
+The open findings listed above (F-05, F-21, F-06, F-07,
+F-15, F-16, F-18, F-23) are unchanged by this correction.

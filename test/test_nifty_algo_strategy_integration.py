@@ -76,6 +76,7 @@ def snapshot(item, *, bid, size, volume, oi, **changes):
         "symbol": item.symbol,
         "exchange": item.exchange,
         "ltt": NOW - timedelta(seconds=2),
+        "quote_time": NOW - timedelta(seconds=2),
         "received_time": NOW - timedelta(seconds=1),
         "depth": {
             "buy": [{"price": bid, "quantity": size}],
@@ -171,6 +172,7 @@ def test_oi_from_another_contract_or_a_display_fallback_is_not_used():
     assert depth_quote(A, other, NOW).oi is None
     stale = snapshot(A, bid="129.90", size=25, volume=3000, oi=5000)
     stale["ltt"] = NOW - timedelta(seconds=30)
+    stale["quote_time"] = NOW - timedelta(seconds=30)
     assert depth_quote(A, stale, NOW) is None
     fallback = NiftyPaperExecutor(market_data=FakeMarket())._depth(option(22000), NOW)
     assert fallback is not None and fallback.oi is None
@@ -451,8 +453,12 @@ def test_end_to_end_a_missing_minute_today_still_refuses():
     today_start = 8 * 375
     decision = _assessed({today_start + 20})
     assert not decision["eligible"]
-    warmup = next(check for check in decision["checks"] if check["rule"] == "R-WARMUP")
-    assert warmup["state"] != "PASS"
+    # The incomplete current session is discarded by the shared completeness
+    # policy: complete prior sessions can still satisfy warmup, but the stale
+    # last candle fails freshness and the session is flagged incomplete.
+    assert "SESSION_VWAP_INCOMPLETE" in decision["reasons"]
+    fresh = next(check for check in decision["checks"] if check["rule"] == "R-FRESH")
+    assert fresh["state"] != "PASS"
 
 
 def test_end_to_end_a_dropped_opening_bucket_today_is_session_vwap_incomplete():

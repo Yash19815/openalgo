@@ -631,7 +631,12 @@ class ReportService:
             today.strftime("%Y-%m"),
             (today.replace(day=1) - timedelta(days=1)).strftime("%Y-%m"),
         }
-        unknown = {"CALENDAR_UNAPPROVED", "SESSION_WINDOW_UNAVAILABLE", "UNAVAILABLE"}
+        unknown = {
+            "CALENDAR_UNAPPROVED",
+            "CALENDAR_DISAGREEMENT",
+            "SESSION_WINDOW_UNAVAILABLE",
+            "UNAVAILABLE",
+        }
 
         # The forward cursor never blocks on a historical unknown day. Instead,
         # every unknown day gets a durable record and bounded periodic rechecks.
