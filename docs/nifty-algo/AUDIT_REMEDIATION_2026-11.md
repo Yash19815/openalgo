@@ -76,3 +76,51 @@ F-15 exact existing arithmetic remains: planned loss = (entry - stop_exit)*quant
 
 Strict PAPER-only execution remains intact; LiveAdapterStub still refuses LIVE_NOT_READY. No real orders or notifications, no credentials, no Docker publishing changes, no merges or force pushes. Further work remains on F-10/F-11, full runner/API boundary proof, grid checks at every lifecycle stage, indicator migration/UI, dated fee verification and broader NIFTY checks. Pending items are not relabeled as fixed.
 
+## PR #10 CI correction — 2026-11-25
+
+Inspected Actions run `45406772322`, backend jobs `138489826474` (3.12),
+`138489826213` (3.13), and `138489826338` (3.14). Each reported the same six
+failures in `test_nifty_algo_offline_acceptance.py`, with 1320 other tests passing.
+Four assertions retained the superseded distance-only ATM assumption; two
+required the ITM sweep to offer candidates on a ladder missing every adjacent
+50-point strike.
+
+Disposition: these test assumptions are obsolete under the approved fail-closed
+short-term grid policy. The production implementation is unchanged. A listed
+strike within 25 points is necessary but insufficient between grid strikes:
+both adjacent 50-point grid records must be present. This deliberately refuses
+an incomplete neighborhood even when its surviving nearest strike appears
+plausible. Exact listed grid strikes need no interpolation. The 100-point fixture
+is sparse short-term metadata, not approval to infer a 100-point trading grid.
+At an exact listed ATM, ITM mode still needs the actual adjacent 50-point strike;
+a deeper listed strike cannot substitute.
+
+Coverage now includes missing lower and upper neighbors, both option sides,
+points just below/at/above the midpoint, exact listed sparse-grid ATM, explicit
+ITM refusals, restoring only the adjacent ITM contract, and reordered records.
+The selector sweep asserts complete refusal for sparse-100 ITM instead of
+silently dropping its non-vacuity requirement. CE/PE lifecycle tests demonstrate
+that loss of a neighbor removes an OTM contract's ATM exemption at admission
+and fill while spot remains bracketed; no position or equity debit results.
+Existing complete-ladder, identity, replay-label and PAPER isolation tests remain.
+
+Verification: the complete CI-selected offline NIFTY and notification regression
+set passed locally on Windows Python 3.12.11: **1354 passed**, zero failures,
+errors or skips, in **549.19 seconds**. This includes the complete offline
+acceptance module and all 28 added parameterized cases. The original six failed
+nodes are included, not deselected. Ruff check, Ruff format check and
+`git diff --check` passed. No production code changed for this correction.
+
+The full run expanded `test/test_nifty_algo_*.py` and included
+`test_pytest_import_resolution.py`, `test_rotate_pepper_salt.py`,
+`test_fernet_salt_warning.py`, `test_smtp_error_messages.py`,
+`test_smtp_certificate_verification.py` and `test_requirements_parity.py`, matching
+the failed CI step. It used `-q -o addopts='' -p pytest_timeout --timeout=120
+-p no:cacheprovider`, a fresh Windows TEMP basetemp, `NUMBA_DISABLE_JIT=1` and
+`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`. Local JUnit evidence is
+`tmp/pr10-full-nifty.xml`; console evidence is `tmp/pr10-full-nifty.log`.
+An earlier local attempt ended after a Windows native access violation and is
+not counted as successful verification. The complete clean run above finished
+with exit code zero; no tests were suppressed to obtain that result. Python
+3.13/3.14 and compiled-kernel validation remain GitHub Actions responsibilities.
+
