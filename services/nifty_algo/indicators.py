@@ -41,7 +41,7 @@ def ranges(bars):
     ]
 
 
-def supertrend(bars, period=10, multiplier=3):
+def supertrend(bars, period=20, multiplier=2):
     """Recursive final bands; flips only use completed input candles."""
     atr = wilder(ranges(bars), period)
     result = [None] * len(bars)

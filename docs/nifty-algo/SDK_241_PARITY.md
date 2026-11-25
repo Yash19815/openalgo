@@ -1,5 +1,11 @@
 # NIFTY indicator parity against OpenAlgo SDK 2.4.1
 
+Historical applicability: this report records strategy 3.2.0 and SuperTrend
+10/3. Strategy 3.3.0 adds 20/2 tests without replacing those fixtures. See
+[remaining remediation](REMAINING_REMEDIATION_2026-11.md) and
+[initialization measurements](evidence/initialization.md). Historical results
+below remain intact.
+
 Date: 2026-11-24. Baseline: `a89854a5545c4232ccf37d96605e011e69326e49`
 (`origin/main`). Branch: `test/nifty-sdk-241-parity`.
 

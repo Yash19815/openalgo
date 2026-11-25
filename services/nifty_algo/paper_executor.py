@@ -8,12 +8,13 @@ resolve only through ``process`` against fresh market depth.
 """
 
 from datetime import UTC, datetime, time, timedelta
-from decimal import ROUND_CEILING, Decimal
+from decimal import Decimal
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from services.nifty_algo.depth_quote import depth_quote
 from services.nifty_algo.depth_quote import epoch as _epoch
+from services.nifty_algo.fees import estimate_metadata
 from services.nifty_algo.models import Instrument
 from services.nifty_algo.session_policy import pending_entry_expiry
 from utils.logging import get_logger
@@ -44,15 +45,9 @@ def _charges(side, price, quantity, config=None):
     from .config import StrategyConfig
 
     config = config or StrategyConfig()
-    turnover = price * quantity
-    txn = turnover * config.transaction_rate
-    gst = (config.brokerage + txn) * config.gst_rate
-    stt = turnover * config.stt_sell_rate if side == "SELL" else Decimal("0")
-    stamp = turnover * config.stamp_buy_rate if side == "BUY" else Decimal("0")
-    sebi = turnover * config.sebi_rate
-    return (config.brokerage + txn + gst + stt + stamp + sebi).quantize(
-        Decimal("0.0001"), rounding=ROUND_CEILING
-    )
+    from .fees import configured_total
+
+    return configured_total(side, price, quantity, config)
 
 
 class NiftyPaperExecutor:
@@ -417,6 +412,7 @@ class NiftyPaperExecutor:
                 "exit_reason": intent.get("exit_reason", "SIGNAL_EXIT"),
                 "configuration": config.model_dump(mode="json"),
                 "configuration_id": config.version_id,
+                "charge_model": estimate_metadata(config),
                 "confidence": confidence,
                 "runner_owner": intent.get("runner_owner"),
                 "protection": held.get("protection") if side == "SELL" else None,
@@ -484,14 +480,15 @@ class NiftyPaperExecutor:
 
     # Fills ----------------------------------------------------------------
 
-    def _session_open(self, now):
+    def _outside_known_session(self, now):
+        """True only when a valid native window exists and excludes ``now``."""
         from .assessment import _session, _window
 
         try:
             window = _window(now.astimezone(IST).date(), self.session_reader or _session)
         except Exception:
             return False
-        return bool(window and window[0] <= now < window[1])
+        return bool(window and not window[0] <= now < window[1])
 
     def _slippage(self, instrument):
         config = self.config
@@ -527,12 +524,20 @@ class NiftyPaperExecutor:
         max_age = getattr(config, "quote_max_age", 5) if config else 5
         raw = source or {
             "depth": depth,
+            "quote_time": depth.get("quote_time") or depth.get("source_time"),
             "ltt": depth.get("source_time") or depth.get("ltt"),
             "received_time": cached.get("last_update"),
             "ltp": cached.get("ltp"),
             "volume": cached.get("volume"),
         }
-        return depth_quote(instrument, raw, now, max_age)
+        return depth_quote(
+            instrument,
+            raw,
+            now,
+            max_age,
+            allow_legacy_timestamp=getattr(config, "strategy_version", "3.3.0")
+            in ("3.1.0", "3.2.0"),
+        )
 
     def _spot(self, now, config=None):
         """Current NIFTY index LTP for fill-time moneyness revalidation."""
@@ -594,7 +599,10 @@ class NiftyPaperExecutor:
                     or not session["window"][0] <= now < session["window"][1]
                 ):
                     continue
-            elif not self._session_open(now):
+            elif self._outside_known_session(now):
+                # A SELL waits only on positive evidence that the session is
+                # over. An unreadable or disagreeing calendar may lock BUYs but
+                # cannot disable a protective PAPER SELL on fresh causal bid depth.
                 continue
             tick = Decimal(str(order["payload"]["instrument"]["tick_size"]))
             spot = fill_atm_strike = None

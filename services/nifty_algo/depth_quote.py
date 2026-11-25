@@ -76,13 +76,18 @@ def open_interest(instrument, raw, *, strict=False):
     return value
 
 
-def depth_quote(instrument, raw, now, max_age=5, *, strict=False):
+def depth_quote(instrument, raw, now, max_age=5, *, strict=False, allow_legacy_timestamp=False):
     """Normalize one source snapshot; absent depth stays absent, never LTP depth."""
     try:
         depth = raw.get("depth") or raw
         bid = _best_level(depth.get("buy") or depth.get("bids"), strict=strict)
         ask = _best_level(depth.get("sell") or depth.get("asks"), high=False, strict=strict)
-        stamp, received = epoch(raw.get("ltt")), epoch(raw.get("received_time"))
+        source = (
+            raw.get("quote_time")
+            if raw.get("quote_time") is not None
+            else (raw.get("ltt") if allow_legacy_timestamp else None)
+        )
+        stamp, received = epoch(source), epoch(raw.get("received_time"))
         if stamp is None or stamp > now or (now - stamp).total_seconds() > max_age:
             return None
         if received is None or received < stamp or received > now:

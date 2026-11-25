@@ -51,7 +51,11 @@ class Phase1MarketCalendar:
 
     @staticmethod
     def get_effective_session_window(day, exchange):
-        return None
+        opening = datetime.combine(day, datetime.min.time(), IST) + timedelta(hours=9, minutes=15)
+        return {
+            "start_ms": opening.timestamp() * 1000,
+            "end_ms": (opening + timedelta(hours=6, minutes=15)).timestamp() * 1000,
+        }
 
     @staticmethod
     def get_market_timing(exchange):
@@ -60,9 +64,7 @@ class Phase1MarketCalendar:
 
 @pytest.fixture
 def store(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        session_calendar, "_legacy_calendar", lambda: Phase1MarketCalendar()
-    )
+    monkeypatch.setattr(session_calendar, "_legacy_calendar", lambda: Phase1MarketCalendar())
     engine = create_db_engine(f"sqlite:///{tmp_path / 'phase1.db'}")
     value = NiftyStore(engine)
     value.initialize()
@@ -186,7 +188,7 @@ def admit_direct(store, config, intent_id, created_at=NOW, expires_at=None, user
 
 def test_v3_defaults_validation_and_v2_migration():
     config = StrategyConfig()
-    assert config.strategy_version == "3.2.0"
+    assert config.strategy_version == "3.3.0"
     assert config.virtual_capital == D("20000")
     assert config.max_lots == 3 and config.max_daily_entries == 1
     assert config.candidate_strike_window == 2
@@ -220,13 +222,13 @@ def test_v3_defaults_validation_and_v2_migration():
         virtual_capital="100000",
     )
     migrated = migrate_configuration(old)
-    assert migrated.strategy_version == "3.2.0"
+    assert migrated.strategy_version == "3.3.0"
     assert migrated.max_lots == 3
     assert migrated.max_daily_entries == 1
     assert migrated.entry_after == time(10, 30)
     assert not hasattr(migrated, "risk_fraction")
     legacy = old | {"strategy_version": "1.0.0", "selection": "OTM"}
-    assert migrate_configuration(legacy).strategy_version == "3.2.0"
+    assert migrate_configuration(legacy).strategy_version == "3.3.0"
     assert migrate_configuration(legacy).selection == "ATM"
 
 
@@ -249,17 +251,17 @@ def test_new_account_capital_and_v2_migration_preserve_funding(store):
     state = store.read(USER)
     funded = store.account(USER, NOW)
     assert state["state"] == "PAUSED"
-    assert state["configuration"]["strategy_version"] == "3.2.0"
+    assert state["configuration"]["strategy_version"] == "3.3.0"
     assert D(funded["equity"]) == D("100000")
     assert D(funded["available"]) == D("100000")
     with store.sessions() as db:
         history = db.get(NiftyConfiguration, (USER, state["revision"]))
         events = list(db.scalars(select(NiftyEvent).where(NiftyEvent.user_id == USER)))
-    assert history.configuration["strategy_version"] == "3.2.0"
+    assert history.configuration["strategy_version"] == "3.3.0"
     migration = next(event for event in events if event.kind == "configuration_migration")
     assert migration.payload == {
         "from": "2.0.0",
-        "to": "3.2.0",
+        "to": "3.3.0",
         "revision": state["revision"],
     }
 
@@ -277,7 +279,7 @@ def test_v3_to_v31_migration_pauses_and_records_event(store):
     store.ensure_user(USER)
     state = store.read(USER)
     assert state["state"] == "PAUSED"
-    assert state["configuration"]["strategy_version"] == "3.2.0"
+    assert state["configuration"]["strategy_version"] == "3.3.0"
     assert state["configuration"]["selection"] == "ATM"
     with store.sessions() as db:
         event = db.scalar(
@@ -287,7 +289,7 @@ def test_v3_to_v31_migration_pauses_and_records_event(store):
             )
         )
     assert event.payload["from"] == "3.0.0"
-    assert event.payload["to"] == "3.2.0"
+    assert event.payload["to"] == "3.3.0"
 
 
 @pytest.mark.parametrize(("score", "lots"), [(39, 1), (40, 2), (70, 3)])
@@ -426,8 +428,13 @@ def test_entry_window_is_1030_ist_and_resolver_keeps_candidate_order():
         provider="PHASE1_TEST",
     )
     assert "ENTRY_WINDOW" in entry_reasons(
-        account(), item, quote.model_copy(update={"source_time": before, "received_time": before}),
-        before, config, session_open=True, data_healthy=True
+        account(),
+        item,
+        quote.model_copy(update={"source_time": before, "received_time": before}),
+        before,
+        config,
+        session_open=True,
+        data_healthy=True,
     )
     assert "ENTRY_WINDOW" not in entry_reasons(
         account(), item, quote, opened, config, session_open=True, data_healthy=True
@@ -509,18 +516,22 @@ def test_resolver_candidate_window_preserves_selection_and_delta_order():
         ("PE", D("22040"), D("22050"), D("22100"), D("22000")),
     ],
 )
-def test_resolver_never_returns_otm_and_window_counts_itm_strikes(
-    side, spot, atm, itm, otm
-):
+def test_resolver_never_returns_otm_and_window_counts_itm_strikes(side, spot, atm, itm, otm):
     options = [
         candidate(f"{side}-{strike}", strike=strike)[0].model_copy(update={"kind": side})
         for strike in (D("21900"), D("22000"), D("22050"), D("22100"), D("22150"))
     ]
     quotes = {
         option.token: Quote(
-            token=option.token, source_time=NOW, received_time=NOW, bid=D("129"),
-            ask=D("130"), bid_size=1000, ask_size=1000, volume=5000,
-            provider="PHASE1_TEST"
+            token=option.token,
+            source_time=NOW,
+            received_time=NOW,
+            bid=D("129"),
+            ask=D("130"),
+            bid_size=1000,
+            ask_size=1000,
+            volume=5000,
+            provider="PHASE1_TEST",
         )
         for option in options
     }
@@ -549,8 +560,14 @@ def test_resolver_zero_window_keeps_only_atm_or_selected_itm(side, atm, itm):
     ]
     quotes = {
         option.token: Quote(
-            token=option.token, source_time=NOW, received_time=NOW, bid=D("129"),
-            ask=D("130"), bid_size=1000, ask_size=1000, volume=5000,
+            token=option.token,
+            source_time=NOW,
+            received_time=NOW,
+            bid=D("129"),
+            ask=D("130"),
+            bid_size=1000,
+            ask_size=1000,
+            volume=5000,
             provider="PHASE1_TEST",
         )
         for option in options
@@ -559,24 +576,30 @@ def test_resolver_zero_window_keeps_only_atm_or_selected_itm(side, atm, itm):
     assert [
         option.strike
         for option in resolver.candidates(
-            options, quotes, D("22040"), side, NOW,
+            options,
+            quotes,
+            D("22040"),
+            side,
+            NOW,
             StrategyConfig(candidate_strike_window=0),
         )
     ] == [atm]
     assert [
         option.strike
         for option in resolver.candidates(
-            options, quotes, D("22040"), side, NOW,
+            options,
+            quotes,
+            D("22040"),
+            side,
+            NOW,
             StrategyConfig(selection="ITM", candidate_strike_window=0),
         )
     ] == [itm]
 
 
 def test_v3_otm_migration_maps_selection_to_atm():
-    migrated = migrate_configuration(
-        {"strategy_version": "3.0.0", "selection": "OTM"}
-    )
-    assert migrated.strategy_version == "3.2.0"
+    migrated = migrate_configuration({"strategy_version": "3.0.0", "selection": "OTM"})
+    assert migrated.strategy_version == "3.3.0"
     assert migrated.selection == "ATM"
 
 
@@ -598,7 +621,7 @@ def test_buy_admission_rejects_otm_candidates(store):
                         "spot_reference": "21900",
                         "atm_strike": "22000",
                     }
-                ]
+                ],
             )
         )
     assert refused.value.reasons == ["OTM_PROHIBITED"]
@@ -630,9 +653,7 @@ def test_daily_entry_admission_pending_expired_and_concurrent(store):
     assert "DAILY_ENTRY_USED" in refused.value.reasons
 
     store.expire_pending(USER, NOW + timedelta(minutes=2))
-    admitted, created = admit_direct(
-        store, config, "after-expiry", NOW + timedelta(minutes=2)
-    )
+    admitted, created = admit_direct(store, config, "after-expiry", NOW + timedelta(minutes=2))
     assert created and admitted["intent_id"] == "after-expiry"
     assert [order["intent_id"] for order in store.pending_orders(USER)] == ["after-expiry"]
 
@@ -657,9 +678,7 @@ def test_one_daily_buy_after_fill_closed_and_concurrent_writers(store):
 
     def submit(index):
         try:
-            _, created = admit_direct(
-                store, config, f"race-{index}", user=race_user
-            )
+            _, created = admit_direct(store, config, f"race-{index}", user=race_user)
             return "ADMITTED" if created else "DUPLICATE"
         except OrderRefused as error:
             return error.reasons

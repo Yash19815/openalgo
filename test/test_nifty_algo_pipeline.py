@@ -113,6 +113,9 @@ class DeterministicMarket:
             else self.stamp
         )
         raw = {
+            "quote_time": source.timestamp() * 1000,
+            "symbol": symbol,
+            "exchange": exchange,
             "ltt": source.timestamp() * 1000,
             "received_time": self.stamp.timestamp(),
             "ltp": 25000 if symbol == "NIFTY" else getattr(self, "ltp", 100),
@@ -127,6 +130,7 @@ class DeterministicMarket:
             raw["oi"] = None
         if self.missing_time:
             raw.pop("ltt")
+            raw.pop("quote_time")
         return {"source_observations": {"3" if exchange == "NFO" else "2": raw}}
 
 
@@ -158,17 +162,20 @@ def assess(native, now=NOW, rows=None, config=None):
     )
 
 
-def test_real_calculations_connect_complete_pcr_to_eligible_confidence():
+@pytest.mark.parametrize("period,factor,expected", ((10, 3, 61.970368), (20, 2, 62.646103)))
+def test_real_calculations_connect_complete_pcr_to_eligible_confidence(period, factor, expected):
     now = NOW - timedelta(minutes=30)
     market = DeterministicMarket()
     market.stamp = now
-    decision = assess(pipeline(market), now=now)
+    decision = assess(
+        pipeline(market), now=now, config=StrategyConfig(atr_period=period, atr_multiplier=factor)
+    )
     assert decision["eligible"]
     assert all(c["state"] == "PASS" for c in decision["checks"])
     assert decision["pcr"]["value"] == 2 and "2026-11-24" in decision["pcr"]["scope"]
     assert decision["pcr_readiness"]["expected_contracts"] == 2
     assert len(decision["confidence"]["contributions"]) == 5
-    assert decision["confidence"]["score"] == pytest.approx(61.970368)
+    assert decision["confidence"]["score"] == pytest.approx(expected)
     assert Decimal(".10") <= Decimal(decision["confidence"]["target_fraction"]) <= Decimal(".15")
 
 

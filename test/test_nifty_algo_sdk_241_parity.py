@@ -34,8 +34,12 @@ def legacy_31(**changes):
     evidence that the indicator mathematics did not change when 3.2.0 narrowed
     the window to ages 0..2 (approved 2026-11-24).
     """
-    values = StrategyConfig(**changes).model_dump(mode="json")
-    values.update(strategy_version="3.1.0", crossover_freshness=3)
+    values = StrategyConfig(**({"atr_period": 10, "atr_multiplier": 3} | changes)).model_dump(
+        mode="json"
+    )
+    values.update(
+        strategy_version="3.1.0", confidence_method="five-indicator-v1", crossover_freshness=3
+    )
     return StrategyConfig.model_validate(values)
 
 
@@ -170,17 +174,17 @@ def reference_dm(bars, include_bar_zero=False):
     return tr, plus, minus, p, m, dx, reference_smoothing(dx, 14, 1 / 14)
 
 
-def reference_bands(bars, sdk_initial=False):
+def reference_bands(bars, sdk_initial=False, period=10, multiplier=3):
     """Final-band recursion with both documented initial-direction choices."""
     high, low, close, _ = arrays(bars)
     tr = high - low
     tr[1:] = np.maximum.reduce((tr[1:], abs(high[1:] - close[:-1]), abs(low[1:] - close[:-1])))
-    atr = reference_smoothing(tr, 10, 0.1)
+    atr = reference_smoothing(tr, period, 1 / period)
     upper, lower, direction, values = (np.full(len(bars), np.nan) for _ in range(4))
-    for i in range(9, len(bars)):
+    for i in range(period - 1, len(bars)):
         midpoint = (high[i] + low[i]) / 2
-        upper[i], lower[i] = midpoint + 3 * atr[i], midpoint - 3 * atr[i]
-        if i == 9:
+        upper[i], lower[i] = midpoint + multiplier * atr[i], midpoint - multiplier * atr[i]
+        if i == period - 1:
             direction[i] = -1 if sdk_initial or close[i] < midpoint else 1
         else:
             if upper[i] >= upper[i - 1] and close[i - 1] <= upper[i - 1]:
@@ -238,7 +242,7 @@ def momentum_rows(line, signal, histogram):
 
 def gate_values(price, st, momentum, strength, vw, config=None):
     """Gate projection checked against actual Rules.evaluate below."""
-    config = config or StrategyConfig()
+    config = config or StrategyConfig(atr_period=10, atr_multiplier=3)
     direction = st["direction"] if st else 0
     macd_ok = bool(momentum) and (
         momentum["cross_direction"] == direction
@@ -271,7 +275,7 @@ def gate_values(price, st, momentum, strength, vw, config=None):
 def comparison(bars):
     high, low, close, _ = arrays(bars)
     custom = (
-        indicators.supertrend(bars),
+        indicators.supertrend(bars, 10, 3),
         indicators.macd(bars),
         indicators.adx(bars),
         indicators.vwap(bars),
@@ -347,7 +351,7 @@ def test_old_audit_private_kernel_api_compatibility():
 def test_supertrend_atr_final_bands_reversals_and_seed_mapping(pattern):
     bars = fixture_bars(pattern)
     high, low, close, _ = arrays(bars)
-    ours = indicators.supertrend(bars)
+    ours = indicators.supertrend(bars, 10, 3)
     atr, upper, lower, direction, values = reference_bands(bars)
     sdk_atr, _, _, sdk_direction, sdk_values = reference_bands(bars, sdk_initial=True)
     sdk_st, sdk_sign = ta.supertrend(high, low, close, period=10, multiplier=3)
@@ -384,7 +388,7 @@ def test_supertrend_does_not_reverse_at_band_equality(side):
     )
     for i, close in ((10, boundary), (11, beyond)):
         bars[i] = bars[i].model_copy(update={"open": close, "high": h, "low": low, "close": close})
-    ours = indicators.supertrend(bars)
+    ours = indicators.supertrend(bars, 10, 3)
     sdk_values, sdk_direction = ta.supertrend(*arrays(bars)[:3], period=10, multiplier=3)
     if side == "upper":
         assert sdk_direction[9:12].tolist() == [1, 1, -1]
@@ -611,7 +615,7 @@ def test_all_indicators_prefix_causality(cut):
 
 def test_completed_candles_future_append_and_80_bar_rule():
     bars = fixture_bars(n=81)
-    config = StrategyConfig()
+    config = StrategyConfig(atr_period=10, atr_multiplier=3)
     now = bars[79].end
     expected = signal_engine.Rules().evaluate(
         bars[:80], [], None, now, config, config.version_id, bars[0].token
@@ -655,7 +659,8 @@ def test_missing_history_is_refused_or_trimmed_before_vwap():
     suffix = signal_engine.completed_series(bars[:20] + bars[21:], now, bars[0].token, 5)
     assert suffix == bars[21:]
     assert (
-        signal_engine.snapshot(suffix, StrategyConfig())["vwap"] == indicators.vwap(bars[150:])[-1]
+        signal_engine.snapshot(suffix, StrategyConfig(atr_period=10, atr_multiplier=3))["vwap"]
+        == indicators.vwap(bars[150:])[-1]
     )
     # Pure VWAP cannot know the effective opening time; assessment owns that guard.
     partial = bars[151:]
@@ -692,11 +697,11 @@ def test_missing_history_is_refused_or_trimmed_before_vwap():
 )
 def test_actual_macd_freshness_boundary(monkeypatch, legacy, age, passed):
     bars = fixture_bars(n=80)
-    snap = signal_engine.snapshot(bars, StrategyConfig())
+    snap = signal_engine.snapshot(bars, StrategyConfig(atr_period=10, atr_multiplier=3))
     direction = snap["supertrend"]["direction"]
     snap["macd"].update(cross_direction=direction, cross_age=age, histogram=float(direction))
     monkeypatch.setattr(signal_engine, "snapshot", lambda bars, config: snap if bars else {})
-    config = legacy_31() if legacy else StrategyConfig()
+    config = legacy_31() if legacy else StrategyConfig(atr_period=10, atr_multiplier=3)
     assert config.crossover_freshness == (3 if legacy else 2)
     result = signal_engine.Rules().evaluate(
         bars, [], None, bars[-1].end, config, config.version_id, bars[0].token
@@ -707,10 +712,10 @@ def test_actual_macd_freshness_boundary(monkeypatch, legacy, age, passed):
 @pytest.mark.parametrize("value,passed", ((24.999999, False), (25.0, True), (25.000001, True)))
 def test_actual_adx_inclusive_25_boundary(monkeypatch, value, passed):
     bars = fixture_bars(n=80)
-    snap = signal_engine.snapshot(bars, StrategyConfig())
+    snap = signal_engine.snapshot(bars, StrategyConfig(atr_period=10, atr_multiplier=3))
     snap["adx"]["adx"] = value
     monkeypatch.setattr(signal_engine, "snapshot", lambda bars, config: snap if bars else {})
-    config = StrategyConfig()
+    config = StrategyConfig(atr_period=10, atr_multiplier=3)
     assert config.adx_min == 25
     result = signal_engine.Rules().evaluate(
         bars, [], None, bars[-1].end, config, config.version_id, bars[0].token
@@ -726,7 +731,7 @@ def decision_disagreements(seed_count=64, isolate_direction=True, config=None):
     """
     disagreements = {gate: [] for gate in GATES}
     side_changes = []
-    config = config or StrategyConfig()
+    config = config or StrategyConfig(atr_period=10, atr_multiplier=3)
     for seed in range(seed_count):
         bars = fixture_bars(seed=seed)
         custom, sdk = comparison(bars)
@@ -758,7 +763,7 @@ def decision_disagreements(seed_count=64, isolate_direction=True, config=None):
 def test_deterministic_decision_disagreement_census(isolate_direction, legacy):
     disagreements, side_changes = decision_disagreements(
         isolate_direction=isolate_direction,
-        config=legacy_31() if legacy else StrategyConfig(),
+        config=legacy_31() if legacy else StrategyConfig(atr_period=10, atr_multiplier=3),
     )
     if legacy:
         macd = ([] if isolate_direction else [(4, 79), (4, 80), (4, 81)]) + [
@@ -801,7 +806,7 @@ def test_deterministic_decision_disagreement_census(isolate_direction, legacy):
 def test_named_fixture_native_direction_gate_disagreements(legacy, pattern, counts, side_changes):
     bars = fixture_bars(pattern)
     custom, sdk = comparison(bars)
-    config = legacy_31() if legacy else StrategyConfig()
+    config = legacy_31() if legacy else StrategyConfig(atr_period=10, atr_multiplier=3)
     actual_counts = dict.fromkeys(GATES, 0)
     actual_sides = 0
     for i in range(79, 525):
@@ -841,7 +846,11 @@ def test_gate_projection_matches_actual_rules(
     bars = fixture_bars(seed=seed)
     custom, sdk = comparison(bars)
     settings = {"macd_zero_required": zero_required, "di_confirmation": di_confirmation}
-    config = legacy_31(**settings) if legacy else StrategyConfig(**settings)
+    config = (
+        legacy_31(**settings)
+        if legacy
+        else StrategyConfig(**({"atr_period": 10, "atr_multiplier": 3} | settings))
+    )
     actual_states = []
     for series in (custom, sdk):
         st, momentum, strength, vw = [rows[index] for rows in series]
@@ -874,7 +883,7 @@ def test_gate_projection_matches_actual_rules(
 def test_missing_volume_sdk_resumption_would_change_actual_vwap_gate(monkeypatch):
     bars = fixture_bars(seed=0, n=80)
     bars[77] = bars[77].model_copy(update={"volume": None})
-    config = StrategyConfig()
+    config = StrategyConfig(atr_period=10, atr_multiplier=3)
     snap = signal_engine.snapshot(bars, config)
     assert snap["vwap"] is None
     monkeypatch.setattr(signal_engine, "snapshot", lambda bars, config: snap if bars else {})
@@ -891,7 +900,7 @@ def test_missing_volume_sdk_resumption_would_change_actual_vwap_gate(monkeypatch
 @pytest.mark.parametrize("extension,passed", ((0, True), (80, True), (80.0001, False)))
 def test_actual_vwap_alignment_and_inclusive_extension(monkeypatch, direction, extension, passed):
     bars = fixture_bars(n=80)
-    config = StrategyConfig()
+    config = StrategyConfig(atr_period=10, atr_multiplier=3)
     snap = signal_engine.snapshot(bars, config)
     snap["supertrend"]["direction"] = direction
     snap["vwap"], snap["price"] = 10000.0, 10000.0 + direction * extension

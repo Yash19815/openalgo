@@ -3,6 +3,7 @@ from math import isfinite
 from zoneinfo import ZoneInfo
 
 from .confidence import signal_strength
+from .fees import estimate_metadata
 from .indicators import adx, macd, supertrend, vwap
 
 
@@ -192,6 +193,8 @@ class Rules:
             "analysis_token": token,
             "timeframe": 5,
             "config_id": config_id,
+            "effective_configuration": config.model_dump(mode="json"),
+            "charge_model": estimate_metadata(config),
             "snapshot": snap,
             "higher": h,
             "pcr": pcr.model_dump(mode="json") if pcr else None,

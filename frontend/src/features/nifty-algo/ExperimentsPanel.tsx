@@ -24,6 +24,7 @@ export function ExperimentsPanel() {
   const [validation, setValidation] = useState('')
   const [adx, setAdx] = useState('')
   const [atr, setAtr] = useState('')
+  const [factor, setFactor] = useState('')
   const [consent, setConsent] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
   const sources = useQuery({
@@ -78,6 +79,8 @@ export function ExperimentsPanel() {
     trainTime < validationTime &&
     validationTime < end
   const settingsValid =
+    (factor === '' ||
+      (Number.isFinite(Number(factor)) && Number(factor) > 0 && Number(factor) <= 10)) &&
     (adx === '' || (Number.isFinite(Number(adx)) && Number(adx) >= 0 && Number(adx) <= 100)) &&
     (atr === '' || (Number.isInteger(Number(atr)) && Number(atr) >= 2 && Number(atr) <= 100))
   const refreshing =
@@ -122,6 +125,7 @@ export function ExperimentsPanel() {
           const configuration_overrides: ExperimentRequest['configuration_overrides'] = {}
           if (adx !== '') configuration_overrides.adx_min = Number(adx)
           if (atr !== '') configuration_overrides.atr_period = Number(atr)
+          if (factor !== '') configuration_overrides.atr_multiplier = Number(factor)
           creation.mutate({
             recording_id: source.id,
             expected_count: source.count,
@@ -209,6 +213,19 @@ export function ExperimentsPanel() {
           value={atr}
           disabled={busy}
           onChange={(event) => setAtr(event.target.value)}
+        />
+        <label htmlFor="nifty-experiment-factor">Research SuperTrend factor (optional)</label>
+        <Input
+          id="nifty-experiment-factor"
+          type="number"
+          min={0}
+          max={10}
+          step="any"
+          aria-describedby="nifty-experiment-settings"
+          aria-invalid={!settingsValid}
+          value={factor}
+          disabled={busy}
+          onChange={(event) => setFactor(event.target.value)}
         />
         <label className="nifty-mode-row">
           <input

@@ -1,0 +1,7096 @@
+{
+  "provenance": "DETERMINISTIC_SYNTHETIC_NOT_MARKET_OBSERVATIONS",
+  "as_of": "2026-11-25T05:00:00+00:00",
+  "lot_size": 65,
+  "tick_size": "0.05",
+  "configuration": {
+    "strategy_version": "3.3.0",
+    "confidence_method": "five-indicator-v2-pinned",
+    "virtual_capital": "20000",
+    "atr_period": 20,
+    "atr_multiplier": 2.0,
+    "macd_fast": 12,
+    "macd_slow": 26,
+    "macd_signal": 9,
+    "crossover_freshness": 2,
+    "macd_zero_required": false,
+    "adx_period": 14,
+    "adx_min": 25.0,
+    "di_confirmation": false,
+    "vwap_basis": "typical",
+    "vwap_max_bps": 80.0,
+    "pcr_kind": "OI",
+    "pcr_expiry": null,
+    "pcr_bull": 1.5,
+    "pcr_bear": 1.0,
+    "pcr_max_age": 90,
+    "pcr_max_skew_seconds": 5,
+    "entry_timeframe": 5,
+    "confirmation_timeframe": 15,
+    "previous_candle_break": false,
+    "selection": "ATM",
+    "candidate_strike_window": 2,
+    "delta_target": 0.5,
+    "selector_weights": [
+      "30",
+      "25",
+      "15",
+      "20",
+      "10"
+    ],
+    "avoid_expiry_day": true,
+    "max_spread_bps": 150.0,
+    "min_volume": 1000,
+    "quote_max_age": 5,
+    "daily_loss_fraction": "0.015",
+    "max_positions": 1,
+    "max_lots": 3,
+    "max_daily_entries": 1,
+    "lot_score_thresholds": [
+      "0",
+      "40",
+      "70"
+    ],
+    "max_planned_loss": "400",
+    "min_projected_net_reward": "350",
+    "planned_loss_buffer": "10",
+    "profit_lock_activation_net": "400",
+    "profit_lock_floor_net": "350",
+    "early_booking_min_net": "300",
+    "early_booking_retrace_fraction": "0.30",
+    "monthly_loss_limit": "2000",
+    "monthly_profit_target": null,
+    "premium_stop": "0.08",
+    "target_min": "0.10",
+    "target_max": "0.15",
+    "trailing_candidates": [
+      "1.5",
+      "2.0"
+    ],
+    "trailing_distance_points": "1.5",
+    "trailing_activation_points": "1.5",
+    "point_unit": "OPTION_PREMIUM",
+    "brokerage": "20",
+    "transaction_rate": "0.000355299",
+    "gst_rate": "0.18",
+    "stt_sell_rate": "0.0015",
+    "stamp_buy_rate": "0.00003",
+    "sebi_rate": "0.000001",
+    "max_hold_minutes": 45,
+    "technical_exit": true,
+    "atr_exit_multiple": 2.0,
+    "shadow_entry_after": "09:15:00",
+    "entry_after": "10:30:00",
+    "entry_before": "14:45:00",
+    "exit_by": "15:10:00",
+    "latency_ms": 250,
+    "slippage_ticks": 1,
+    "order_ttl_seconds": 10
+  },
+  "confidence": [
+    {
+      "age": 0,
+      "policy": "fixed-v1",
+      "score": 58.333333,
+      "st_points": 16.66666667,
+      "macd_points": 11.0,
+      "permitted_lots": 2,
+      "target_fraction": "0.1291666665"
+    },
+    {
+      "age": 0,
+      "policy": "configured-st-v2-proposal",
+      "score": 56.666667,
+      "st_points": 15.0,
+      "macd_points": 11.0,
+      "permitted_lots": 2,
+      "target_fraction": "0.1283333335"
+    },
+    {
+      "age": 0,
+      "policy": "version-pinned-v2-proposal",
+      "score": 58.333333,
+      "st_points": 16.66666667,
+      "macd_points": 11.0,
+      "permitted_lots": 2,
+      "target_fraction": "0.1291666665"
+    },
+    {
+      "age": 0,
+      "policy": "historical-macd-v2-proposal",
+      "score": 58.333333,
+      "st_points": 16.66666667,
+      "macd_points": 11.0,
+      "permitted_lots": 2,
+      "target_fraction": "0.1291666665"
+    },
+    {
+      "age": 1,
+      "policy": "fixed-v1",
+      "score": 55.0,
+      "st_points": 16.66666667,
+      "macd_points": 7.66666667,
+      "permitted_lots": 2,
+      "target_fraction": "0.1275"
+    },
+    {
+      "age": 1,
+      "policy": "configured-st-v2-proposal",
+      "score": 53.333333,
+      "st_points": 15.0,
+      "macd_points": 7.66666667,
+      "permitted_lots": 2,
+      "target_fraction": "0.1266666665"
+    },
+    {
+      "age": 1,
+      "policy": "version-pinned-v2-proposal",
+      "score": 55.0,
+      "st_points": 16.66666667,
+      "macd_points": 7.66666667,
+      "permitted_lots": 2,
+      "target_fraction": "0.1275"
+    },
+    {
+      "age": 1,
+      "policy": "historical-macd-v2-proposal",
+      "score": 55.833333,
+      "st_points": 16.66666667,
+      "macd_points": 8.5,
+      "permitted_lots": 2,
+      "target_fraction": "0.1279166665"
+    },
+    {
+      "age": 2,
+      "policy": "fixed-v1",
+      "score": 51.666667,
+      "st_points": 16.66666667,
+      "macd_points": 4.33333333,
+      "permitted_lots": 2,
+      "target_fraction": "0.1258333335"
+    },
+    {
+      "age": 2,
+      "policy": "configured-st-v2-proposal",
+      "score": 50.0,
+      "st_points": 15.0,
+      "macd_points": 4.33333333,
+      "permitted_lots": 2,
+      "target_fraction": "0.125"
+    },
+    {
+      "age": 2,
+      "policy": "version-pinned-v2-proposal",
+      "score": 51.666667,
+      "st_points": 16.66666667,
+      "macd_points": 4.33333333,
+      "permitted_lots": 2,
+      "target_fraction": "0.1258333335"
+    },
+    {
+      "age": 2,
+      "policy": "historical-macd-v2-proposal",
+      "score": 53.333333,
+      "st_points": 16.66666667,
+      "macd_points": 6.0,
+      "permitted_lots": 2,
+      "target_fraction": "0.1266666665"
+    }
+  ],
+  "boundaries": [
+    {
+      "score": "39.999999",
+      "age": 0,
+      "permitted_lots": 1,
+      "target_fraction": "0.1199999995",
+      "target_price_at_30_05": "33.70",
+      "historical_denominator_score": "39.999999",
+      "historical_denominator_lots": 1
+    },
+    {
+      "score": "39.999999",
+      "age": 1,
+      "permitted_lots": 1,
+      "target_fraction": "0.1199999995",
+      "target_price_at_30_05": "33.70",
+      "historical_denominator_score": "40.83333233333333333333333333",
+      "historical_denominator_lots": 2
+    },
+    {
+      "score": "39.999999",
+      "age": 2,
+      "permitted_lots": 1,
+      "target_fraction": "0.1199999995",
+      "target_price_at_30_05": "33.70",
+      "historical_denominator_score": "41.66666566666666666666666667",
+      "historical_denominator_lots": 2
+    },
+    {
+      "score": "40",
+      "age": 0,
+      "permitted_lots": 2,
+      "target_fraction": "0.12",
+      "target_price_at_30_05": "33.70",
+      "historical_denominator_score": "40",
+      "historical_denominator_lots": 2
+    },
+    {
+      "score": "40",
+      "age": 1,
+      "permitted_lots": 2,
+      "target_fraction": "0.12",
+      "target_price_at_30_05": "33.70",
+      "historical_denominator_score": "40.83333333333333333333333333",
+      "historical_denominator_lots": 2
+    },
+    {
+      "score": "40",
+      "age": 2,
+      "permitted_lots": 2,
+      "target_fraction": "0.12",
+      "target_price_at_30_05": "33.70",
+      "historical_denominator_score": "41.66666666666666666666666667",
+      "historical_denominator_lots": 2
+    },
+    {
+      "score": "40.000001",
+      "age": 0,
+      "permitted_lots": 2,
+      "target_fraction": "0.1200000005",
+      "target_price_at_30_05": "33.70",
+      "historical_denominator_score": "40.000001",
+      "historical_denominator_lots": 2
+    },
+    {
+      "score": "40.000001",
+      "age": 1,
+      "permitted_lots": 2,
+      "target_fraction": "0.1200000005",
+      "target_price_at_30_05": "33.70",
+      "historical_denominator_score": "40.83333433333333333333333333",
+      "historical_denominator_lots": 2
+    },
+    {
+      "score": "40.000001",
+      "age": 2,
+      "permitted_lots": 2,
+      "target_fraction": "0.1200000005",
+      "target_price_at_30_05": "33.70",
+      "historical_denominator_score": "41.66666766666666666666666667",
+      "historical_denominator_lots": 2
+    },
+    {
+      "score": "69.999999",
+      "age": 0,
+      "permitted_lots": 2,
+      "target_fraction": "0.1349999995",
+      "target_price_at_30_05": "34.15",
+      "historical_denominator_score": "69.999999",
+      "historical_denominator_lots": 2
+    },
+    {
+      "score": "69.999999",
+      "age": 1,
+      "permitted_lots": 2,
+      "target_fraction": "0.1349999995",
+      "target_price_at_30_05": "34.15",
+      "historical_denominator_score": "70.83333233333333333333333333",
+      "historical_denominator_lots": 3
+    },
+    {
+      "score": "69.999999",
+      "age": 2,
+      "permitted_lots": 2,
+      "target_fraction": "0.1349999995",
+      "target_price_at_30_05": "34.15",
+      "historical_denominator_score": "71.66666566666666666666666667",
+      "historical_denominator_lots": 3
+    },
+    {
+      "score": "70",
+      "age": 0,
+      "permitted_lots": 3,
+      "target_fraction": "0.135",
+      "target_price_at_30_05": "34.15",
+      "historical_denominator_score": "70",
+      "historical_denominator_lots": 3
+    },
+    {
+      "score": "70",
+      "age": 1,
+      "permitted_lots": 3,
+      "target_fraction": "0.135",
+      "target_price_at_30_05": "34.15",
+      "historical_denominator_score": "70.83333333333333333333333333",
+      "historical_denominator_lots": 3
+    },
+    {
+      "score": "70",
+      "age": 2,
+      "permitted_lots": 3,
+      "target_fraction": "0.135",
+      "target_price_at_30_05": "34.15",
+      "historical_denominator_score": "71.66666666666666666666666667",
+      "historical_denominator_lots": 3
+    },
+    {
+      "score": "70.000001",
+      "age": 0,
+      "permitted_lots": 3,
+      "target_fraction": "0.1350000005",
+      "target_price_at_30_05": "34.15",
+      "historical_denominator_score": "70.000001",
+      "historical_denominator_lots": 3
+    },
+    {
+      "score": "70.000001",
+      "age": 1,
+      "permitted_lots": 3,
+      "target_fraction": "0.1350000005",
+      "target_price_at_30_05": "34.15",
+      "historical_denominator_score": "70.83333433333333333333333333",
+      "historical_denominator_lots": 3
+    },
+    {
+      "score": "70.000001",
+      "age": 2,
+      "permitted_lots": 3,
+      "target_fraction": "0.1350000005",
+      "target_price_at_30_05": "34.15",
+      "historical_denominator_score": "71.66666766666666666666666667",
+      "historical_denominator_lots": 3
+    }
+  ],
+  "feasibility": [
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "64",
+      "feasible_grid_points": 25,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 97,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 24,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 97,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63",
+      "feasible_grid_points": 23,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 97,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "64",
+      "feasible_grid_points": 25,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 37,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 24,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 37,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63",
+      "feasible_grid_points": 23,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 37,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "64",
+      "feasible_grid_points": 25,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 97,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 24,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 97,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63",
+      "feasible_grid_points": 23,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 97,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "64",
+      "feasible_grid_points": 25,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 37,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 24,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 37,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63",
+      "feasible_grid_points": 23,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 37,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "26",
+      "maximum_ask": "32",
+      "feasible_grid_points": 13,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 45,
+        "PLANNED_LOSS_LIMIT": 336,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "26",
+      "maximum_ask": "31.5",
+      "feasible_grid_points": 12,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 45,
+        "PLANNED_LOSS_LIMIT": 337,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "26",
+      "maximum_ask": "31",
+      "feasible_grid_points": 11,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 45,
+        "PLANNED_LOSS_LIMIT": 338,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "40",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "64",
+      "feasible_grid_points": 37,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 85,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 36,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 85,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63",
+      "feasible_grid_points": 35,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 85,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "64",
+      "feasible_grid_points": 37,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 25,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 36,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 25,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63",
+      "feasible_grid_points": 35,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 25,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "23",
+      "maximum_ask": "32",
+      "feasible_grid_points": 19,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 39,
+        "PLANNED_LOSS_LIMIT": 336,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "23",
+      "maximum_ask": "31.5",
+      "feasible_grid_points": 18,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 39,
+        "PLANNED_LOSS_LIMIT": 337,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "23",
+      "maximum_ask": "31",
+      "feasible_grid_points": 17,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 39,
+        "PLANNED_LOSS_LIMIT": 338,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "64",
+      "feasible_grid_points": 37,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 85,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 36,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 85,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63",
+      "feasible_grid_points": 35,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 85,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "64",
+      "feasible_grid_points": 37,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 25,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 36,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 25,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63",
+      "feasible_grid_points": 35,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 25,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "23",
+      "maximum_ask": "32",
+      "feasible_grid_points": 19,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 39,
+        "PLANNED_LOSS_LIMIT": 336,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "23",
+      "maximum_ask": "31.5",
+      "feasible_grid_points": 18,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 39,
+        "PLANNED_LOSS_LIMIT": 337,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "23",
+      "maximum_ask": "31",
+      "feasible_grid_points": 17,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 39,
+        "PLANNED_LOSS_LIMIT": 338,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "15.5",
+      "maximum_ask": "21.5",
+      "feasible_grid_points": 13,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 24,
+        "PLANNED_LOSS_LIMIT": 357,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "15.5",
+      "maximum_ask": "21",
+      "feasible_grid_points": 12,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 24,
+        "PLANNED_LOSS_LIMIT": 358,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "15.5",
+      "maximum_ask": "20.5",
+      "feasible_grid_points": 11,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 24,
+        "PLANNED_LOSS_LIMIT": 359,
+        "INSUFFICIENT_FUNDS": 197
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 197
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "70",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 197
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "42",
+      "maximum_ask": "64",
+      "feasible_grid_points": 45,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 77,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "42",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 44,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 77,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "42",
+      "maximum_ask": "63",
+      "feasible_grid_points": 43,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 77,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "42",
+      "maximum_ask": "64",
+      "feasible_grid_points": 45,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 17,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "42",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 44,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 17,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "42",
+      "maximum_ask": "63",
+      "feasible_grid_points": 43,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 17,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "21",
+      "maximum_ask": "32",
+      "feasible_grid_points": 23,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 35,
+        "PLANNED_LOSS_LIMIT": 336,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "21",
+      "maximum_ask": "31.5",
+      "feasible_grid_points": 22,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 35,
+        "PLANNED_LOSS_LIMIT": 337,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "21",
+      "maximum_ask": "31",
+      "feasible_grid_points": 21,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 35,
+        "PLANNED_LOSS_LIMIT": 338,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "14",
+      "maximum_ask": "21.5",
+      "feasible_grid_points": 16,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 21,
+        "PLANNED_LOSS_LIMIT": 357,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "14",
+      "maximum_ask": "21",
+      "feasible_grid_points": 15,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 21,
+        "PLANNED_LOSS_LIMIT": 358,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "14",
+      "maximum_ask": "20.5",
+      "feasible_grid_points": 14,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 21,
+        "PLANNED_LOSS_LIMIT": 359,
+        "INSUFFICIENT_FUNDS": 197
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 197
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "ACTIVE_CONFIGURED_2026_ESTIMATE",
+      "score": "100",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 197
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "64.5",
+      "feasible_grid_points": 26,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 97,
+        "PLANNED_LOSS_LIMIT": 271
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "64",
+      "feasible_grid_points": 25,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 97,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 24,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 97,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "64.5",
+      "feasible_grid_points": 26,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 37,
+        "PLANNED_LOSS_LIMIT": 271
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "64",
+      "feasible_grid_points": 25,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 37,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 24,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 37,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "64.5",
+      "feasible_grid_points": 26,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 97,
+        "PLANNED_LOSS_LIMIT": 271
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "64",
+      "feasible_grid_points": 25,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 97,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 24,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 97,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "64.5",
+      "feasible_grid_points": 26,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 37,
+        "PLANNED_LOSS_LIMIT": 271
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "64",
+      "feasible_grid_points": 25,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 37,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 24,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 37,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "26",
+      "maximum_ask": "32",
+      "feasible_grid_points": 13,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 45,
+        "PLANNED_LOSS_LIMIT": 336,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "26",
+      "maximum_ask": "31.5",
+      "feasible_grid_points": 12,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 45,
+        "PLANNED_LOSS_LIMIT": 337,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "26",
+      "maximum_ask": "31",
+      "feasible_grid_points": 11,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 45,
+        "PLANNED_LOSS_LIMIT": 338,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "40",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "64.5",
+      "feasible_grid_points": 38,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 85,
+        "PLANNED_LOSS_LIMIT": 271
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "64",
+      "feasible_grid_points": 37,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 85,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 36,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 85,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "64.5",
+      "feasible_grid_points": 38,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 25,
+        "PLANNED_LOSS_LIMIT": 271
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "64",
+      "feasible_grid_points": 37,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 25,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 36,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 25,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "23",
+      "maximum_ask": "32",
+      "feasible_grid_points": 19,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 39,
+        "PLANNED_LOSS_LIMIT": 336,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "23",
+      "maximum_ask": "31.5",
+      "feasible_grid_points": 18,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 39,
+        "PLANNED_LOSS_LIMIT": 337,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "23",
+      "maximum_ask": "31",
+      "feasible_grid_points": 17,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 39,
+        "PLANNED_LOSS_LIMIT": 338,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "64.5",
+      "feasible_grid_points": 38,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 85,
+        "PLANNED_LOSS_LIMIT": 271
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "64",
+      "feasible_grid_points": 37,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 85,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 36,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 85,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "64.5",
+      "feasible_grid_points": 38,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 25,
+        "PLANNED_LOSS_LIMIT": 271
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "64",
+      "feasible_grid_points": 37,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 25,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 36,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 25,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "23",
+      "maximum_ask": "32",
+      "feasible_grid_points": 19,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 39,
+        "PLANNED_LOSS_LIMIT": 336,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "23",
+      "maximum_ask": "31.5",
+      "feasible_grid_points": 18,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 39,
+        "PLANNED_LOSS_LIMIT": 337,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "23",
+      "maximum_ask": "31",
+      "feasible_grid_points": 17,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 39,
+        "PLANNED_LOSS_LIMIT": 338,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "15.5",
+      "maximum_ask": "21.5",
+      "feasible_grid_points": 13,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 24,
+        "PLANNED_LOSS_LIMIT": 357,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "15.5",
+      "maximum_ask": "21",
+      "feasible_grid_points": 12,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 24,
+        "PLANNED_LOSS_LIMIT": 358,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "15.5",
+      "maximum_ask": "20.5",
+      "feasible_grid_points": 11,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 24,
+        "PLANNED_LOSS_LIMIT": 359,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "70",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "41.5",
+      "maximum_ask": "64.5",
+      "feasible_grid_points": 47,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 76,
+        "PLANNED_LOSS_LIMIT": 271
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "41.5",
+      "maximum_ask": "64",
+      "feasible_grid_points": 46,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 76,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "41.5",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 45,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 76,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "41.5",
+      "maximum_ask": "64.5",
+      "feasible_grid_points": 47,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 16,
+        "PLANNED_LOSS_LIMIT": 271
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "41.5",
+      "maximum_ask": "64",
+      "feasible_grid_points": 46,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 16,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "41.5",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 45,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 16,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "21",
+      "maximum_ask": "32",
+      "feasible_grid_points": 23,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 35,
+        "PLANNED_LOSS_LIMIT": 336,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "21",
+      "maximum_ask": "31.5",
+      "feasible_grid_points": 22,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 35,
+        "PLANNED_LOSS_LIMIT": 337,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "21",
+      "maximum_ask": "31",
+      "feasible_grid_points": 21,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 35,
+        "PLANNED_LOSS_LIMIT": 338,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "14",
+      "maximum_ask": "21.5",
+      "feasible_grid_points": 16,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 21,
+        "PLANNED_LOSS_LIMIT": 357,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "14",
+      "maximum_ask": "21",
+      "feasible_grid_points": 15,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 21,
+        "PLANNED_LOSS_LIMIT": 358,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "14",
+      "maximum_ask": "20.5",
+      "feasible_grid_points": 14,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 21,
+        "PLANNED_LOSS_LIMIT": 359,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "HISTORICAL_3_2_COST_COMPARATOR",
+      "score": "100",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "64",
+      "feasible_grid_points": 25,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 97,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 24,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 97,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63",
+      "feasible_grid_points": 23,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 97,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "64",
+      "feasible_grid_points": 25,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 37,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 24,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 37,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63",
+      "feasible_grid_points": 23,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 37,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "39.999999",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "64",
+      "feasible_grid_points": 25,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 97,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 24,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 97,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63",
+      "feasible_grid_points": 23,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 97,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "64",
+      "feasible_grid_points": 25,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 37,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 24,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 37,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "52",
+      "maximum_ask": "63",
+      "feasible_grid_points": 23,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 37,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "26",
+      "maximum_ask": "32",
+      "feasible_grid_points": 13,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 45,
+        "PLANNED_LOSS_LIMIT": 336,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "26",
+      "maximum_ask": "31.5",
+      "feasible_grid_points": 12,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 45,
+        "PLANNED_LOSS_LIMIT": 337,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "26",
+      "maximum_ask": "31",
+      "feasible_grid_points": 11,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 45,
+        "PLANNED_LOSS_LIMIT": 338,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "40",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "64",
+      "feasible_grid_points": 37,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 85,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 36,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 85,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63",
+      "feasible_grid_points": 35,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 85,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "64",
+      "feasible_grid_points": 37,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 25,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 36,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 25,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63",
+      "feasible_grid_points": 35,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 25,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "23",
+      "maximum_ask": "32",
+      "feasible_grid_points": 19,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 39,
+        "PLANNED_LOSS_LIMIT": 336,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "23",
+      "maximum_ask": "31.5",
+      "feasible_grid_points": 18,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 39,
+        "PLANNED_LOSS_LIMIT": 337,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "23",
+      "maximum_ask": "31",
+      "feasible_grid_points": 17,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 39,
+        "PLANNED_LOSS_LIMIT": 338,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "SCORE_LOT_LIMIT": 394
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "SCORE_LOT_LIMIT": 334
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "69.999999",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "SCORE_LOT_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "64",
+      "feasible_grid_points": 37,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 85,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 36,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 85,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63",
+      "feasible_grid_points": 35,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 85,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "64",
+      "feasible_grid_points": 37,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 25,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 36,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 25,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "46",
+      "maximum_ask": "63",
+      "feasible_grid_points": 35,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 25,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "23",
+      "maximum_ask": "32",
+      "feasible_grid_points": 19,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 39,
+        "PLANNED_LOSS_LIMIT": 336,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "23",
+      "maximum_ask": "31.5",
+      "feasible_grid_points": 18,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 39,
+        "PLANNED_LOSS_LIMIT": 337,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "23",
+      "maximum_ask": "31",
+      "feasible_grid_points": 17,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 39,
+        "PLANNED_LOSS_LIMIT": 338,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "15.5",
+      "maximum_ask": "21.5",
+      "feasible_grid_points": 13,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 24,
+        "PLANNED_LOSS_LIMIT": 357,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "15.5",
+      "maximum_ask": "21",
+      "feasible_grid_points": 12,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 24,
+        "PLANNED_LOSS_LIMIT": 358,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "15.5",
+      "maximum_ask": "20.5",
+      "feasible_grid_points": 11,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 24,
+        "PLANNED_LOSS_LIMIT": 359,
+        "INSUFFICIENT_FUNDS": 197
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 197
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "70",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 197
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "42",
+      "maximum_ask": "64",
+      "feasible_grid_points": 45,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 77,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "42",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 44,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 77,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 1,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "42",
+      "maximum_ask": "63",
+      "feasible_grid_points": 43,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 77,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "42",
+      "maximum_ask": "64",
+      "feasible_grid_points": 45,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 17,
+        "PLANNED_LOSS_LIMIT": 272
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "42",
+      "maximum_ask": "63.5",
+      "feasible_grid_points": 44,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 17,
+        "PLANNED_LOSS_LIMIT": 273
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 1,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "42",
+      "maximum_ask": "63",
+      "feasible_grid_points": 43,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "NET_REWARD_BELOW_MINIMUM": 17,
+        "PLANNED_LOSS_LIMIT": 274
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 1,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "21",
+      "maximum_ask": "32",
+      "feasible_grid_points": 23,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 35,
+        "PLANNED_LOSS_LIMIT": 336,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "21",
+      "maximum_ask": "31.5",
+      "feasible_grid_points": 22,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 35,
+        "PLANNED_LOSS_LIMIT": 337,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 2,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "21",
+      "maximum_ask": "31",
+      "feasible_grid_points": 21,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 35,
+        "PLANNED_LOSS_LIMIT": 338,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 2,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 2,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 94
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": "14",
+      "maximum_ask": "21.5",
+      "feasible_grid_points": 16,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 21,
+        "PLANNED_LOSS_LIMIT": 357,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": "14",
+      "maximum_ask": "21",
+      "feasible_grid_points": 15,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 21,
+        "PLANNED_LOSS_LIMIT": 358,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 3,
+      "spread": "0.05",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": "14",
+      "maximum_ask": "20.5",
+      "feasible_grid_points": 14,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 3,
+        "NET_REWARD_BELOW_MINIMUM": 21,
+        "PLANNED_LOSS_LIMIT": 359,
+        "INSUFFICIENT_FUNDS": 197
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 3,
+      "spread": "0.50",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 63,
+        "PLANNED_LOSS_LIMIT": 334,
+        "INSUFFICIENT_FUNDS": 197
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 0,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 1,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 196
+      }
+    },
+    {
+      "schedule": "INACTIVE_ANGEL_2026_CANDIDATE",
+      "score": "100",
+      "lots": 3,
+      "spread": "1.00",
+      "slippage_ticks_each_side": 2,
+      "grid_step": "0.50",
+      "minimum_ask": null,
+      "maximum_ask": null,
+      "feasible_grid_points": 0,
+      "failure_counts": {
+        "LIQUIDITY_UNAVAILABLE": 130,
+        "PLANNED_LOSS_LIMIT": 267,
+        "INSUFFICIENT_FUNDS": 197
+      }
+    }
+  ],
+  "examples": [
+    {
+      "lots": 1,
+      "premium": "15",
+      "selected_lots": 0,
+      "ranking": [],
+      "rejections": [
+        [
+          "SYNTHETIC-65",
+          0,
+          "LIQUIDITY_UNAVAILABLE"
+        ]
+      ]
+    },
+    {
+      "lots": 1,
+      "premium": "20",
+      "selected_lots": 0,
+      "ranking": [],
+      "rejections": [
+        [
+          "SYNTHETIC-65",
+          0,
+          "LIQUIDITY_UNAVAILABLE"
+        ]
+      ]
+    },
+    {
+      "lots": 1,
+      "premium": "30",
+      "selected_lots": 0,
+      "ranking": [],
+      "rejections": [
+        [
+          "SYNTHETIC-65",
+          0,
+          "LIQUIDITY_UNAVAILABLE"
+        ]
+      ]
+    },
+    {
+      "lots": 1,
+      "premium": "60",
+      "selected_lots": 1,
+      "ranking": [
+        {
+          "policy": "risk-approved-weighted-v2-oi",
+          "token": "SYNTHETIC-65",
+          "lots": 1,
+          "quantity": 65,
+          "entry_price": "60.05",
+          "stop_price": "55.25",
+          "target_price": "68.20",
+          "capital_required": "3959.7042",
+          "planned_loss": "381.0988",
+          "projected_net_reward": "472.2785",
+          "inputs": {
+            "bid": "59.50",
+            "ask": "60",
+            "spread_bps": "83.68200836820083682008368201",
+            "ask_size": 10000,
+            "bid_size": 10000,
+            "volume": 10000,
+            "open_interest": 10000,
+            "oi_capped_volume": 10000,
+            "delta": null,
+            "quote_source_time": "2026-11-25T05:00:00+00:00"
+          },
+          "coverage": {
+            "delta": false,
+            "open_interest": true,
+            "oi_policy": "FRESH_OI_CAPS_VOLUME_MISSING_ZERO",
+            "policy": "FIXED_WEIGHT_MISSING_DELTA_ZERO"
+          },
+          "scores": {
+            "liquidity": "1.00",
+            "spread": "0.4421199442119944211994421199",
+            "delta": "0",
+            "reward_risk": "0.6196273774674703777603078255",
+            "capital_efficiency": "0.795141044458152539104646588"
+          },
+          "weights": {
+            "liquidity": "30",
+            "spread": "25",
+            "delta": "15",
+            "reward_risk": "20",
+            "capital_efficiency": "10"
+          },
+          "total": "61.39695659923079347623867539"
+        }
+      ],
+      "rejections": []
+    },
+    {
+      "lots": 1,
+      "premium": "100",
+      "selected_lots": 0,
+      "ranking": [],
+      "rejections": [
+        [
+          "SYNTHETIC-65",
+          1,
+          "PLANNED_LOSS_LIMIT"
+        ]
+      ]
+    },
+    {
+      "lots": 2,
+      "premium": "15",
+      "selected_lots": 0,
+      "ranking": [],
+      "rejections": [
+        [
+          "SYNTHETIC-65",
+          0,
+          "LIQUIDITY_UNAVAILABLE"
+        ]
+      ]
+    },
+    {
+      "lots": 2,
+      "premium": "20",
+      "selected_lots": 0,
+      "ranking": [],
+      "rejections": [
+        [
+          "SYNTHETIC-65",
+          0,
+          "LIQUIDITY_UNAVAILABLE"
+        ]
+      ]
+    },
+    {
+      "lots": 2,
+      "premium": "30",
+      "selected_lots": 0,
+      "ranking": [],
+      "rejections": [
+        [
+          "SYNTHETIC-65",
+          0,
+          "LIQUIDITY_UNAVAILABLE"
+        ]
+      ]
+    },
+    {
+      "lots": 2,
+      "premium": "60",
+      "selected_lots": 1,
+      "ranking": [
+        {
+          "policy": "risk-approved-weighted-v2-oi",
+          "token": "SYNTHETIC-65",
+          "lots": 1,
+          "quantity": 65,
+          "entry_price": "60.05",
+          "stop_price": "55.25",
+          "target_price": "68.20",
+          "capital_required": "3959.7042",
+          "planned_loss": "381.0988",
+          "projected_net_reward": "472.2785",
+          "inputs": {
+            "bid": "59.50",
+            "ask": "60",
+            "spread_bps": "83.68200836820083682008368201",
+            "ask_size": 10000,
+            "bid_size": 10000,
+            "volume": 10000,
+            "open_interest": 10000,
+            "oi_capped_volume": 10000,
+            "delta": null,
+            "quote_source_time": "2026-11-25T05:00:00+00:00"
+          },
+          "coverage": {
+            "delta": false,
+            "open_interest": true,
+            "oi_policy": "FRESH_OI_CAPS_VOLUME_MISSING_ZERO",
+            "policy": "FIXED_WEIGHT_MISSING_DELTA_ZERO"
+          },
+          "scores": {
+            "liquidity": "1.00",
+            "spread": "0.4421199442119944211994421199",
+            "delta": "0",
+            "reward_risk": "0.6196273774674703777603078255",
+            "capital_efficiency": "0.795141044458152539104646588"
+          },
+          "weights": {
+            "liquidity": "30",
+            "spread": "25",
+            "delta": "15",
+            "reward_risk": "20",
+            "capital_efficiency": "10"
+          },
+          "total": "61.39695659923079347623867539"
+        }
+      ],
+      "rejections": [
+        [
+          "SYNTHETIC-65",
+          2,
+          "PLANNED_LOSS_LIMIT"
+        ]
+      ]
+    },
+    {
+      "lots": 2,
+      "premium": "100",
+      "selected_lots": 0,
+      "ranking": [],
+      "rejections": [
+        [
+          "SYNTHETIC-65",
+          2,
+          "PLANNED_LOSS_LIMIT"
+        ],
+        [
+          "SYNTHETIC-65",
+          1,
+          "PLANNED_LOSS_LIMIT"
+        ]
+      ]
+    },
+    {
+      "lots": 3,
+      "premium": "15",
+      "selected_lots": 0,
+      "ranking": [],
+      "rejections": [
+        [
+          "SYNTHETIC-65",
+          0,
+          "LIQUIDITY_UNAVAILABLE"
+        ]
+      ]
+    },
+    {
+      "lots": 3,
+      "premium": "20",
+      "selected_lots": 0,
+      "ranking": [],
+      "rejections": [
+        [
+          "SYNTHETIC-65",
+          0,
+          "LIQUIDITY_UNAVAILABLE"
+        ]
+      ]
+    },
+    {
+      "lots": 3,
+      "premium": "30",
+      "selected_lots": 0,
+      "ranking": [],
+      "rejections": [
+        [
+          "SYNTHETIC-65",
+          0,
+          "LIQUIDITY_UNAVAILABLE"
+        ]
+      ]
+    },
+    {
+      "lots": 3,
+      "premium": "60",
+      "selected_lots": 1,
+      "ranking": [
+        {
+          "policy": "risk-approved-weighted-v2-oi",
+          "token": "SYNTHETIC-65",
+          "lots": 1,
+          "quantity": 65,
+          "entry_price": "60.05",
+          "stop_price": "55.25",
+          "target_price": "68.20",
+          "capital_required": "3959.7042",
+          "planned_loss": "381.0988",
+          "projected_net_reward": "472.2785",
+          "inputs": {
+            "bid": "59.50",
+            "ask": "60",
+            "spread_bps": "83.68200836820083682008368201",
+            "ask_size": 10000,
+            "bid_size": 10000,
+            "volume": 10000,
+            "open_interest": 10000,
+            "oi_capped_volume": 10000,
+            "delta": null,
+            "quote_source_time": "2026-11-25T05:00:00+00:00"
+          },
+          "coverage": {
+            "delta": false,
+            "open_interest": true,
+            "oi_policy": "FRESH_OI_CAPS_VOLUME_MISSING_ZERO",
+            "policy": "FIXED_WEIGHT_MISSING_DELTA_ZERO"
+          },
+          "scores": {
+            "liquidity": "1.00",
+            "spread": "0.4421199442119944211994421199",
+            "delta": "0",
+            "reward_risk": "0.6196273774674703777603078255",
+            "capital_efficiency": "0.795141044458152539104646588"
+          },
+          "weights": {
+            "liquidity": "30",
+            "spread": "25",
+            "delta": "15",
+            "reward_risk": "20",
+            "capital_efficiency": "10"
+          },
+          "total": "61.39695659923079347623867539"
+        }
+      ],
+      "rejections": [
+        [
+          "SYNTHETIC-65",
+          3,
+          "PLANNED_LOSS_LIMIT"
+        ],
+        [
+          "SYNTHETIC-65",
+          2,
+          "PLANNED_LOSS_LIMIT"
+        ]
+      ]
+    },
+    {
+      "lots": 3,
+      "premium": "100",
+      "selected_lots": 0,
+      "ranking": [],
+      "rejections": [
+        [
+          "SYNTHETIC-65",
+          3,
+          "PLANNED_LOSS_LIMIT"
+        ],
+        [
+          "SYNTHETIC-65",
+          2,
+          "PLANNED_LOSS_LIMIT"
+        ],
+        [
+          "SYNTHETIC-65",
+          1,
+          "PLANNED_LOSS_LIMIT"
+        ]
+      ]
+    }
+  ]
+}

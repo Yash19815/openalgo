@@ -1,6 +1,6 @@
 # Strategy assumptions and rule provenance
 
-Current strategy configuration: 3.2.0. The strategy is a research hypothesis, not a
+Current strategy configuration: 3.3.0. The strategy is a research hypothesis, not a
 calibrated probability model or a claim of historical profitability.
 
 The current phase requirements in PAPER_SYSTEM_DESIGN.md supersede the older
@@ -18,7 +18,7 @@ later changes.
 ## Research defaults retained or introduced
 
 Analysis uses the nearest eligible NIFTY future's actual OHLCV. Spot is a
-separate strike reference. SuperTrend uses ATR 10 and multiplier 3; MACD uses
+separate strike reference. New configurations use SuperTrend ATR 20 and multiplier 2 on both timeframes; MACD uses
 12/26/9 and a recent crossover (below); ADX uses Wilder 14
 and minimum 25. Zero-line and DI confirmation remain configurable. Session
 VWAP uses the same future's completed entry-candle typical price and volume;
@@ -54,6 +54,20 @@ before an earlier native NFO close. The approved NFO calendar is required;
 special sessions remain disabled. A loss blocks the next eligible session.
 Monthly loss locks at ₹2,000; an optional configured profit target latches its
 own monthly lock. Locks do not block exits or reset equity.
+
+Existing 3.1.0/3.2.0 configurations, decisions, orders, protection and research
+retain their pinned parameters. Migration pauses entries and waits for all
+pending orders and open positions to clear. Explicit legacy 10/3 values are
+ambiguous and require the trader to review an upgrade in settings and save a
+3.3.0 configuration. Explicit custom values are preserved. Missing legacy
+indicator keys prove implicit defaults and can migrate automatically. No
+balance, ledger or historical configuration is reset or rewritten.
+
+The owner approved five-indicator-v2-pinned on 2026-11-25: SuperTrend duration
+/10, ATR distance /3, and MACD recency /3 independent of the eligibility window.
+Historical versions retain five-indicator-v1, including its original relative
+MACD recency. See CONFIDENCE_OWNER_DECISION_2026-11.md. Historical SDK 10/3
+evidence remains applicable to its pinned configurations; the 20/2 suite is separate.
 
 ## The MACD crossover window
 
@@ -104,7 +118,7 @@ ATM; it refuses a missing adjacent strike instead of substituting a deeper one.
 Pending primary entries expire at the earliest of their TTL, configured entry
 cutoff, 14:45 IST and five minutes before session close, including replay.
 
-## Strength method: five-indicator-v1
+## Strength method: five-indicator-v2-pinned (3.3.0)
 
 Scoring runs only after every mandatory gate passes. Each component is clipped
 to [0,1], receives weight 0.2 and contributes at most 20 points:
@@ -112,7 +126,7 @@ to [0,1], receives weight 0.2 and contributes at most 20 points:
 | Component | Normalized strength |
 | --- | --- |
 | SuperTrend | Half confirmed duration / 10, half absolute trend distance / (3 ATR) |
-| MACD | Half crossover recency `1 - age/(freshness+1)`, half directional histogram / ATR |
+| MACD | Half crossover recency `1 - age/3`, half directional histogram / ATR |
 | VWAP | `1 - abs(extension_bps)/configured_limit`; passing directional alignment is mandatory |
 | ADX | `(ADX - minimum)/max(1,100-minimum)` |
 | PCR | Directional margin beyond the qualifying threshold divided by that threshold |

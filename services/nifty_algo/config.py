@@ -9,11 +9,11 @@ from pydantic import ConfigDict, Field, ValidationError, field_validator, model_
 
 from .models import Model
 
-CURRENT_STRATEGY_VERSION = "3.2.0"
+CURRENT_STRATEGY_VERSION = "3.3.0"
 # Strategy versions whose stored records (held protection, pending orders,
 # research manifests, replay baselines) still load and replay with their own
 # rules. None of them may evaluate a new entry: see active_configuration.
-LEGACY_STRATEGY_VERSIONS = ("3.1.0",)
+LEGACY_STRATEGY_VERSIONS = ("3.1.0", "3.2.0")
 # Approved 2026-11-24: a qualifying MACD crossover lies in one of the latest
 # three completed 5-minute candles. The crossover candle is age 0, so ages 0,
 # 1 and 2 qualify and age 3 or older does not. Version 3.1.0 admitted age 3.
@@ -22,13 +22,15 @@ MAX_MACD_CROSSOVER_AGE = 2
 
 class StrategyConfig(Model):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False, frozen=True)
-    strategy_version: Literal["3.1.0", "3.2.0"] = CURRENT_STRATEGY_VERSION
-    confidence_method: Literal["five-indicator-v1"] = "five-indicator-v1"
+    strategy_version: Literal["3.1.0", "3.2.0", "3.3.0"] = CURRENT_STRATEGY_VERSION
+    confidence_method: Literal["five-indicator-v1", "five-indicator-v2-pinned"] = (
+        "five-indicator-v2-pinned"
+    )
     virtual_capital: Decimal = Field(
         default=Decimal("20000"), ge=Decimal("20000"), le=Decimal("20000")
     )
-    atr_period: int = Field(default=10, ge=2, le=100)
-    atr_multiplier: float = Field(default=3, gt=0, le=10)
+    atr_period: int = Field(default=20, ge=2, le=100)
+    atr_multiplier: float = Field(default=2, gt=0, le=10)
     macd_fast: int = Field(default=12, ge=2, le=100)
     macd_slow: int = Field(default=26, ge=3, le=200)
     macd_signal: int = Field(default=9, ge=2, le=100)
@@ -100,9 +102,9 @@ class StrategyConfig(Model):
     trailing_activation_points: Decimal = Field(default=Decimal("1.5"), gt=0)
     point_unit: Literal["OPTION_PREMIUM"] = "OPTION_PREMIUM"
     brokerage: Decimal = Field(default=Decimal("20"), ge=0)
-    transaction_rate: Decimal = Field(default=Decimal("0.0005"), ge=0, le=1)
+    transaction_rate: Decimal = Field(default=Decimal("0.000355299"), ge=0, le=1)
     gst_rate: Decimal = Field(default=Decimal("0.18"), ge=0, le=1)
-    stt_sell_rate: Decimal = Field(default=Decimal("0.000625"), ge=0, le=1)
+    stt_sell_rate: Decimal = Field(default=Decimal("0.0015"), ge=0, le=1)
     stamp_buy_rate: Decimal = Field(default=Decimal("0.00003"), ge=0, le=1)
     sebi_rate: Decimal = Field(default=Decimal("0.000001"), ge=0, le=1)
     max_hold_minutes: int = Field(default=45, ge=1, le=45)
@@ -116,13 +118,36 @@ class StrategyConfig(Model):
     slippage_ticks: int = Field(default=1, ge=0, le=20)
     order_ttl_seconds: int = Field(default=10, ge=1, le=60)
 
+    @model_validator(mode="before")
+    @classmethod
+    def historical_indicator_defaults(cls, values):
+        # Sparse historical documents must not acquire new mathematical inputs
+        # merely because they are deserialized by a newer application.
+        if isinstance(values, dict) and values.get("strategy_version") in LEGACY_STRATEGY_VERSIONS:
+            values = dict(values)
+            values.setdefault("atr_period", 10)
+            values.setdefault("atr_multiplier", 3)
+            values.setdefault("confidence_method", "five-indicator-v1")
+            values.setdefault("transaction_rate", "0.0005")
+            values.setdefault("stt_sell_rate", "0.000625")
+        return values
+
+    @field_validator("confidence_method")
+    @classmethod
+    def pinned_confidence_method(cls, value, info):
+        expected = (
+            "five-indicator-v1"
+            if info.data.get("strategy_version") in LEGACY_STRATEGY_VERSIONS
+            else "five-indicator-v2-pinned"
+        )
+        if value != expected:
+            raise ValueError("Confidence method must match the pinned strategy version")
+        return value
+
     @field_validator("crossover_freshness")
     @classmethod
     def valid_crossover_freshness(cls, value, info):
-        if (
-            info.data.get("strategy_version") not in LEGACY_STRATEGY_VERSIONS
-            and value > MAX_MACD_CROSSOVER_AGE
-        ):
+        if info.data.get("strategy_version") != "3.1.0" and value > MAX_MACD_CROSSOVER_AGE:
             raise ValueError("MACD crossover must lie in the latest three completed entry candles")
         return value
 
@@ -197,13 +222,58 @@ def active_configuration(values):
                 }
             ],
         )
+    requirements = {
+        "daily_loss_fraction": config.daily_loss_fraction <= Decimal("0.015"),
+        "macd_fast": config.macd_fast == 12,
+        "macd_slow": config.macd_slow == 26,
+        "macd_signal": config.macd_signal == 9,
+        "adx_period": config.adx_period == 14,
+        "adx_min": config.adx_min >= 25,
+        "vwap_basis": config.vwap_basis == "typical",
+        "vwap_max_bps": config.vwap_max_bps <= 80,
+        "pcr_max_age": config.pcr_max_age <= 90,
+        "pcr_max_skew_seconds": config.pcr_max_skew_seconds <= 5,
+        "pcr_bull": config.pcr_bull >= 1.5,
+        "pcr_bear": config.pcr_bear <= 1,
+        "trailing_activation_points": config.trailing_activation_points == Decimal("1.5"),
+        "lot_score_thresholds": all(
+            value >= floor
+            for value, floor in zip(config.lot_score_thresholds, (0, 40, 70), strict=False)
+        ),
+        "brokerage": config.brokerage >= Decimal("20"),
+        "transaction_rate": config.transaction_rate >= Decimal("0.000355299"),
+        "stt_sell_rate": config.stt_sell_rate >= Decimal("0.0015"),
+        "gst_rate": config.gst_rate >= Decimal("0.18"),
+        "sebi_rate": config.sebi_rate >= Decimal("0.000001"),
+        "stamp_buy_rate": config.stamp_buy_rate >= Decimal("0.00003"),
+    }
+    failures = [
+        {
+            "type": "value_error",
+            "loc": (name,),
+            "input": getattr(config, name),
+            "ctx": {
+                "error": ValueError(
+                    "New PAPER entries must retain the approved strategy and published charge floors"
+                )
+            },
+        }
+        for name, valid in requirements.items()
+        if not valid
+    ]
+    if failures:
+        raise ValidationError.from_exception_data("StrategyConfig", failures)
     return config
 
 
-def migrate_configuration(values):
+def migrate_configuration(
+    values, *, approve_supertrend=False, approve_fees=False, target_version=CURRENT_STRATEGY_VERSION
+):
     """Return a validated current revision; unknown versions remain blocked."""
+    if target_version not in ("3.2.0", CURRENT_STRATEGY_VERSION):
+        raise ValueError("Unsupported migration target")
     version = values.get("strategy_version", "1.0.0")
-    if version not in ("1.0.0", "2.0.0", "3.0.0", "3.1.0"):
+    if version not in ("1.0.0", "2.0.0", "3.0.0", "3.1.0", "3.2.0"):
         return active_configuration(values)
     changed = dict(values)
     if version == "1.0.0":
@@ -236,7 +306,62 @@ def migrate_configuration(values):
         freshness = changed.get("crossover_freshness", 3)
         if type(freshness) is int and freshness > MAX_MACD_CROSSOVER_AGE:
             changed["crossover_freshness"] = MAX_MACD_CROSSOVER_AGE
+        changed["strategy_version"] = "3.2.0"
+
+    if target_version == CURRENT_STRATEGY_VERSION:
+        # Owner approval, 2026-11-25: pin ST /10,/3 and MACD /3 in a new
+        # method. Historical records retain v1; only new revisions adopt v2.
+        changed["confidence_method"] = "five-indicator-v2-pinned"
+        # Explicit 10/3 is ambiguous: old saves serialized defaults and custom
+        # choices identically. Equality alone does not prove migration consent.
+        if (
+            ("atr_period" in values or "atr_multiplier" in values)
+            and float(values.get("atr_period", 10)) == 10
+            and float(values.get("atr_multiplier", 3)) == 3
+        ):
+            if not approve_supertrend:
+                raise ValueError("SUPERTrend_MIGRATION_APPROVAL_REQUIRED")
+            changed.update(atr_period=20, atr_multiplier=2)
+        elif "atr_period" not in values and "atr_multiplier" not in values:
+            changed.update(atr_period=20, atr_multiplier=2)
+        else:
+            # Preserve each explicitly customized input and the old default of
+            # an omitted partner field. Never infer approval to alter a custom.
+            changed.setdefault("atr_period", 10)
+            changed.setdefault("atr_multiplier", 3)
+        # An explicit lower tariff may be a customized historical estimate.
+        # Preserve it and pause until the operator reviews the published floor.
+        for name, minimum in (
+            ("stt_sell_rate", "0.0015"),
+            ("transaction_rate", "0.000355299"),
+            ("brokerage", "20"),
+            ("gst_rate", "0.18"),
+            ("sebi_rate", "0.000001"),
+            ("stamp_buy_rate", "0.00003"),
+        ):
+            try:
+                amount = Decimal(str(values[name])) if name in values else Decimal(minimum)
+                if not amount.is_finite():
+                    raise ValueError("Nonfinite legacy charge")
+            except (ArithmeticError, TypeError, ValueError):
+                raise ValueError("Invalid legacy charge") from None
+            if name in values and amount < Decimal(minimum):
+                if not approve_fees:
+                    raise ValueError("FEE_MIGRATION_APPROVAL_REQUIRED")
+                changed[name] = minimum
         changed["strategy_version"] = CURRENT_STRATEGY_VERSION
+
+    if version == "3.2.0":
+        if target_version == "3.2.0":
+            changed["confidence_method"] = "five-indicator-v1"
+        return (
+            StrategyConfig.model_validate(changed)
+            if target_version == "3.2.0"
+            else active_configuration(changed)
+        )
+
+    if target_version == "3.2.0":
+        changed["confidence_method"] = "five-indicator-v1"
 
     def _clamp(name, floor, ceiling=None):
         if name not in changed:
@@ -270,4 +395,8 @@ def migrate_configuration(values):
             changed["profit_lock_activation_net"] = "400"
     except (ArithmeticError, TypeError, ValueError):
         pass
-    return active_configuration(changed)
+    return (
+        StrategyConfig.model_validate(changed)
+        if target_version == "3.2.0"
+        else active_configuration(changed)
+    )

@@ -107,6 +107,9 @@ it('creates a count/hash-pinned definition with UTC splits and research-only ove
   fireEvent.change(screen.getByLabelText('Research ATR period (optional)'), {
     target: { value: '20' },
   })
+  fireEvent.change(screen.getByLabelText('Research SuperTrend factor (optional)'), {
+    target: { value: '2' },
+  })
   fireEvent.click(screen.getByRole('button', { name: 'Define experiment' }))
   await waitFor(() => expect(api.define).toHaveBeenCalledTimes(1))
   expect(api.define.mock.calls[0][0]).toEqual({
@@ -115,7 +118,7 @@ it('creates a count/hash-pinned definition with UTC splits and research-only ove
     expected_sha256: source.content_sha256,
     train_end: '2026-01-01T04:10:00.000Z',
     validation_end: '2026-01-01T04:20:00.000Z',
-    configuration_overrides: { adx_min: 30, atr_period: 20 },
+    configuration_overrides: { adx_min: 30, atr_period: 20, atr_multiplier: 2 },
   })
   await screen.findByText(/Experiment definition saved/)
   expect(screen.getByRole('checkbox', { name: /I understand/ })).not.toBeChecked()

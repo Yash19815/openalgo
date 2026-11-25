@@ -78,6 +78,7 @@ def test_native_history_arguments_are_authenticated_bounded_and_read_only():
         "minute_bars": 16,
         "entry_bars": 3,
         "confirmation_bars": 1,
+        "discarded_incomplete_sessions": [],
     }
     assert decision["snapshot"]["end"] == (OPEN + timedelta(minutes=15)).astimezone(UTC).isoformat()
     assert decision["eligible"] is False

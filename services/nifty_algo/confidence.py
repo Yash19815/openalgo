@@ -39,7 +39,16 @@ def signal_strength(snapshot, higher, pcr, direction, config):
             "Confirmed trend duration / 10 and ATR-normalized distance / 3",
         ),
         "macd": (
-            _unit(1 - macd["cross_age"] / (config.crossover_freshness + 1)) * 0.5
+            _unit(
+                1
+                - macd["cross_age"]
+                / (
+                    3
+                    if config.confidence_method == "five-indicator-v2-pinned"
+                    else config.crossover_freshness + 1
+                )
+            )
+            * 0.5
             + _unit(direction * macd["histogram"] / atr) * 0.5,
             "Crossover recency and direction-aligned histogram / ATR",
         ),
@@ -68,6 +77,13 @@ def signal_strength(snapshot, higher, pcr, direction, config):
     score = round(sum(row["points"] for row in contributions.values()), 6)
     return {
         "method": config.confidence_method,
+        "normalization": {
+            "supertrend_duration_bars": 10,
+            "supertrend_distance_atr": 3,
+            "macd_recency_denominator": 3
+            if config.confidence_method == "five-indicator-v2-pinned"
+            else config.crossover_freshness + 1,
+        },
         "score": score,
         "contributions": contributions,
         "calibrated_probability": False,
